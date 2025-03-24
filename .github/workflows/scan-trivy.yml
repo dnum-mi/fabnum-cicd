@@ -1,0 +1,103 @@
+name: Vulnerability scan
+
+on:
+  workflow_call:
+    inputs:
+      IMAGE:
+        description: Image used to perform scan (eg. docker.io/debian:latest)
+        required: false
+        type: string
+      PATH:
+        description: Path used to perform scan
+        required: false
+        type: string
+
+jobs:
+  images-scan:
+    name: Scan images vulnerabilities
+    if: ${{ inputs.IMAGE != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      security-events: write
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner on images
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: "${{ inputs.IMAGE }}"
+        format: template
+        template: "@/contrib/sarif.tpl"
+        vuln-type: "os,library"
+        ignore-unfixed: true
+        output: trivy-results.sarif
+        github-pat: ${{ github.token }}
+      continue-on-error: true
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: trivy-results.sarif
+      continue-on-error: true
+
+    - name: Warn about error
+      if: failure()
+      run: |
+        echo ":warning: The Trivy scan report for image `${{ inputs.IMAGE }}` was not successfully completed and could not be uploaded to the Github Security Panel." >> $GITHUB_STEP_SUMMARY
+
+  config-scan:
+    name: Scan config files vulnerabilities
+    if: ${{ inputs.PATH != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      security-events: write
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner on config files
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-ref: "${{ inputs.PATH }}"
+        scan-type: config
+        format: template
+        template: "@/contrib/sarif.tpl"
+        skip-dirs: "**/node_modules"
+        ignore-unfixed: true
+        output: trivy-results.sarif
+        github-pat: ${{ github.token }}
+      continue-on-error: true
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: trivy-results.sarif
+      continue-on-error: true
+
+    - name: Warn about error
+      if: failure()
+      run: |
+        echo ":warning: The Trivy scan report for configuration was not successfully completed and could not be uploaded to the Github Security Panel." >> $GITHUB_STEP_SUMMARY
+
+  scan-notif:
+    name: Notify users
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    needs:
+      - images-scan
+      - config-scan
+    if: ${{ inputs.IMAGE != '' && inputs.PATH != '' && github.event_name == 'pull_request' }}
+    steps:
+    - name: Comment PR
+      uses: thollander/actions-comment-pull-request@v2
+      with:
+        message: |
+          🤖 Hey !
+
+          The security scan report for the current pull request is available [here](https://github.com/${{ github.repository }}/security/code-scanning?query=is%3Aopen+branch%3Amain+pr%3A${{ github.event.pull_request.number || github.event.number }}).
+        comment_tag: vuln-scan

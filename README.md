@@ -8,9 +8,8 @@ Le dossier `.github` est utilisé pour stocker et gérer les workflows, les work
 
 | Workflow                                                     | Description                                                          |
 | ------------------------------------------------------------ | -------------------------------------------------------------------- |
-| [scan-sonarqube.yml](./.github/workflows/scan-sonarqube.yml) | Scanne la base de code avec Sonarqube et attend la porte de qualité. |
-
-## Specifications
+| [scan-sonarqube.yml](./.github/workflows/scan-sonarqube.yml) | Scanne la base de code avec Sonarqube.                               |
+| [scan-trivy.yml](./.github/workflows/scan-trivy.yml)         | Scanne la base de code avec Trivy et exporte le rapport dans Github. |
 
 ### Analyse de code Sonarqube
 
@@ -55,4 +54,38 @@ jobs:
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+```
+
+
+### Analyse de code Trivy
+
+#### Inputs
+
+| Inputs  | Description                 | Requis | Défaut |
+| ------- | --------------------------- | ------ | ------ |
+| `IMAGE` | Image à analyser.           | Non    | -      |
+| `PATH`  | Chemin du dépôt à analyser. | Non    | -      |
+
+#### Exemple
+
+```yaml
+name: CI
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+    branches:
+      - "**"
+
+jobs:
+  scan-trivy:
+    name: Scan code (Trivy)
+    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@main
+    with:
+      IMAGE: ghcr.io/org/repo/image:1.2.3
+      PATH: ./
 ```
