@@ -56,7 +56,6 @@ jobs:
       SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
 ```
 
-
 ### Analyse de code Trivy
 
 #### Inputs
@@ -89,3 +88,37 @@ jobs:
       IMAGE: ghcr.io/org/repo/image:1.2.3
       PATH: ./
 ```
+
+## Git hooks
+
+| Nom                                                               | Type         | Description                                                                                                                             | Config                                                       |
+| ----------------------------------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| [conventional-commit](./git-hooks/commit-msg/conventional-commit) | `commit-msg` | *script bash pour vérifier le pattern [conventional commit](https://www.conventionalcommits.org/en/v1.0.0/) dans le message de commit.* | -                                                            |
+| [eslint-lint](./git-hooks/pre-commit/eslint-lint)                 | `pre-commit` | *lint des fichiers js, ts, json, md et yaml en utilisant [eslint](https://github.com/eslint/eslint).*                                   | [eslint.config.js](./git-hooks/configs/eslint.config.js)     |
+| [helm-lint](./git-hooks/pre-commit/helm-lint)                     | `pre-commit` | *lint des charts helm charts en utilisant [chart-testing](https://github.com/helm/chart-testing).*                                      | [chart-testing.yaml](./git-hooks/configs/chart-testing.yaml) |
+| [signed-commit](./git-hooks/pre-push/signed-commit)               | `pre-push`   | *script bash pour vérifier si les commit sont signés.*                                                                                  | -                                                            |
+| [yaml-lint](./git-hooks/pre-commit/yaml-lint)                     | `pre-commit` | *lint des fichiers yaml en utilisant [yamllint](https://github.com/adrienverge/yamllint).*                                              | [yamllint.yaml](./git-hooks/configs/yamllint.yaml)           |
+
+### Paramétrage
+
+Lancer la commande suivante pour télécharger le hook depuis Github et l'installer dans le dépôt git courant:
+
+```sh
+# Define the target file and the URL to download from
+TARGET_FILE=".git/hooks/<git_hook>"
+URL="https://raw.githubusercontent.com/this-is-tobi/tools/main/git-hooks/<git_hook>"
+
+# Check if the target file exists
+if [ -f "$TARGET_FILE" ]; then
+  # File exists, download the content and remove the shebang from the first line
+  curl -fsSL "$URL" | sed '1 s/^#!.*//' >> "$TARGET_FILE"
+else
+  # File does not exist, create the file with the downloaded content
+  curl -fsSL "$URL" -o "$TARGET_FILE"
+fi
+
+# Ensure the file is executable
+chmod +x "$TARGET_FILE"
+```
+
+> Vérifier que les configurations associées aux différents hooks sont bien localement présentes dans le dépôt et que les hooks git pointent bien vers ces configs.
