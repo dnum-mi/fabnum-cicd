@@ -1,0 +1,71 @@
+name: Trigger CPiN synchro
+
+on:
+  workflow_call:
+    inputs:
+      GITLAB_URL:
+        description: Url of the CPiN Gitlab instance.
+        required: false
+        type: string
+      GIT_MIRROR_PROJECT_ID:
+        description: Gitlab project ID of the mirror repository.
+        required: false
+        type: string
+      BRANCH_TO_SYNC:
+        description: Git branch to synchronize.
+        required: false
+        type: string
+      REPOSITORY_NAME:
+        description: Gitlab repository to synchronize.
+        required: false
+        type: string
+      ADDITIONAL_VARIABLES:
+        description: Additional variables to pass to GitLab pipeline (JSON format, e.g., '{"VAR1":"value1","VAR2":"value2"}').
+        required: false
+        type: string
+    secrets:
+      GIT_MIRROR_TOKEN:
+        description: Gitlab token used to perfom the synchronization.
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  trigger-dso:
+    name: Trigger CPiN synchro
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send request to CPiN api
+        shell: bash
+        run: |
+          # Start building curl command array
+          CURL_ARGS=(
+            -X POST --fail
+            -F "token=${{ secrets.GIT_MIRROR_TOKEN }}"
+            -F "ref=main"
+            -F "variables[GIT_BRANCH_DEPLOY]=${{ inputs.BRANCH_TO_SYNC }}"
+            -F "variables[PROJECT_NAME]=${{ inputs.REPOSITORY_NAME }}"
+            -F "variables[GITHUB_COMMIT_SHA]=${{ github.sha }}"
+          )
+          
+          # Add additional variables if provided
+          if [ -n "${{ inputs.ADDITIONAL_VARIABLES }}" ]; then
+            echo "Processing additional variables..."
+            
+            # Read JSON and parse it safely
+            while IFS= read -r key && IFS= read -r value; do
+              if [ -n "$key" ]; then
+                CURL_ARGS+=(-F "variables[$key]=$value")
+                echo "Adding variable: $key"
+              fi
+            done < <(echo '${{ inputs.ADDITIONAL_VARIABLES }}' | jq -r 'to_entries | .[] | (.key, .value)')
+          fi
+          
+          # Add the API endpoint URL
+          CURL_ARGS+=("${{ inputs.GITLAB_URL }}/api/v4/projects/${{ inputs.GIT_MIRROR_PROJECT_ID }}/trigger/pipeline")
+          
+          # Execute the curl command
+          curl "${CURL_ARGS[@]}"
+          
+          echo "Syncing repository '${{ inputs.REPOSITORY_NAME }}' (branch ${{ inputs.BRANCH_TO_SYNC }}) with CPiN."

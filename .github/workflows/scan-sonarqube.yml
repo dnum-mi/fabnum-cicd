@@ -1,25 +1,29 @@
-name: Scan - sonarqube
+name: Sonarqube scan
 
 on:
   workflow_call:
     inputs:
-      COV_IMPORT:
+      COVERAGE_IMPORT:
         description: Whether or not to import coverage artifact
         required: false
         type: boolean
         default: false
-      COV_ARTIFACT_NAME:
+      COVERAGE_ARTIFACT_NAME:
         description: Artifact name of the coverage reports
         required: false
         type: string
         default: unit-tests-coverage
-      COV_ARTIFACT_PATH:
+      COVERAGE_ARTIFACT_PATH:
         description: Target path to download coverage artifact
         required: false
         type: string
         default: ./coverage
       SONAR_EXTRA_ARGS:
         description: Extra arguments to use with Sonarqube
+        required: false
+        type: string
+      SOURCES_PATH:
+        description: Paths to the source code that should be analyzed (eg. 'apps,packages')
         required: false
         type: string
       SONAR_URL:
@@ -34,22 +38,27 @@ on:
         description: Sonarqube project key
         required: true
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 jobs:
   code-scan:
     name: Run code quality analysis
     runs-on: ubuntu-latest
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
     - name: Download artifact
-      uses: actions/download-artifact@v4
-      if: ${{ inputs.COV_IMPORT }}
+      uses: actions/download-artifact@v5
+      if: ${{ inputs.COVERAGE_IMPORT }}
       with:
-        name: ${{ inputs.COV_ARTIFACT_NAME }}
-        path: ${{ inputs.COV_ARTIFACT_PATH }}
+        name: ${{ inputs.COVERAGE_ARTIFACT_NAME }}
+        path: ${{ inputs.COVERAGE_ARTIFACT_PATH }}
 
     - name: Set sonarqube args
       id: sonar-args
@@ -58,23 +67,23 @@ jobs:
         echo "SONAR_ARGS_BRANCH=-Dsonar.branch.name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
 
     - name: SonarQube Scan
-      uses: sonarsource/sonarqube-scan-action@master
+      uses: sonarsource/sonarqube-scan-action@v5
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        SONAR_HOST_URL: ${{ inputs.SONAR_URL }}
         GITHUB_TOKEN: ${{ github.token }}
       with:
         args: >
           -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
           -Dsonar.scm.provider=git
-          -Dsonar.sources=apps,packages
+          -Dsonar.sources=${{ inputs.SOURCES_PATH}}
           ${{ github.event_name == 'pull_request' && steps.sonar-args.outputs.SONAR_ARGS_PR || steps.sonar-args.outputs.SONAR_ARGS_BRANCH }}
           ${{ inputs.SONAR_EXTRA_ARGS != '' && inputs.SONAR_EXTRA_ARGS }}
       continue-on-error: true
 
     - name: SonarQube Quality Gate check
       id: sonarqube-quality-gate-check
-      uses: sonarsource/sonarqube-quality-gate-action@master
+      uses: sonarsource/sonarqube-quality-gate-action@v1
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ inputs.SONAR_URL }}

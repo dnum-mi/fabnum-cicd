@@ -1,4 +1,4 @@
-name: Vulnerability scan
+name: Trivy scan
 
 on:
   workflow_call:
@@ -7,39 +7,65 @@ on:
         description: Image used to perform scan (eg. docker.io/debian:latest)
         required: false
         type: string
+      REGISTRY_USERNAME:
+        description: Username used to login into registry
+        required: false
+        type: string
+      REGISTRY_PASSWORD:
+        description: Password used to login into registry
+        required: false
+        type: string
+
       PATH:
         description: Path used to perform scan
         required: false
         type: string
+      FORMAT:
+        description: Format of the report (sarif, table, json, ...)
+        required: false
+        type: string
+        default: table
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
 
 jobs:
   images-scan:
     name: Scan images vulnerabilities
     if: ${{ inputs.IMAGE != '' }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      security-events: write
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Run Trivy vulnerability scanner on images
-      uses: aquasecurity/trivy-action@master
+      uses: aquasecurity/trivy-action@0.33.1
       with:
         image-ref: "${{ inputs.IMAGE }}"
-        format: template
-        template: "@/contrib/sarif.tpl"
+        format: ${{ inputs.FORMAT }}
         vuln-type: "os,library"
         ignore-unfixed: true
-        output: trivy-results.sarif
+        output: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
         github-pat: ${{ github.token }}
+      env:
+        TRIVY_USERNAME: ${{ startsWith(inputs.IMAGE, 'ghcr.io') && github.actor || inputs.REGISTRY_USERNAME }}
+        TRIVY_PASSWORD: ${{ startsWith(inputs.IMAGE, 'ghcr.io') && github.token || inputs.REGISTRY_PASSWORD }}
       continue-on-error: true
 
+    - name: Print Trivy scan results
+      if: ${{ inputs.FORMAT == 'table' }}
+      run: |
+        echo "## Trivy Scan Results for image '${{ inputs.IMAGE }}'" >> $GITHUB_STEP_SUMMARY
+        echo '---' >> $GITHUB_STEP_SUMMARY
+        cat ${{ format('trivy-results.{0}', inputs.FORMAT) }} >> $GITHUB_STEP_SUMMARY
+
     - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
+      if: ${{ inputs.FORMAT == 'sarif' }}
       with:
-        sarif_file: trivy-results.sarif
+        sarif_file: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
       continue-on-error: true
 
     - name: Warn about error
@@ -51,30 +77,34 @@ jobs:
     name: Scan config files vulnerabilities
     if: ${{ inputs.PATH != '' }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      security-events: write
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Run Trivy vulnerability scanner on config files
-      uses: aquasecurity/trivy-action@master
+      uses: aquasecurity/trivy-action@0.33.1
       with:
         scan-ref: "${{ inputs.PATH }}"
         scan-type: config
-        format: template
-        template: "@/contrib/sarif.tpl"
+        format: ${{ inputs.FORMAT }}
         skip-dirs: "**/node_modules"
         ignore-unfixed: true
-        output: trivy-results.sarif
+        output: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
         github-pat: ${{ github.token }}
       continue-on-error: true
 
+    - name: Print Trivy scan results
+      if: ${{ inputs.FORMAT == 'table' }}
+      run: |
+        echo "## Trivy Scan Results for path '${{ inputs.PATH }}'" >> $GITHUB_STEP_SUMMARY
+        echo '---' >> $GITHUB_STEP_SUMMARY
+        cat ${{ format('trivy-results.{0}', inputs.FORMAT) }} >> $GITHUB_STEP_SUMMARY
+
     - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
+      if: ${{ inputs.FORMAT == 'sarif' }}
       with:
-        sarif_file: trivy-results.sarif
+        sarif_file: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
       continue-on-error: true
 
     - name: Warn about error
@@ -85,19 +115,16 @@ jobs:
   scan-notif:
     name: Notify users
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
     needs:
-      - images-scan
-      - config-scan
-    if: ${{ inputs.IMAGE != '' && inputs.PATH != '' && github.event_name == 'pull_request' }}
+    - images-scan
+    - config-scan
+    if: ${{ github.event_name == 'pull_request' && (inputs.IMAGE != '' || inputs.PATH != '') }}
     steps:
     - name: Comment PR
-      uses: thollander/actions-comment-pull-request@v2
+      uses: thollander/actions-comment-pull-request@v3
       with:
         message: |
           🤖 Hey !
 
-          The security scan report for the current pull request is available [here](https://github.com/${{ github.repository }}/security/code-scanning?query=is%3Aopen+branch%3Amain+pr%3A${{ github.event.pull_request.number || github.event.number }}).
-        comment_tag: vuln-scan
+          The security scan report for the current pull request is available in [the GitHub Security Tab](https://github.com/${{ github.repository }}/security/code-scanning?query=is%3Aopen+branch%3A${{ github.ref_name }}+pr%3A${{ github.event.pull_request.number || github.event.number }}).
+        comment-tag: vuln-scan

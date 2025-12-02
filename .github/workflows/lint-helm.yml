@@ -1,0 +1,75 @@
+name: Lint Helm charts
+
+on:
+  workflow_call:
+    inputs:
+      HELM_DOCS_VERSION:
+        description: Version of helm-docs to use (eg. '1.14.2')
+        required: false
+        type: string
+        default: 1.14.2
+      CT_CONF_PATH:
+        description: Path to the chart-testing configuration file
+        required: true
+        type: string
+      LINT_CHARTS:
+        description: Whether to run the chart linting job
+        required: false
+        type: boolean
+        default: true
+      LINT_DOCS:
+        description: Whether to run the chart docs linting job
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-charts:
+    name: Lint charts
+    runs-on: ubuntu-latest
+    if: ${{ inputs.LINT_CHARTS }}
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@v5
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+        check-latest: true
+
+    - name: Set up chart-testing
+      uses: helm/chart-testing-action@v2
+
+    - name: Run chart-testing (lint)
+      run: |
+        ct lint \
+          --config ${{ inputs.CT_CONF_PATH }} \
+          --target-branch ${{ github.event.repository.default_branch }}
+
+  lint-docs:
+    name: Lint docs
+    runs-on: ubuntu-latest
+    if: ${{ inputs.LINT_DOCS }}
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@v5
+
+    - name: Run helm-docs
+      run: |
+        set -euo pipefail
+
+        echo "Validating helm chart docs"
+        docker run \
+          --rm \
+          --volume "$(pwd)/charts:/helm-docs:ro" \
+          -u $(id -u) \
+          docker.io/jnorwood/helm-docs:${{ inputs.HELM_DOCS_VERSION }} \
+          --validate
+        echo "Helm chart docs are valid"

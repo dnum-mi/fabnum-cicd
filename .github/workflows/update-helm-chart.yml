@@ -1,0 +1,124 @@
+name: Update chart
+
+on:
+  workflow_call:
+    inputs:
+      RUN_MODE:
+        description: Mode the workflow is run in. 'caller' to trigger the workflow in the chart repository, 'called' to update the chart in the current repository
+        required: true
+        type: string
+      WORKFLOW_NAME:
+        description: Name of the workflow to trigger in the chart repository (eg. 'update-chart.yml')
+        required: false
+        type: string
+        default: update-app-version.yml
+      CHART_REPO:
+        description: Name of the chart repository (eg. 'this-is-tobi/helm-charts')
+        required: false
+        type: string
+      CHART_NAME:
+        description: Name of the folder chart (in /charts)
+        required: true
+        type: string
+      APP_VERSION:
+        description: The app version to inject in Chart.yaml
+        required: true
+        type: string
+      UPGRADE_TYPE:
+        description: Should update 'major', 'minor', 'patch' or 'prerelease'
+        required: false
+        type: string
+        default: patch
+      PRERELEASE_IDENTIFIER:
+        description: Prerelease identifier (only used if UPGRADE_TYPE is 'prerelease')
+        required: false
+        type: string
+        default: rc
+    secrets:
+      GH_PAT:
+        description: GitHub Personal Access Token (needed for automerge)
+        required: false
+
+permissions:
+  pull-requests: write
+  contents: write
+  actions: write
+
+jobs:
+  caller:
+    name: Update chart
+    runs-on: ubuntu-latest
+    if: ${{ inputs.RUN_MODE == 'caller' }}
+    steps:
+    - name: Trigger helm-charts update
+      env:
+        GH_TOKEN: ${{ secrets.GH_PAT }}
+      run: |
+        if [ -z "${{ inputs.CHART_REPO }}" ]; then
+          echo "CHART_REPO input is required when using 'caller' mode"
+          exit 1
+        fi
+
+        echo "Trigger workflow '${{ inputs.WORKFLOW_NAME }}' in repository '${{ inputs.CHART_REPO }}' to update chart '${{ inputs.CHART_NAME }}' with app version '${{ inputs.APP_VERSION }}'"
+
+        gh workflow --repo ${{ inputs.CHART_REPO }} run ${{ inputs.WORKFLOW_NAME }} \
+          -f APP_VERSION=${{inputs.APP_VERSION }} \
+          -f CHART_NAME=${{ inputs.CHART_NAME }} \
+          -f UPGRADE_TYPE=${{ inputs.UPGRADE_TYPE }} \
+          -f PRERELEASE_IDENTIFIER=${{ inputs.PRERELEASE_IDENTIFIER }} \
+          -f RUN_MODE=called
+
+  called:
+    name: Update chart
+    runs-on: ubuntu-latest
+    if: ${{ inputs.RUN_MODE == 'called' }}
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@v5
+
+    - name: update chart version
+      id: update-chart
+      run: |
+        if [ ! -f charts/${{ inputs.CHART_NAME }}/Chart.yaml ]; then
+          echo "Chart.yaml not found in charts/${{ inputs.CHART_NAME }}"
+          exit 1
+        fi
+
+        echo "Update chart '${{ inputs.CHART_NAME }}' in charts/${{ inputs.CHART_NAME }} with app version '${{ inputs.APP_VERSION }}'"
+
+        CURRENT_VERSION=$(yq '.version' charts/${{ inputs.CHART_NAME }}/Chart.yaml)
+        NEXT_VERSION=$(npx semver --increment ${{ inputs.UPGRADE_TYPE }} --preid ${{ inputs.PRERELEASE_IDENTIFIER }} -n false $CURRENT_VERSION)
+        
+        echo "Update chart from version '$CURRENT_VERSION' to '$NEXT_VERSION'"
+
+        echo "Update chart files..."
+        sed -i "s/^appVersion: .*/appVersion: ${{ inputs.APP_VERSION }}/" charts/${{ inputs.CHART_NAME }}/Chart.yaml
+        sed -i "s/^version: .*/version: $NEXT_VERSION/" charts/${{ inputs.CHART_NAME }}/Chart.yaml
+
+        echo "Generate chart documentation..."
+        docker run \
+          --rm \
+          --volume "$(pwd)/charts/${{ inputs.CHART_NAME }}:/helm-docs" \
+          -u $(id -u) \
+          docker.io/jnorwood/helm-docs:latest
+
+        echo "CURRENT_VERSION=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+        echo "NEXT_VERSION=$NEXT_VERSION" >> $GITHUB_OUTPUT
+        echo "BRANCH_NAME=${{ inputs.CHART_NAME }}-v$NEXT_VERSION" >> $GITHUB_OUTPUT
+
+    - name: Create pull request
+      uses: peter-evans/create-pull-request@v7
+      with:
+        branch: ${{ steps.update-chart.outputs.BRANCH_NAME }}
+        base: main
+        title: Update chart ${{ inputs.CHART_NAME }} app to v${{ inputs.APP_VERSION }}
+        add-paths: |
+          **/**
+        commit-message: "chore: update chart ${{ inputs.CHART_NAME }} app to v${{ inputs.APP_VERSION }}"
+        draft: false
+        body: |
+          🤖 This PR has been automatically generated.
+
+          - Chart version has been updated from `${{ steps.update-chart.outputs.CURRENT_VERSION }}` to `${{ steps.update-chart.outputs.NEXT_VERSION }}`
+          - App version has been updated to v${{ inputs.APP_VERSION }}
+          - Chart documentation has been regenerated

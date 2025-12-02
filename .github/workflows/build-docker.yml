@@ -1,0 +1,191 @@
+name: Docker build
+
+on:
+  workflow_call:
+    inputs:
+      IMAGE_NAME:
+        description: Name of the image to build (eg. 'ghcr.io/my-org/my-image')
+        required: true
+        type: string
+      IMAGE_TAG:
+        description: Tag used to build image
+        required: true
+        type: string
+      LATEST_TAG:
+        description: Whether to tag the image with 'latest'
+        required: false
+        default: false
+        type: boolean
+      IMAGE_DOCKERFILE:
+        description: Path of the dockerfile to build image
+        required: true
+        type: string
+      IMAGE_CONTEXT:
+        description: Path of the context to build image
+        required: true
+        type: string
+      MULTI_TAGS:
+        description: Whether to tag with only major and minor tags (e.g. '1.2.3' -> '1.2' & '1')
+        required: false
+        default: false
+        type: boolean
+      BUILD_AMD64:
+        description: Build for amd64
+        required: false
+        default: true
+        type: boolean
+      BUILD_ARM64:
+        description: Build for arm64
+        required: false
+        default: true
+        type: boolean
+      USE_QEMU:
+        description: Use QEMU emulator for arm64
+        required: false
+        default: false
+        type: boolean
+      REGISTRY_USERNAME:
+        description: Username used to login into registry
+        required: false
+        type: string
+      REGISTRY_PASSWORD:
+        description: Password used to login into registry
+        required: false
+        type: string
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  infos:
+    name: Get build infos
+    runs-on: ubuntu-24.04
+    outputs:
+      registry: ${{ steps.infos.outputs.REGISTRY }}
+      lower-image: ${{ steps.infos.outputs.LOWER_IMAGE }}
+      major-tag: ${{ steps.infos.outputs.MAJOR_TAG }}
+      minor-tag: ${{ steps.infos.outputs.MINOR_TAG }}
+      patch-tag: ${{ steps.infos.outputs.PATCH_TAG }}
+      prerelease-tag: ${{ steps.infos.outputs.PRERELEASE_TAG }}
+      short-sha: ${{ steps.infos.outputs.SHORT_SHA }}
+      lower-branch: ${{ steps.infos.outputs.LOWER_BRANCH }}
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@v5
+
+    - name: Get infos
+      id: infos
+      run: |
+        echo "REGISTRY=$(echo '${{ inputs.IMAGE_NAME }}' | cut -d "/" -f 1)" >> $GITHUB_OUTPUT
+        echo "LOWER_IMAGE=$(echo '${{ inputs.IMAGE_NAME }}' | cut -d "/" -f 2- | sed 's/\//-/g' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+        if [[ "${{ inputs.IMAGE_TAG }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+          echo "VERSION_TAG=$(echo '${{ inputs.IMAGE_TAG }}' | sed 's/-.*$//')" >> $GITHUB_OUTPUT
+          echo "PRERELEASE_TAG=$(echo '${{ inputs.IMAGE_TAG }}' | sed -n 's/^[0-9.]*-\(.*\)$/\1/p')" >> $GITHUB_OUTPUT
+          echo "MAJOR_TAG=$(echo $VERSION_TAG | cut -d "." -f 1)" >> $GITHUB_OUTPUT
+          echo "MINOR_TAG=$(echo $VERSION_TAG | cut -d "." -f 2)" >> $GITHUB_OUTPUT
+          echo "PATCH_TAG=$(echo $VERSION_TAG | cut -d "." -f 3)" >> $GITHUB_OUTPUT
+        fi
+        echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        echo "LOWER_BRANCH=$(echo '${{ github.head_ref || github.ref_name }}' | sed 's/\//-/g' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+  build:
+    name: Build application
+    runs-on: ${{ matrix.runners }}
+    needs:
+    - infos
+    strategy:
+      matrix:
+        runners: ${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && !inputs.USE_QEMU && fromJson('["ubuntu-24.04", "ubuntu-24.04-arm"]')) || (inputs.BUILD_ARM64 && !inputs.USE_QEMU && fromJson('["ubuntu-24.04-arm"]')) || fromJson('["ubuntu-24.04"]') }}
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@v5
+
+    - name: Set up Docker buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Set up QEMU (for multi platform build)
+      uses: docker/setup-qemu-action@v3
+      if: ${{ inputs.USE_QEMU }}
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ needs.infos.outputs.registry }}
+        username: ${{ startsWith(inputs.IMAGE_NAME, 'ghcr.io') && github.actor || inputs.REGISTRY_USERNAME }}
+        password: ${{ startsWith(inputs.IMAGE_NAME, 'ghcr.io') && github.token || inputs.REGISTRY_PASSWORD }}
+        logout: true
+
+    - name: Build and push docker image
+      id: build
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.IMAGE_CONTEXT }}
+        file: ${{ inputs.IMAGE_DOCKERFILE }}
+        provenance: false
+        platforms: ${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && inputs.USE_QEMU && 'linux/amd64,linux/arm64') || (inputs.BUILD_ARM64 && 'linux/arm64') || (inputs.BUILD_AMD64 && 'linux/amd64') }}
+        outputs: type=image,name=${{ inputs.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+        build-args: |
+          APP_VERSION=${{ inputs.IMAGE_TAG || needs.infos.outputs.short-sha }}
+
+    - name: Export digest
+      run: |
+        mkdir -p /tmp/digests/${{ needs.infos.outputs.lower-image }}
+        digest="${{ steps.build.outputs.digest }}"
+        touch "/tmp/digests/${{ needs.infos.outputs.lower-image }}/${digest#sha256:}"
+
+    - name: Upload digest
+      uses: actions/upload-artifact@v4
+      with:
+        name: digests-${{ needs.infos.outputs.lower-image }}-${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && inputs.USE_QEMU && 'multiarch') || (inputs.BUILD_ARM64 && 'arm64') || (inputs.BUILD_AMD64 && 'amd64') }}
+        path: /tmp/digests/${{ needs.infos.outputs.lower-image }}/*
+        if-no-files-found: error
+        retention-days: 1
+
+  merge:
+    name: Merge digest
+    runs-on: ubuntu-24.04
+    needs:
+    - infos
+    - build
+    steps:
+    - name: Download artifact
+      uses: actions/download-artifact@v5
+      with:
+        pattern: digests-${{ needs.infos.outputs.lower-image }}-*
+        path: /tmp/digests/${{ needs.infos.outputs.lower-image }}
+        merge-multiple: true
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Docker meta
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ inputs.IMAGE_NAME }}
+        tags: |
+          type=raw,value=${{ needs.infos.outputs.lower-branch }},enable=${{ github.head_ref != 'main' }}
+          type=raw,value=${{ needs.infos.outputs.short-sha }},enable=${{ needs.infos.outputs.short-sha != '' }}
+          type=raw,value=${{ inputs.IMAGE_TAG }},enable=${{ inputs.IMAGE_TAG != '' }}
+          type=raw,value=${{ format('{0}.{1}', needs.infos.outputs.major-tag, needs.infos.outputs.minor-tag) }},enable=${{ inputs.MULTI_TAGS && needs.infos.outputs.major-tag != '' && needs.infos.outputs.minor-tag != '' && needs.infos.outputs.prerelease-tag == '' }}
+          type=raw,value=${{ needs.infos.outputs.major-tag }},enable=${{ inputs.MULTI_TAGS && needs.infos.outputs.major-tag != '' && needs.infos.outputs.prerelease-tag == '' }}
+          type=raw,value=latest,enable=${{ inputs.LATEST_TAG == true }}
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ needs.infos.outputs.registry }}
+        username: ${{ needs.infos.outputs.registry == 'ghcr.io' && github.actor || inputs.REGISTRY_USERNAME }}
+        password: ${{ needs.infos.outputs.registry == 'ghcr.io' && github.token || inputs.REGISTRY_PASSWORD }}
+        logout: true
+
+    - name: Create manifest list and push
+      working-directory: /tmp/digests/${{ needs.infos.outputs.lower-image }}
+      run: |
+        docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+          $(printf '${{ inputs.IMAGE_NAME }}@sha256:%s ' *)
+
+    - name: Inspect image
+      run: |
+        docker buildx imagetools inspect ${{ inputs.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
