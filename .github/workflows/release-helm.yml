@@ -50,6 +50,8 @@ jobs:
       with:
         charts_dir: ${{ inputs.CHARTS_DIR }}
         skip_upload: true
+      env:
+        CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
       
     - name: Login to GitHub Container Registry
       if: steps.chart-releaser.outputs.changed_charts != ''

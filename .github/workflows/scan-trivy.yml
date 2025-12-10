@@ -25,11 +25,21 @@ on:
         required: false
         type: string
         default: table
+      PR_NUMBER:
+        description: Whether the caller workflow is triggered by a pull request
+        required: false
+        type: string
+      GITHUB_SECURITY_TAB:
+        description: Whether to link to GitHub Security Tab in the PR comment
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
   security-events: write
   pull-requests: write
+  packages: read
 
 jobs:
   images-scan:
@@ -59,11 +69,13 @@ jobs:
       run: |
         echo "## Trivy Scan Results for image '${{ inputs.IMAGE }}'" >> $GITHUB_STEP_SUMMARY
         echo '---' >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
         cat ${{ format('trivy-results.{0}', inputs.FORMAT) }} >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
 
     - name: Upload Trivy scan results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v4
-      if: ${{ inputs.FORMAT == 'sarif' }}
+      if: ${{ inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif' }}
       with:
         sarif_file: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
       continue-on-error: true
@@ -98,11 +110,13 @@ jobs:
       run: |
         echo "## Trivy Scan Results for path '${{ inputs.PATH }}'" >> $GITHUB_STEP_SUMMARY
         echo '---' >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
         cat ${{ format('trivy-results.{0}', inputs.FORMAT) }} >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
 
     - name: Upload Trivy scan results to GitHub Security tab
       uses: github/codeql-action/upload-sarif@v4
-      if: ${{ inputs.FORMAT == 'sarif' }}
+      if: ${{ inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif' }}
       with:
         sarif_file: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
       continue-on-error: true
@@ -118,13 +132,14 @@ jobs:
     needs:
     - images-scan
     - config-scan
-    if: ${{ github.event_name == 'pull_request' && (inputs.IMAGE != '' || inputs.PATH != '') }}
     steps:
     - name: Comment PR
       uses: thollander/actions-comment-pull-request@v3
+      if: ${{ inputs.PR_NUMBER != '' }}
       with:
         message: |
           🤖 Hey !
 
-          The security scan report for the current pull request is available in [the GitHub Security Tab](https://github.com/${{ github.repository }}/security/code-scanning?query=is%3Aopen+branch%3A${{ github.ref_name }}+pr%3A${{ github.event.pull_request.number || github.event.number }}).
+          The security scan report for the current pull request is available in ${{ (inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif') && format('[the GitHub Security Tab](https://github.com/{0}/security/code-scanning?query=is%3Aopen+branch%3A{1}+pr%3A{2})', github.repository, github.ref_name, (github.event.pull_request.number || github.event.number)) || format('[the GitHub Security Tab](https://github.com/{0}/actions/runs/{1})', github.repository, github.run_id) }}.
         comment-tag: vuln-scan
+        pr-number: ${{ inputs.PR_NUMBER }}
