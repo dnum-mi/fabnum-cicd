@@ -66,6 +66,9 @@ on:
       release-created:
         description: Has the releease been created
         value: ${{ jobs.release.outputs.release-created }}
+      version:
+        description: Full semver value
+        value: ${{ jobs.release.outputs.version }}
       major-tag:
         description: Major version tag
         value: ${{ jobs.release.outputs.major-tag }}
@@ -87,6 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release-created: ${{ steps.release.outputs.release_created }}
+      version: ${{ steps.release.outputs.version }}
       major-tag: ${{ steps.release.outputs.major }}
       minor-tag: ${{ steps.release.outputs.minor }}
       patch-tag: ${{ steps.release.outputs.patch }}
