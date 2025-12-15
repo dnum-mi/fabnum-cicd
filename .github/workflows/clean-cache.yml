@@ -1,52 +1,35 @@
 name: Clean cache
 
-# This workflow cleans up GitHub Actions cache and container images for merged PRs
-#
-# Image Cleanup Logic:
-# 1. PR Images: Deletes all images tagged with 'pr-<number>' for the specified PR
-# 2. SHA-only Images: Deletes orphaned images that are ONLY tagged with a 7-char SHA
-#    (these are typically created when force-pushing reuses branch/PR names)
-# 3. Multi-arch Support: Properly handles and deletes multi-arch manifest images
-#
-# Usage Example (in PR close workflow):
-#   cleanup:
-#     uses: ./.github/workflows/clean-cache.yml
-#     if: github.event.pull_request.merged == true
-#     permissions:
-#       packages: write
-#       contents: read
-#       actions: write
-#     with:
-#       PR_NUMBER: ${{ github.event.pull_request.number }}
-#       IMAGE_NAME: ghcr.io/${{ github.repository }}/my-service
-#
-# Note: IMAGE_NAME should be the repository path without tag (e.g., 'ghcr.io/owner/repo/service')
-
 on:
   workflow_call:
     inputs:
       PR_NUMBER:
-        description: ID number of the pull request associated with the cache
+        description: ID number of the pull request assiocited with the cache
         required: false
         type: number
       BRANCH_NAME:
-        description: Branch name associated with the cache
+        description: Branch name assiocited with the cache
         required: false
         type: string
-      IMAGE_NAME:
-        description: Name of the image repository without tag (eg. 'ghcr.io/my-org/my-image')
+      IMAGE:
+        description: Name of the image to delete from ghcr.io (eg. 'my-org/my-image:my-tag')
         required: false
         type: string
       CLEAN_GH_CACHE:
-        description: Whether to clean GitHub Actions cache
+        description: Whether to clean GitHub cache
         required: false
-        default: false
         type: boolean
-      CLEAN_GH_IMAGE:
-        description: Whether to clean GitHub Container Registry images
+        default: true
+      CLEAN_GHCR_IMAGE:
+        description: Whether to delete image from ghcr.io
         required: false
-        default: false
         type: boolean
+        default: false
+      CLEAN_ORPHANED_GHCR_IMAGE:
+        description: Whether to delete orphaned images from ghcr.io
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   packages: write
@@ -61,7 +44,7 @@ jobs:
     steps:
     - name: Clean cache for closed branch
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ github.token }}
       run: |
         REPO=${{ github.repository }}
         if [ -n "${{ inputs.BRANCH_NAME }}" ]; then
@@ -82,174 +65,119 @@ jobs:
         echo "Done"
 
   cleanup-image:
-    name: Delete images from ghcr.io
+    name: Delete image from ghcr.io
     runs-on: ubuntu-latest
-    if: ${{ inputs.CLEAN_GH_IMAGE && (inputs.IMAGE_NAME && inputs.PR_NUMBER) }}
+    if: ${{ inputs.CLEAN_GHCR_IMAGE && inputs.IMAGE }}
     steps:
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: 'ghcr.io'
-        username: ${{ github.actor }}
-        password: ${{ github.token }}
-        logout: true
-
-    - name: Cleanup images for PR #${{ inputs.PR_NUMBER }}
-      env:
-        IMAGE_NAME: ${{ inputs.IMAGE_NAME }}
-        PR_NUMBER: ${{ inputs.PR_NUMBER }}
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Delete ${{ inputs.IMAGE }} image
       run: |
-        set -euo pipefail
-        
-        # Parse image name components
-        echo "Parsing image name: ${IMAGE_NAME}"
-        
-        REGISTRY_CHECK="${IMAGE_NAME%%/*}"
+        REGISTRY_CHECK="${IMAGE%%/*}"
         if [[ "$REGISTRY_CHECK" == *.* || "$REGISTRY_CHECK" == *:* || "$REGISTRY_CHECK" == "localhost" ]]; then
-          IMAGE_WITHOUT_REGISTRY="${IMAGE_NAME#*/}"
+          IMAGE_WITHOUT_REGISTRY="${IMAGE#*/}"
           PROCESSED_IMAGE="${IMAGE_WITHOUT_REGISTRY#*/}"
         else
-          IMAGE_WITHOUT_REGISTRY="$IMAGE_NAME"
+          IMAGE_WITHOUT_REGISTRY="$IMAGE"
           PROCESSED_IMAGE="${IMAGE_WITHOUT_REGISTRY#*/}"
         fi
-        
-        OWNER="${IMAGE_WITHOUT_REGISTRY%%/*}"
-        PACKAGE_NAME="${PROCESSED_IMAGE}"
-        PACKAGE_NAME_URL_ENCODED="$(jq -rn --arg x "${PACKAGE_NAME}" '$x | @uri')"
-        
-        echo "Owner: ${OWNER}"
-        echo "Package: ${PACKAGE_NAME}"
-        
-        # Determine owner type
-        echo "Detecting owner type..."
-        OWNER_TYPE="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
-          https://api.github.com/users/${OWNER} | jq -r '.type')"
-        
+
+        OWNER="${{ github.repository_owner}}"
+        IMAGE_NAME="${PROCESSED_IMAGE%%:*}"
+        IMAGE_TAG="${PROCESSED_IMAGE#*:}"
+        IMAGE_NAME_URL_ENCODED="$(jq -rn --arg x "${IMAGE_NAME}" '$x | @uri')"
+
+        OWNER_TYPE="$(curl -fsSL https://api.github.com/users/${OWNER} | jq -r '.type')"
         if [ "$OWNER_TYPE" = "Organization" ]; then
-          API_MODE="orgs"
+          MODE="orgs"
         else
-          API_MODE="users"
+          MODE="users"
         fi
-        echo "API mode: ${API_MODE}"
-        
-        # Fetch all package versions
-        echo "Fetching all versions for ${OWNER}/${PACKAGE_NAME}..."
-        ALL_VERSIONS=$(gh api -H "Accept: application/vnd.github+json" \
-          "/${API_MODE}/${OWNER}/packages/container/${PACKAGE_NAME_URL_ENCODED}/versions" \
-          --paginate --jq '.')
-        
-        if [ -z "$ALL_VERSIONS" ] || [ "$ALL_VERSIONS" = "[]" ]; then
-          echo "No versions found"
-          exit 0
-        fi
-        
-        TOTAL_VERSIONS=$(echo "$ALL_VERSIONS" | jq '. | length')
-        echo "Found ${TOTAL_VERSIONS} total version(s)"
-        
-        # Delete image and its manifests
-        delete_image_with_manifests() {
-          local VERSION_ID=$1
-          local VERSION_TAGS=$2
-          local VERSION_NAME=$3
-          
-          echo "[DELETE] Version ID ${VERSION_ID} (${VERSION_NAME})"
-          
-          # Delete multi-arch manifests if present
-          if [ -n "$VERSION_TAGS" ] && [ "$VERSION_TAGS" != "null" ] && [ "$VERSION_TAGS" != "[]" ]; then
-            local FIRST_TAG=$(echo "$VERSION_TAGS" | jq -r '.[0] // empty')
-            if [ -n "$FIRST_TAG" ]; then
-              if MANIFEST_OUTPUT=$(docker buildx imagetools inspect "ghcr.io/${OWNER}/${PACKAGE_NAME}:${FIRST_TAG}" --raw 2>/dev/null); then
-                if MANIFESTS=$(echo "$MANIFEST_OUTPUT" | jq -r '.manifests[]? | .digest' 2>/dev/null); then
-                  if [ -n "$MANIFESTS" ]; then
-                    while IFS= read -r SHA; do
-                      if [ -n "$SHA" ]; then
-                        local MANIFEST_ID=$(echo "$ALL_VERSIONS" | jq -r --arg s "$SHA" '.[] | select(.name == $s) | .id')
-                        if [ -n "$MANIFEST_ID" ] && [ "$MANIFEST_ID" != "null" ]; then
-                          gh api --method DELETE -H "Accept: application/vnd.github+json" \
-                            "/${API_MODE}/${OWNER}/packages/container/${PACKAGE_NAME_URL_ENCODED}/versions/${MANIFEST_ID}" 2>/dev/null || true
-                        fi
-                      fi
-                    done <<< "$MANIFESTS"
-                  fi
-                fi
-              fi
-            fi
-          fi
-          
-          # Delete main version
-          if gh api --method DELETE -H "Accept: application/vnd.github+json" \
-            "/${API_MODE}/${OWNER}/packages/container/${PACKAGE_NAME_URL_ENCODED}/versions/${VERSION_ID}" 2>&1; then
-            echo "[✓] Deleted version ${VERSION_ID}"
-            return 0
-          else
-            echo "[✗] Failed to delete version ${VERSION_ID}"
-            return 1
-          fi
-        }
-        
-        # Delete PR images (tag: pr-<number>)
-        PR_TAG="pr-${PR_NUMBER}"
-        echo ""
-        echo "Searching for PR images (tag: ${PR_TAG})"
-        
-        PR_IMAGES=$(echo "$ALL_VERSIONS" | jq -c --arg tag "$PR_TAG" \
-          '.[] | select(.metadata.container.tags[]? | contains($tag)) | {id: .id, name: .name, tags: .metadata.container.tags}')
-        
-        if [ -z "$PR_IMAGES" ]; then
-          echo "No images found with tag '${PR_TAG}'"
+
+        printf "
+          > REGISTRY_CHECK: $REGISTRY_CHECK
+          > IMAGE_WITHOUT_REGISTRY: $IMAGE_WITHOUT_REGISTRY
+          > PROCESSED_IMAGE: $PROCESSED_IMAGE
+          > OWNER: $OWNER
+          > MODE: $MODE
+          > IMAGE_NAME: $IMAGE_NAME
+          > IMAGE_TAG: $IMAGE_TAG
+          > IMAGE_NAME_URL_ENCODED: $IMAGE_NAME_URL_ENCODED"
+
+        IMAGES=$(curl -fsSL \
+          -H "Authorization: Bearer ${{ github.token }}" \
+          "https://api.github.com/${MODE}/${OWNER}/packages/container/${IMAGE_NAME_URL_ENCODED}/versions?per_page=100")
+        MAIN_IMAGE_ID=$(echo "$IMAGES" | jq -r --arg t "$IMAGE_TAG" '.[] | select(.metadata.container.tags[] | contains($t)) | .id')
+
+        # Delete subsequent images
+        while read -r SHA; do
+          IMAGE_ID=$(echo "$IMAGES" | jq -r --arg s "$SHA" '.[] | select(.name == $s) | .id')
+
+          printf "\n${red}[Delete ghcr image].${no_color} Deleting subsequent image '$OWNER/$IMAGE_NAME@$SHA'\n"
+
+          curl -fsSL \
+            -X DELETE \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            "https://api.github.com/${MODE}/${OWNER}/packages/container/${IMAGE_NAME_URL_ENCODED}/versions/${IMAGE_ID}"
+        done <<< "$(docker buildx imagetools inspect ghcr.io/${OWNER}/${IMAGE_NAME}:${IMAGE_TAG} --raw | jq -r '.manifests[] | .digest')"
+
+        # Delete main image
+        printf "\n${red}[Delete ghcr image].${no_color} Deleting image '$OWNER/$IMAGE_NAME:$IMAGE_TAG'\n"
+
+        curl -fsSL \
+          -X DELETE \
+          -H "Authorization: Bearer ${{ github.token }}" \
+          "https://api.github.com/${MODE}/${OWNER}/packages/container/${IMAGE_NAME_URL_ENCODED}/versions/${MAIN_IMAGE_ID}"
+      env:
+        IMAGE: ${{ inputs.IMAGE }}
+
+  cleanup-orphaned-image:
+    name: Delete image from ghcr.io
+    runs-on: ubuntu-latest
+    if: ${{ inputs.CLEAN_ORPHANED_GHCR_IMAGE && inputs.IMAGE }}
+    steps:
+    - name: Delete orphaned images for
+      run: |
+        REGISTRY_CHECK="${IMAGE%%/*}"
+        if [[ "$REGISTRY_CHECK" == *.* || "$REGISTRY_CHECK" == *:* || "$REGISTRY_CHECK" == "localhost" ]]; then
+          IMAGE_WITHOUT_REGISTRY="${IMAGE#*/}"
+          PROCESSED_IMAGE="${IMAGE_WITHOUT_REGISTRY#*/}"
         else
-          PR_COUNT=$(echo "$PR_IMAGES" | wc -l | tr -d ' ')
-          echo "Found ${PR_COUNT} image(s) with tag '${PR_TAG}'"
-          
-          while IFS= read -r PR_IMAGE; do
-            VERSION_ID=$(echo "$PR_IMAGE" | jq -r '.id')
-            VERSION_TAGS=$(echo "$PR_IMAGE" | jq -r '.tags | tostring')
-            VERSION_NAME=$(echo "$PR_IMAGE" | jq -r '.name')
-            delete_image_with_manifests "$VERSION_ID" "$VERSION_TAGS" "$VERSION_NAME"
-          done <<< "$PR_IMAGES"
+          IMAGE_WITHOUT_REGISTRY="$IMAGE"
+          PROCESSED_IMAGE="${IMAGE_WITHOUT_REGISTRY#*/}"
         fi
-        
-        # Delete SHA-only images
-        echo ""
-        echo "Searching for SHA-only tagged images"
-        
-        SHA_ONLY_IMAGES=$(echo "$ALL_VERSIONS" | jq -c \
-          '.[] | select(.metadata.container.tags != null and .metadata.container.tags != []) | 
-          select(
-            (.metadata.container.tags | length) == 1 and 
-            (.metadata.container.tags[0] | test("^[0-9a-f]{7}$"))
-          ) | 
-          {id: .id, name: .name, tags: .metadata.container.tags}')
-        
-        if [ -z "$SHA_ONLY_IMAGES" ]; then
-          echo "No SHA-only tagged images found"
+
+        OWNER="${{ github.repository_owner}}"
+        IMAGE_NAME="${PROCESSED_IMAGE%%:*}"
+        IMAGE_NAME_URL_ENCODED="$(jq -rn --arg x "${IMAGE_NAME}" '$x | @uri')"
+
+        OWNER_TYPE="$(curl -fsSL https://api.github.com/users/${OWNER} | jq -r '.type')"
+        if [ "$OWNER_TYPE" = "Organization" ]; then
+          MODE="orgs"
         else
-          SHA_COUNT=$(echo "$SHA_ONLY_IMAGES" | wc -l | tr -d ' ')
-          echo "Found ${SHA_COUNT} orphaned SHA-only image(s)"
-          
-          while IFS= read -r SHA_IMAGE; do
-            VERSION_ID=$(echo "$SHA_IMAGE" | jq -r '.id')
-            VERSION_TAGS=$(echo "$SHA_IMAGE" | jq -r '.tags | tostring')
-            VERSION_NAME=$(echo "$SHA_IMAGE" | jq -r '.name')
-            delete_image_with_manifests "$VERSION_ID" "$VERSION_TAGS" "$VERSION_NAME"
-          done <<< "$SHA_ONLY_IMAGES"
+          MODE="users"
         fi
-        
-        echo ""
-        echo "Cleanup completed"
-        
-        # GitHub Step Summary
-        {
-          echo "## Image Cleanup Report"
-          echo ""
-          echo "**Repository:** \`${OWNER}/${PACKAGE_NAME}\`"
-          echo "**PR Number:** #${PR_NUMBER}"
-          echo ""
-          if [ -n "$PR_IMAGES" ]; then
-            echo "- Cleaned PR images with tag \`${PR_TAG}\`"
-          fi
-          if [ -n "$SHA_ONLY_IMAGES" ]; then
-            echo "- Cleaned ${SHA_COUNT} orphaned SHA-only image(s)"
-          fi
-        } >> $GITHUB_STEP_SUMMARY
+
+        printf "
+          > REGISTRY_CHECK: $REGISTRY_CHECK
+          > IMAGE_WITHOUT_REGISTRY: $IMAGE_WITHOUT_REGISTRY
+          > PROCESSED_IMAGE: $PROCESSED_IMAGE
+          > OWNER: $OWNER
+          > MODE: $MODE
+          > IMAGE_NAME: $IMAGE_NAME
+          > IMAGE_NAME_URL_ENCODED: $IMAGE_NAME_URL_ENCODED"
+
+        IMAGES=$(curl -fsSL \
+          -H "Authorization: Bearer ${{ github.token }}" \
+          "https://api.github.com/${MODE}/${OWNER}/packages/container/${IMAGE_NAME_URL_ENCODED}/versions?per_page=100")
+        ORPHANED_IMAGES=$(echo "$IMAGES" | jq -r '.[] | select((.metadata.container.tags | length) == 1 and (.metadata.container.tags[0] | test("^[0-9a-f]{7}$"))) | .id')
+          
+        # Delete orphaned images that got only tag by short sha
+        for IMAGE_ID in $ORPHANED_IMAGES; do
+          printf "\n${red}[Delete ghcr image].${no_color} Deleting orphaned image ID '$IMAGE_ID'\n"
+
+          curl -fsSL \
+            -X DELETE \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            "https://api.github.com/${MODE}/${OWNER}/packages/container/${IMAGE_NAME_URL_ENCODED}/versions/${IMAGE_ID}"
+        done
+      env:
+        IMAGE: ${{ inputs.IMAGE }}
