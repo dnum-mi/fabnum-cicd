@@ -24,7 +24,7 @@ on:
         description: Path of the context to build image
         required: true
         type: string
-      MULTI_TAGS:
+      TAG_MAJOR_AND_MINOR:
         description: Whether to tag with only major and minor tags (e.g. '1.2.3' -> '1.2' & '1')
         required: false
         default: false
@@ -168,8 +168,8 @@ jobs:
           type=raw,value=${{ needs.infos.outputs.lower-branch }},enable=${{ github.head_ref != 'main' && github.head_ref != 'develop' }}
           type=raw,value=${{ needs.infos.outputs.short-sha }},enable=${{ needs.infos.outputs.short-sha != '' }}
           type=raw,value=${{ inputs.IMAGE_TAG }},enable=${{ inputs.IMAGE_TAG != '' }}
-          type=raw,value=${{ format('{0}.{1}', needs.infos.outputs.major-tag, needs.infos.outputs.minor-tag) }},enable=${{ inputs.MULTI_TAGS && needs.infos.outputs.major-tag != '' && needs.infos.outputs.minor-tag != '' && needs.infos.outputs.prerelease-tag == '' }}
-          type=raw,value=${{ needs.infos.outputs.major-tag }},enable=${{ inputs.MULTI_TAGS && needs.infos.outputs.major-tag != '' && needs.infos.outputs.prerelease-tag == '' }}
+          type=raw,value=${{ format('{0}.{1}', needs.infos.outputs.major-tag, needs.infos.outputs.minor-tag) }},enable=${{ inputs.TAG_MAJOR_AND_MINOR && needs.infos.outputs.major-tag != '' && needs.infos.outputs.minor-tag != '' && needs.infos.outputs.prerelease-tag == '' }}
+          type=raw,value=${{ needs.infos.outputs.major-tag }},enable=${{ inputs.TAG_MAJOR_AND_MINOR && needs.infos.outputs.major-tag != '' && needs.infos.outputs.prerelease-tag == '' }}
           type=raw,value=latest,enable=${{ inputs.LATEST_TAG == true }}
 
     - name: Login to GitHub Container Registry
