@@ -4,29 +4,29 @@ on:
   workflow_call:
     inputs:
       PR_NUMBER:
-        description: ID number of the pull request assiocited with the cache
+        description: ID number of the pull request associated with the cache
         required: false
         type: number
       BRANCH_NAME:
-        description: Branch name assiocited with the cache
+        description: Branch name associated with the cache
         required: false
         type: string
       IMAGE:
-        description: Name of the image to delete from ghcr.io (eg. 'my-org/my-image:my-tag')
+        description: Name of the image to delete from ghcr.io (e.g., 'ghcr.io/owner/repo/service:pr-123')
         required: false
         type: string
       CLEAN_GH_CACHE:
-        description: Whether to clean GitHub cache
+        description: Whether to clean GitHub Actions cache
         required: false
         type: boolean
         default: true
       CLEAN_GHCR_IMAGE:
-        description: Whether to delete image from ghcr.io
+        description: Whether to delete the specified image from ghcr.io
         required: false
         type: boolean
         default: false
       CLEAN_ORPHANED_GHCR_IMAGE:
-        description: Whether to delete orphaned images from ghcr.io
+        description: Whether to delete orphaned SHA-only images from ghcr.io
         required: false
         type: boolean
         default: false
@@ -38,146 +38,205 @@ permissions:
 
 jobs:
   cleanup-cache:
-    name: Delete github cache
+    name: Delete GitHub Actions cache
     runs-on: ubuntu-latest
     if: ${{ inputs.CLEAN_GH_CACHE && (inputs.PR_NUMBER || inputs.BRANCH_NAME) }}
     steps:
-    - name: Clean cache for closed branch
+    - name: Clean cache for branch
       env:
         GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        BRANCH_NAME: ${{ inputs.BRANCH_NAME }}
+        PR_NUMBER: ${{ inputs.PR_NUMBER }}
       run: |
-        REPO=${{ github.repository }}
-        if [ -n "${{ inputs.BRANCH_NAME }}" ]; then
-          BRANCH="${{ inputs.BRANCH_NAME }}"
-        elif [ -n "${{ inputs.PR_NUMBER }}" ]; then
-          BRANCH="refs/pull/${{ inputs.PR_NUMBER }}/merge"
+        set -euo pipefail
+        
+        if [ -n "$BRANCH_NAME" ]; then
+          BRANCH="$BRANCH_NAME"
+        elif [ -n "$PR_NUMBER" ]; then
+          BRANCH="refs/pull/$PR_NUMBER/merge"
+        else
+          echo "Neither BRANCH_NAME nor PR_NUMBER provided"
+          exit 1
         fi
-
-        echo "Fetching list of cache key"
-        CACHE_KEYS=$(gh cache list -R $REPO -r $BRANCH -L 100 | cut -f 1)
-
-        ## Setting this to not fail the workflow while deleting cache keys.
+        
+        echo "Fetching cache keys for branch: $BRANCH"
+        CACHE_KEYS=$(gh cache list -R "$REPO" -r "$BRANCH" -L 100 | cut -f 1 || true)
+        
+        if [ -z "$CACHE_KEYS" ]; then
+          echo "No cache keys found"
+          exit 0
+        fi
+        
+        echo "Deleting cache keys..."
         set +e
-        echo "Deleting caches..."
-        for CACHE_KEY in $CACHE_KEYS; do
-          gh cache delete $CACHE_KEY -R $REPO
-        done
-        echo "Done"
+        while IFS= read -r CACHE_KEY; do
+          if [ -n "$CACHE_KEY" ]; then
+            gh cache delete "$CACHE_KEY" -R "$REPO"
+          fi
+        done <<< "$CACHE_KEYS"
+        set -e
+        
+        echo "Cache cleanup completed"
 
   cleanup-image:
     name: Delete image from ghcr.io
     runs-on: ubuntu-latest
     if: ${{ inputs.CLEAN_GHCR_IMAGE && inputs.IMAGE }}
     steps:
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
     - name: Delete ${{ inputs.IMAGE }} image
+      env:
+        IMAGE: ${{ inputs.IMAGE }}
+        GH_TOKEN: ${{ github.token }}
+        OWNER: ${{ github.repository_owner }}
       run: |
+        set -euo pipefail
+        
+        # Parse image name
         REGISTRY_CHECK="${IMAGE%%/*}"
         if [[ "$REGISTRY_CHECK" == *.* || "$REGISTRY_CHECK" == *:* || "$REGISTRY_CHECK" == "localhost" ]]; then
           IMAGE_WITHOUT_REGISTRY="${IMAGE#*/}"
           PROCESSED_IMAGE="${IMAGE_WITHOUT_REGISTRY#*/}"
         else
-          IMAGE_WITHOUT_REGISTRY="$IMAGE"
-          PROCESSED_IMAGE="${IMAGE_WITHOUT_REGISTRY#*/}"
+          PROCESSED_IMAGE="$IMAGE"
         fi
-
-        OWNER="${{ github.repository_owner}}"
+        
         IMAGE_NAME="${PROCESSED_IMAGE%%:*}"
         IMAGE_TAG="${PROCESSED_IMAGE#*:}"
-        IMAGE_NAME_URL_ENCODED="$(jq -rn --arg x "${IMAGE_NAME}" '$x | @uri')"
-
-        OWNER_TYPE="$(curl -fsSL https://api.github.com/users/${OWNER} | jq -r '.type')"
+        IMAGE_NAME_URL_ENCODED="$(jq -rn --arg x "$IMAGE_NAME" '$x | @uri')"
+        
+        # Determine owner type
+        OWNER_TYPE="$(gh api "/users/$OWNER" --jq '.type')"
+        
         if [ "$OWNER_TYPE" = "Organization" ]; then
-          MODE="orgs"
+          API_MODE="orgs"
         else
-          MODE="users"
+          API_MODE="users"
         fi
-
-        printf "
-          > REGISTRY_CHECK: $REGISTRY_CHECK
-          > IMAGE_WITHOUT_REGISTRY: $IMAGE_WITHOUT_REGISTRY
-          > PROCESSED_IMAGE: $PROCESSED_IMAGE
-          > OWNER: $OWNER
-          > MODE: $MODE
-          > IMAGE_NAME: $IMAGE_NAME
-          > IMAGE_TAG: $IMAGE_TAG
-          > IMAGE_NAME_URL_ENCODED: $IMAGE_NAME_URL_ENCODED"
-
-        IMAGES=$(curl -fsSL \
-          -H "Authorization: Bearer ${{ github.token }}" \
-          "https://api.github.com/${MODE}/${OWNER}/packages/container/${IMAGE_NAME_URL_ENCODED}/versions?per_page=100")
-        MAIN_IMAGE_ID=$(echo "$IMAGES" | jq -r --arg t "$IMAGE_TAG" '.[] | select(.metadata.container.tags[] | contains($t)) | .id')
-
-        # Delete subsequent images
-        while read -r SHA; do
-          IMAGE_ID=$(echo "$IMAGES" | jq -r --arg s "$SHA" '.[] | select(.name == $s) | .id')
-
-          printf "\n${red}[Delete ghcr image].${no_color} Deleting subsequent image '$OWNER/$IMAGE_NAME@$SHA'\n"
-
-          curl -fsSL \
-            -X DELETE \
-            -H "Authorization: Bearer ${{ github.token }}" \
-            "https://api.github.com/${MODE}/${OWNER}/packages/container/${IMAGE_NAME_URL_ENCODED}/versions/${IMAGE_ID}"
-        done <<< "$(docker buildx imagetools inspect ghcr.io/${OWNER}/${IMAGE_NAME}:${IMAGE_TAG} --raw | jq -r '.manifests[] | .digest')"
-
+        
+        echo "Owner: $OWNER ($OWNER_TYPE)"
+        echo "Image: $IMAGE_NAME"
+        echo "Tag: $IMAGE_TAG"
+        
+        # Fetch all versions
+        ALL_VERSIONS=$(gh api -H "Accept: application/vnd.github+json" \
+          "/$API_MODE/$OWNER/packages/container/$IMAGE_NAME_URL_ENCODED/versions" \
+          --paginate --jq '.')
+        
+        # Get main image ID
+        MAIN_IMAGE_ID=$(echo "$ALL_VERSIONS" | jq -r --arg t "$IMAGE_TAG" \
+          '.[] | select(.metadata.container.tags[]? | contains($t)) | .id' | head -n1)
+        
+        if [ -z "$MAIN_IMAGE_ID" ]; then
+          echo "Image with tag '$IMAGE_TAG' not found"
+          exit 0
+        fi
+        
+        echo "Found image ID: $MAIN_IMAGE_ID"
+        
+        # Delete multi-arch manifests
+        if MANIFEST_OUTPUT=$(docker buildx imagetools inspect "ghcr.io/$OWNER/$IMAGE_NAME:$IMAGE_TAG" --raw 2>/dev/null); then
+          if MANIFESTS=$(echo "$MANIFEST_OUTPUT" | jq -r '.manifests[]? | .digest' 2>/dev/null); then
+            if [ -n "$MANIFESTS" ]; then
+              echo "Deleting multi-arch manifests..."
+              while IFS= read -r SHA; do
+                if [ -n "$SHA" ]; then
+                  MANIFEST_ID=$(echo "$ALL_VERSIONS" | jq -r --arg s "$SHA" \
+                    '.[] | select(.name == $s) | .id')
+                  
+                  if [ -n "$MANIFEST_ID" ] && [ "$MANIFEST_ID" != "null" ]; then
+                    echo "Deleting manifest: $SHA"
+                    gh api --method DELETE -H "Accept: application/vnd.github+json" \
+                      "/$API_MODE/$OWNER/packages/container/$IMAGE_NAME_URL_ENCODED/versions/$MANIFEST_ID" \
+                      2>/dev/null || echo "Failed to delete manifest $SHA"
+                  fi
+                fi
+              done <<< "$MANIFESTS"
+            fi
+          fi
+        fi
+        
         # Delete main image
-        printf "\n${red}[Delete ghcr image].${no_color} Deleting image '$OWNER/$IMAGE_NAME:$IMAGE_TAG'\n"
-
-        curl -fsSL \
-          -X DELETE \
-          -H "Authorization: Bearer ${{ github.token }}" \
-          "https://api.github.com/${MODE}/${OWNER}/packages/container/${IMAGE_NAME_URL_ENCODED}/versions/${MAIN_IMAGE_ID}"
-      env:
-        IMAGE: ${{ inputs.IMAGE }}
+        echo "Deleting main image: $IMAGE_NAME:$IMAGE_TAG"
+        gh api --method DELETE -H "Accept: application/vnd.github+json" \
+          "/$API_MODE/$OWNER/packages/container/$IMAGE_NAME_URL_ENCODED/versions/$MAIN_IMAGE_ID"
+        
+        echo "Image deletion completed"
 
   cleanup-orphaned-image:
-    name: Delete image from ghcr.io
+    name: Delete orphaned images from ghcr.io
     runs-on: ubuntu-latest
     if: ${{ inputs.CLEAN_ORPHANED_GHCR_IMAGE && inputs.IMAGE }}
     steps:
-    - name: Delete orphaned images for
+    - name: Delete orphaned SHA-only images
+      env:
+        IMAGE: ${{ inputs.IMAGE }}
+        GH_TOKEN: ${{ github.token }}
+        OWNER: ${{ github.repository_owner }}
       run: |
+        set -euo pipefail
+        
+        # Parse image name
         REGISTRY_CHECK="${IMAGE%%/*}"
         if [[ "$REGISTRY_CHECK" == *.* || "$REGISTRY_CHECK" == *:* || "$REGISTRY_CHECK" == "localhost" ]]; then
           IMAGE_WITHOUT_REGISTRY="${IMAGE#*/}"
           PROCESSED_IMAGE="${IMAGE_WITHOUT_REGISTRY#*/}"
         else
-          IMAGE_WITHOUT_REGISTRY="$IMAGE"
-          PROCESSED_IMAGE="${IMAGE_WITHOUT_REGISTRY#*/}"
+          PROCESSED_IMAGE="$IMAGE"
         fi
-
-        OWNER="${{ github.repository_owner}}"
+        
         IMAGE_NAME="${PROCESSED_IMAGE%%:*}"
-        IMAGE_NAME_URL_ENCODED="$(jq -rn --arg x "${IMAGE_NAME}" '$x | @uri')"
-
-        OWNER_TYPE="$(curl -fsSL https://api.github.com/users/${OWNER} | jq -r '.type')"
+        IMAGE_NAME_URL_ENCODED="$(jq -rn --arg x "$IMAGE_NAME" '$x | @uri')"
+        
+        # Determine owner type
+        OWNER_TYPE="$(gh api "/users/$OWNER" --jq '.type')"
+        
         if [ "$OWNER_TYPE" = "Organization" ]; then
-          MODE="orgs"
+          API_MODE="orgs"
         else
-          MODE="users"
+          API_MODE="users"
         fi
-
-        printf "
-          > REGISTRY_CHECK: $REGISTRY_CHECK
-          > IMAGE_WITHOUT_REGISTRY: $IMAGE_WITHOUT_REGISTRY
-          > PROCESSED_IMAGE: $PROCESSED_IMAGE
-          > OWNER: $OWNER
-          > MODE: $MODE
-          > IMAGE_NAME: $IMAGE_NAME
-          > IMAGE_NAME_URL_ENCODED: $IMAGE_NAME_URL_ENCODED"
-
-        IMAGES=$(curl -fsSL \
-          -H "Authorization: Bearer ${{ github.token }}" \
-          "https://api.github.com/${MODE}/${OWNER}/packages/container/${IMAGE_NAME_URL_ENCODED}/versions?per_page=100")
-        ORPHANED_IMAGES=$(echo "$IMAGES" | jq -r '.[] | select((.metadata.container.tags | length) == 1 and (.metadata.container.tags[0] | test("^[0-9a-f]{7}$"))) | .id')
+        
+        echo "Owner: $OWNER ($OWNER_TYPE)"
+        echo "Image: $IMAGE_NAME"
+        echo "Searching for orphaned SHA-only images..."
+        
+        # Fetch all versions and filter SHA-only images
+        ALL_VERSIONS=$(gh api -H "Accept: application/vnd.github+json" \
+          "/$API_MODE/$OWNER/packages/container/$IMAGE_NAME_URL_ENCODED/versions" \
+          --paginate --jq '.')
+        
+        ORPHANED_IMAGES=$(echo "$ALL_VERSIONS" | jq -c \
+          '.[] | select(.metadata.container.tags != null and .metadata.container.tags != []) | 
+          select(
+            (.metadata.container.tags | length) == 1 and 
+            (.metadata.container.tags[0] | test("^[0-9a-f]{7}$"))
+          ) | {id: .id, tags: .metadata.container.tags}')
+        
+        if [ -z "$ORPHANED_IMAGES" ]; then
+          echo "No orphaned SHA-only images found"
+          exit 0
+        fi
+        
+        ORPHANED_COUNT=$(echo "$ORPHANED_IMAGES" | wc -l | tr -d ' ')
+        echo "Found $ORPHANED_COUNT orphaned image(s)"
+        
+        # Delete each orphaned image
+        while IFS= read -r ORPHANED_IMAGE; do
+          IMAGE_ID=$(echo "$ORPHANED_IMAGE" | jq -r '.id')
+          IMAGE_TAGS=$(echo "$ORPHANED_IMAGE" | jq -r '.tags | join(", ")')
           
-        # Delete orphaned images that got only tag by short sha
-        for IMAGE_ID in $ORPHANED_IMAGES; do
-          printf "\n${red}[Delete ghcr image].${no_color} Deleting orphaned image ID '$IMAGE_ID'\n"
-
-          curl -fsSL \
-            -X DELETE \
-            -H "Authorization: Bearer ${{ github.token }}" \
-            "https://api.github.com/${MODE}/${OWNER}/packages/container/${IMAGE_NAME_URL_ENCODED}/versions/${IMAGE_ID}"
-        done
-      env:
-        IMAGE: ${{ inputs.IMAGE }}
+          echo "Deleting orphaned image ID: $IMAGE_ID (tags: $IMAGE_TAGS)"
+          gh api --method DELETE -H "Accept: application/vnd.github+json" \
+            "/$API_MODE/$OWNER/packages/container/$IMAGE_NAME_URL_ENCODED/versions/$IMAGE_ID" \
+            2>/dev/null || echo "Failed to delete image ID: $IMAGE_ID"
+        done <<< "$ORPHANED_IMAGES"
+        
+        echo "Orphaned images cleanup completed"
