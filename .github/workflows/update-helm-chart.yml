@@ -87,7 +87,62 @@ jobs:
         echo "Update chart '${{ inputs.CHART_NAME }}' in charts/${{ inputs.CHART_NAME }} with app version '${{ inputs.APP_VERSION }}'"
 
         CURRENT_VERSION=$(yq '.version' charts/${{ inputs.CHART_NAME }}/Chart.yaml)
-        NEXT_VERSION=$(npx semver --increment ${{ inputs.UPGRADE_TYPE }} --preid ${{ inputs.PRERELEASE_IDENTIFIER }} -n false $CURRENT_VERSION)
+        
+        # Bump version using Release Please compatible logic
+        if [[ "${{ inputs.UPGRADE_TYPE }}" == "prerelease" ]]; then
+          # Parse version: extract base version and prerelease part
+          if [[ $CURRENT_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-(.+))?$ ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+            PRERELEASE="${BASH_REMATCH[5]}"
+            
+            if [[ -z "$PRERELEASE" ]]; then
+              # No prerelease: add first prerelease without number (Release Please style)
+              NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-${{ inputs.PRERELEASE_IDENTIFIER }}"
+            elif [[ "$PRERELEASE" == "${{ inputs.PRERELEASE_IDENTIFIER }}" ]]; then
+              # Has prerelease without number: '1.0.0-rc' -> '1.0.0-rc.1'
+              NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-${{ inputs.PRERELEASE_IDENTIFIER }}.1"
+            elif [[ "$PRERELEASE" =~ ^${{ inputs.PRERELEASE_IDENTIFIER }}\.([0-9]+)$ ]]; then
+              # Has numbered prerelease: increment the number
+              NUM="${BASH_REMATCH[1]}"
+              NEXT_NUM=$((NUM + 1))
+              NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-${{ inputs.PRERELEASE_IDENTIFIER }}.${NEXT_NUM}"
+            else
+              echo "Unexpected prerelease format: $PRERELEASE"
+              exit 1
+            fi
+          else
+            echo "Invalid version format: $CURRENT_VERSION"
+            exit 1
+          fi
+        else
+          # Standard version bump (major, minor, patch)
+          if [[ $CURRENT_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+            
+            case "${{ inputs.UPGRADE_TYPE }}" in
+              major)
+                NEXT_VERSION="$((MAJOR + 1)).0.0"
+                ;;
+              minor)
+                NEXT_VERSION="${MAJOR}.$((MINOR + 1)).0"
+                ;;
+              patch)
+                NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+                ;;
+              *)
+                echo "Invalid upgrade type: ${{ inputs.UPGRADE_TYPE }}"
+                exit 1
+                ;;
+            esac
+          else
+            echo "Invalid version format: $CURRENT_VERSION"
+            exit 1
+          fi
+        fi
         
         echo "Update chart from version '$CURRENT_VERSION' to '$NEXT_VERSION'"
 
