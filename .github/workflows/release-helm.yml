@@ -50,6 +50,8 @@ jobs:
       with:
         charts_dir: ${{ inputs.CHARTS_DIR }}
         skip_upload: true
+        packages_with_index: false
+        pages_branch: ""
       env:
         CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
       
