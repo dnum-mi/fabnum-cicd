@@ -54,8 +54,7 @@ jobs:
         bun-version: latest
 
     - name: Install commitlint
-      run: |
-        bun install -g @commitlint/cli @commitlint/config-conventional
+      run: bun install @commitlint/cli @commitlint/config-conventional
 
     - name: Create commitlint config
       if: ${{ inputs.CONFIG_FILE == '' }}
@@ -137,7 +136,7 @@ jobs:
           MESSAGE=$(git log --format=%s -n 1 $COMMIT)
           SHORT_SHA=$(echo $COMMIT | cut -c1-7)
           
-          if echo "$MESSAGE" | commitlint $CONFIG_FLAG 2>/dev/null; then
+          if echo "$MESSAGE" | bunx commitlint $CONFIG_FLAG; then
             echo "| ✅ | \`$SHORT_SHA\` | $MESSAGE |" >> $GITHUB_STEP_SUMMARY
             PASSED_COMMITS=$((PASSED_COMMITS + 1))
           else
