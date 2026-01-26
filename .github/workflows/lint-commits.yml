@@ -1,0 +1,174 @@
+name: Lint commits
+
+on:
+  workflow_call:
+    inputs:
+      COMMITS_SOURCE:
+        description: Source of commits to lint ('pr' for PR commits, 'push' for pushed commits)
+        type: string
+        required: false
+        default: "pr"
+      CONFIG_FILE:
+        description: Path to commitlint config file (if exists in repo)
+        type: string
+        required: false
+        default: ""
+      FAIL_ON_ERROR:
+        description: Whether to fail the workflow on linting errors
+        type: boolean
+        required: false
+        default: true
+      ALLOWED_TYPES:
+        description: Comma-separated list of allowed commit types
+        type: string
+        required: false
+        default: "feat,fix,docs,style,refactor,perf,test,build,ci,chore,revert"
+      REQUIRE_SCOPE:
+        description: Whether to require a scope in commit messages
+        type: boolean
+        required: false
+        default: false
+      MAX_SUBJECT_LENGTH:
+        description: Maximum length of the commit subject line
+        type: number
+        required: false
+        default: 100
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  lint-commits:
+    name: Lint commit messages
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: latest
+
+    - name: Install commitlint
+      run: |
+        bun install -g @commitlint/cli @commitlint/config-conventional
+
+    - name: Create commitlint config
+      if: ${{ inputs.CONFIG_FILE == '' }}
+      run: |
+        cat > commitlint.config.js << 'EOF'
+        export default {
+          extends: ['@commitlint/config-conventional'],
+          rules: {
+            'type-enum': [2, 'always', '${{ inputs.ALLOWED_TYPES }}'.split(',').map(t => t.trim())],
+            'scope-empty': [${{ inputs.REQUIRE_SCOPE && '2' || '0' }}, '${{ inputs.REQUIRE_SCOPE && 'never' || 'always' }}'],
+            'subject-max-length': [2, 'always', ${{ inputs.MAX_SUBJECT_LENGTH }}],
+            'header-max-length': [2, 'always', ${{ inputs.MAX_SUBJECT_LENGTH }}],
+          },
+        };
+        EOF
+
+    - name: Get commits to lint
+      id: get-commits
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        if [ "${{ inputs.COMMITS_SOURCE }}" = "pr" ] && [ -n "${{ github.event.pull_request.number }}" ]; then
+          echo "Linting commits from PR #${{ github.event.pull_request.number }}"
+          
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          
+          echo "base-sha=${BASE_SHA}" >> $GITHUB_OUTPUT
+          echo "head-sha=${HEAD_SHA}" >> $GITHUB_OUTPUT
+          echo "commit-range=${BASE_SHA}..${HEAD_SHA}" >> $GITHUB_OUTPUT
+        else
+          echo "Linting commits from push event"
+          
+          if [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
+            # New branch, use first commit
+            BASE_SHA=$(git rev-list --max-parents=0 HEAD | tail -1)
+          else
+            BASE_SHA="${{ github.event.before }}"
+          fi
+          HEAD_SHA="${{ github.sha }}"
+          
+          echo "base-sha=${BASE_SHA}" >> $GITHUB_OUTPUT
+          echo "head-sha=${HEAD_SHA}" >> $GITHUB_OUTPUT
+          echo "commit-range=${BASE_SHA}..${HEAD_SHA}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Lint commits
+      id: lint
+      run: |
+        set -euo pipefail
+
+        CONFIG_FLAG=""
+        if [ -n "${{ inputs.CONFIG_FILE }}" ] && [ -f "${{ inputs.CONFIG_FILE }}" ]; then
+          CONFIG_FLAG="--config ${{ inputs.CONFIG_FILE }}"
+        fi
+
+        echo "## Conventional Commits Check" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        EXIT_CODE=0
+        COMMITS=$(git log --pretty=format:"%H" ${{ steps.get-commits.outputs.commit-range }} 2>/dev/null || echo "")
+
+        if [ -z "$COMMITS" ]; then
+          echo "No commits found in range ${{ steps.get-commits.outputs.commit-range }}"
+          echo "✅ No commits to lint" >> $GITHUB_STEP_SUMMARY
+          exit 0
+        fi
+
+        TOTAL_COMMITS=$(echo "$COMMITS" | wc -l | tr -d ' ')
+        FAILED_COMMITS=0
+        PASSED_COMMITS=0
+
+        echo "| Status | Commit | Message |" >> $GITHUB_STEP_SUMMARY
+        echo "| ------ | ------ | ------- |" >> $GITHUB_STEP_SUMMARY
+
+        for COMMIT in $COMMITS; do
+          MESSAGE=$(git log --format=%s -n 1 $COMMIT)
+          SHORT_SHA=$(echo $COMMIT | cut -c1-7)
+          
+          if echo "$MESSAGE" | commitlint $CONFIG_FLAG 2>/dev/null; then
+            echo "| ✅ | \`$SHORT_SHA\` | $MESSAGE |" >> $GITHUB_STEP_SUMMARY
+            PASSED_COMMITS=$((PASSED_COMMITS + 1))
+          else
+            echo "| ❌ | \`$SHORT_SHA\` | $MESSAGE |" >> $GITHUB_STEP_SUMMARY
+            FAILED_COMMITS=$((FAILED_COMMITS + 1))
+            EXIT_CODE=1
+          fi
+        done
+
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Summary:** $PASSED_COMMITS/$TOTAL_COMMITS commits passed" >> $GITHUB_STEP_SUMMARY
+
+        if [ $EXIT_CODE -ne 0 ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Expected format" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "<type>(<scope>): <subject>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Types: ${{ inputs.ALLOWED_TYPES }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ inputs.FAIL_ON_ERROR }}" = "true" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Workflow failed due to non-conventional commits**" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Non-conventional commits detected but FAIL_ON_ERROR is false**" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **All commits follow conventional commits format**" >> $GITHUB_STEP_SUMMARY
+        fi
