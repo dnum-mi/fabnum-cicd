@@ -48,9 +48,10 @@ jobs:
       id: chart-releaser
       uses: helm/chart-releaser-action@v1
       with:
+        version: v1.8.1
         charts_dir: ${{ inputs.CHARTS_DIR }}
         skip_upload: true
-        packages_with_index: false
+        packages_with_index: ""
         pages_branch: ""
       env:
         CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
