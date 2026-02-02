@@ -172,8 +172,8 @@ jobs:
         commit-message: "chore: update chart ${{ inputs.CHART_NAME }} app to v${{ inputs.APP_VERSION }}"
         draft: false
         body: |
-          🤖 This PR has been automatically generated.
+          🤖 This PR has been automatically generated, please check updates before merging.
 
           - Chart version has been updated from `${{ steps.update-chart.outputs.CURRENT_VERSION }}` to `${{ steps.update-chart.outputs.NEXT_VERSION }}`
-          - App version has been updated to v${{ inputs.APP_VERSION }}
+          - App version has been updated to `${{ inputs.APP_VERSION }}`
           - Chart documentation has been regenerated
