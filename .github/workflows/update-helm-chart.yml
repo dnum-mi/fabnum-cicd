@@ -16,8 +16,13 @@ on:
         description: Name of the chart repository (eg. 'this-is-tobi/helm-charts')
         required: false
         type: string
+      CHART_DIR:
+        description: Name of the folder containing the chart (in CHART_REPO)
+        required: false
+        type: string
+        default: charts
       CHART_NAME:
-        description: Name of the folder chart (in /charts)
+        description: Name of the folder containing the chart (in CHART_DIR)
         required: true
         type: string
       APP_VERSION:
@@ -54,12 +59,15 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
+        # Remove trailing slashes
+        CHART_DIR=$(echo '${{ inputs.CHART_DIR }}' | sed 's:/*$::')
+
         if [ -z "${{ inputs.CHART_REPO }}" ]; then
           echo "CHART_REPO input is required when using 'caller' mode"
           exit 1
         fi
 
-        echo "Trigger workflow '${{ inputs.WORKFLOW_NAME }}' in repository '${{ inputs.CHART_REPO }}' to update chart '${{ inputs.CHART_NAME }}' with app version '${{ inputs.APP_VERSION }}'"
+        echo "Trigger workflow '${{ inputs.WORKFLOW_NAME }}' in repository '${{ inputs.CHART_REPO }}' to update chart '$CHART_DIR/${{ inputs.CHART_NAME }}' with app version '${{ inputs.APP_VERSION }}'"
 
         gh workflow --repo ${{ inputs.CHART_REPO }} run ${{ inputs.WORKFLOW_NAME }} \
           -f APP_VERSION=${{inputs.APP_VERSION }} \
@@ -79,15 +87,17 @@ jobs:
     - name: update chart version
       id: update-chart
       run: |
-        if [ ! -f charts/${{ inputs.CHART_NAME }}/Chart.yaml ]; then
-          echo "Chart.yaml not found in charts/${{ inputs.CHART_NAME }}"
+        # Remove trailing slashes
+        CHART_DIR=$(echo '${{ inputs.CHART_DIR }}' | sed 's:/*$::')
+
+        if [ ! -f $CHART_DIR/${{ inputs.CHART_NAME }}/Chart.yaml ]; then
+          echo "Chart.yaml not found in $CHART_DIR/${{ inputs.CHART_NAME }}"
           exit 1
         fi
 
-        echo "Update chart '${{ inputs.CHART_NAME }}' in charts/${{ inputs.CHART_NAME }} with app version '${{ inputs.APP_VERSION }}'"
+        echo "Update chart '${{ inputs.CHART_NAME }}' in $CHART_DIR/${{ inputs.CHART_NAME }} with app version '${{ inputs.APP_VERSION }}'"
+        CURRENT_VERSION=$(yq '.version' ${{ inputs.CHART_DIR }}/${{ inputs.CHART_NAME }}/Chart.yaml)
 
-        CURRENT_VERSION=$(yq '.version' charts/${{ inputs.CHART_NAME }}/Chart.yaml)
-        
         # Bump version using Release Please compatible logic
         if [[ "${{ inputs.UPGRADE_TYPE }}" == "prerelease" ]]; then
           # Parse version: extract base version and prerelease part
@@ -147,13 +157,13 @@ jobs:
         echo "Update chart from version '$CURRENT_VERSION' to '$NEXT_VERSION'"
 
         echo "Update chart files..."
-        sed -i "s/^appVersion: .*/appVersion: ${{ inputs.APP_VERSION }}/" charts/${{ inputs.CHART_NAME }}/Chart.yaml
-        sed -i "s/^version: .*/version: $NEXT_VERSION/" charts/${{ inputs.CHART_NAME }}/Chart.yaml
+        sed -i "s/^appVersion: .*/appVersion: ${{ inputs.APP_VERSION }}/" $CHART_DIR/${{ inputs.CHART_NAME }}/Chart.yaml
+        sed -i "s/^version: .*/version: $NEXT_VERSION/" $CHART_DIR/${{ inputs.CHART_NAME }}/Chart.yaml
 
         echo "Generate chart documentation..."
         docker run \
           --rm \
-          --volume "$(pwd)/charts/${{ inputs.CHART_NAME }}:/helm-docs" \
+          --volume "$(pwd)/$CHART_DIR/${{ inputs.CHART_NAME }}:/helm-docs" \
           -u $(id -u) \
           docker.io/jnorwood/helm-docs:latest
 
