@@ -67,7 +67,7 @@ jobs:
         echo "SONAR_ARGS_BRANCH=-Dsonar.branch.name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
 
     - name: SonarQube Scan
-      uses: sonarsource/sonarqube-scan-action@v5
+      uses: sonarsource/sonarqube-scan-action@v7
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ inputs.SONAR_URL }}
