@@ -39,7 +39,7 @@ Validation locale du code avant commit et push :
 | [lint-commits.yml](./.github/workflows/lint-commits.yml)           | Validation Conventional Commits                      |
 | [lint-helm.yml](./.github/workflows/lint-helm.yml)                 | Lint des charts Helm avec chart-testing              |
 | [release-app.yml](./.github/workflows/release-app.yml)             | Gestion des releases avec release-please             |
-| [release-helm.yml](./.github/workflows/release-helm.yml)           | Publication de charts Helm sur registre OCI          |
+| [release-helm.yml](./.github/workflows/release-helm.yml)           | Publication de charts Helm sur registres OCI         |
 | [scan-sonarqube.yml](./.github/workflows/scan-sonarqube.yml)       | Analyse qualité du code avec SonarQube               |
 | [scan-trivy.yml](./.github/workflows/scan-trivy.yml)               | Analyse de vulnérabilités avec Trivy                 |
 | [sync-cpin.yml](./.github/workflows/sync-cpin.yml)                 | Synchronisation vers GitLab CPiN                     |

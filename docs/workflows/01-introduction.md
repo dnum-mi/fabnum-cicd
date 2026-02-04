@@ -20,7 +20,7 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 ### Release & Versioning
 
 - [**06 - Release App**](./06-release-app.md) - Gestion automatisée des releases d'application avec release-please
-- [**07 - Release Helm**](./07-release-helm.md) - Publication de charts Helm sur un registre OCI
+- [**07 - Release Helm**](./07-release-helm.md) - Publication de charts Helm sur registres OCI
 
 ### Sécurité & Qualité
 
