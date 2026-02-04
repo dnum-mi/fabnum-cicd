@@ -39,6 +39,11 @@ on:
         required: false
         type: string
         default: rc
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
     secrets:
       GH_PAT:
         description: GitHub Personal Access Token (needed for automerge)
@@ -52,7 +57,7 @@ permissions:
 jobs:
   caller:
     name: Update chart
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     if: ${{ inputs.RUN_MODE == 'caller' }}
     steps:
     - name: Trigger helm-charts update
@@ -78,7 +83,7 @@ jobs:
 
   called:
     name: Update chart
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     if: ${{ inputs.RUN_MODE == 'called' }}
     steps:
     - name: Checks-out repository

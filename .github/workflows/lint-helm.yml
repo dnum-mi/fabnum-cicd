@@ -22,6 +22,11 @@ on:
         required: false
         type: boolean
         default: true
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
 
 permissions:
   contents: read
@@ -29,7 +34,7 @@ permissions:
 jobs:
   lint-charts:
     name: Lint charts
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     if: ${{ inputs.LINT_CHARTS }}
     steps:
     - name: Checks-out repository
@@ -55,7 +60,7 @@ jobs:
 
   lint-docs:
     name: Lint docs
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     if: ${{ inputs.LINT_DOCS }}
     steps:
     - name: Checks-out repository

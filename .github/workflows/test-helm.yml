@@ -7,6 +7,11 @@ on:
         description: Path to the chart-testing configuration file
         required: true
         type: string
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
 
 permissions:
   contents: read
@@ -14,7 +19,7 @@ permissions:
 jobs:
   test-charts:
     name: Lint charts
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     steps:
     - name: Checks-out repository
       uses: actions/checkout@v5

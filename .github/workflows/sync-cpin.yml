@@ -23,6 +23,11 @@ on:
         description: Additional variables to pass to GitLab pipeline (JSON format, e.g., '{"VAR1":"value1","VAR2":"value2"}').
         required: false
         type: string
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
     secrets:
       GIT_MIRROR_TOKEN:
         description: Gitlab token used to perfom the synchronization.
@@ -34,7 +39,7 @@ permissions:
 jobs:
   trigger-dso:
     name: Trigger CPiN synchro
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     steps:
       - name: Send request to CPiN api
         shell: bash

@@ -33,6 +33,11 @@ on:
         type: number
         required: false
         default: 100
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
 
 permissions:
   contents: read
@@ -41,7 +46,7 @@ permissions:
 jobs:
   lint-commits:
     name: Lint commit messages
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     steps:
     - name: Checks-out repository
       uses: actions/checkout@v5

@@ -58,6 +58,11 @@ on:
         type: string
         required: false
         default: .release-please-manifest-rc.json
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
     secrets:
       GH_PAT:
         description: GitHub Personal Access Token (needed for automerge)

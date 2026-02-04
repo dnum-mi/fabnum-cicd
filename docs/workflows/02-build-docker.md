@@ -4,19 +4,20 @@ Build et push d'images Docker multi-architecture (amd64/arm64) vers un registre 
 
 ## Inputs
 
-| Input               | Type    | Description                                                                      | Requis | Défaut  |
-| ------------------- | ------- | -------------------------------------------------------------------------------- | ------ | ------- |
-| IMAGE_NAME          | string  | Nom de l'image à construire (ex: `ghcr.io/my-org/my-image`)                      | Oui    | -       |
-| IMAGE_TAG           | string  | Tag utilisé pour construire l'image                                              | Oui    | -       |
-| LATEST_TAG          | boolean | Taguer également l'image avec `latest`                                           | Non    | `false` |
-| TAG_MAJOR_AND_MINOR | boolean | Créer des tags pour les versions majeure et mineure (ex: `1.2.3` → `1.2` et `1`) | Non    | `false` |
-| IMAGE_DOCKERFILE    | string  | Chemin vers le Dockerfile                                                        | Oui    | -       |
-| IMAGE_CONTEXT       | string  | Chemin du contexte de build                                                      | Oui    | -       |
-| BUILD_AMD64         | boolean | Build pour l'architecture amd64                                                  | Non    | `true`  |
-| BUILD_ARM64         | boolean | Build pour l'architecture arm64                                                  | Non    | `true`  |
-| USE_QEMU            | boolean | Utiliser l'émulateur QEMU pour arm64                                             | Non    | `false` |
-| REGISTRY_USERNAME   | string  | Nom d'utilisateur pour le registre                                               | Non    | -       |
-| REGISTRY_PASSWORD   | string  | Mot de passe pour le registre                                                    | Non    | -       |
+| Input               | Type    | Description                                                                            | Requis | Défaut             |
+| ------------------- | ------- | -------------------------------------------------------------------------------------- | ------ | ------------------ |
+| IMAGE_NAME          | string  | Nom de l'image à construire (ex: `ghcr.io/my-org/my-image`)                            | Oui    | -                  |
+| IMAGE_TAG           | string  | Tag utilisé pour construire l'image                                                    | Oui    | -                  |
+| LATEST_TAG          | boolean | Taguer également l'image avec `latest`                                                 | Non    | `false`            |
+| TAG_MAJOR_AND_MINOR | boolean | Créer des tags pour les versions majeure et mineure (ex: `1.2.3` → `1.2` et `1`)       | Non    | `false`            |
+| IMAGE_DOCKERFILE    | string  | Chemin vers le Dockerfile                                                              | Oui    | -                  |
+| IMAGE_CONTEXT       | string  | Chemin du contexte de build                                                            | Oui    | -                  |
+| BUILD_AMD64         | boolean | Build pour l'architecture amd64                                                        | Non    | `true`             |
+| BUILD_ARM64         | boolean | Build pour l'architecture arm64                                                        | Non    | `true`             |
+| USE_QEMU            | boolean | Utiliser l'émulateur QEMU pour arm64                                                   | Non    | `false`            |
+| REGISTRY_USERNAME   | string  | Nom d'utilisateur pour le registre                                                     | Non    | -                  |
+| REGISTRY_PASSWORD   | string  | Mot de passe pour le registre                                                          | Non    | -                  |
+| RUNS_ON             | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`) | Non    | `["ubuntu-24.04"]` |
 
 ## Permissions
 

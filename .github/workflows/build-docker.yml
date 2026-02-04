@@ -52,6 +52,11 @@ on:
         description: Password used to login into registry
         required: false
         type: string
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-latest"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
 
 permissions:
   packages: write
@@ -60,7 +65,7 @@ permissions:
 jobs:
   infos:
     name: Get build infos
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     outputs:
       registry: ${{ steps.infos.outputs.REGISTRY }}
       lower-image: ${{ steps.infos.outputs.LOWER_IMAGE }}
@@ -144,7 +149,7 @@ jobs:
 
   merge:
     name: Merge digest
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     needs:
     - infos
     - build

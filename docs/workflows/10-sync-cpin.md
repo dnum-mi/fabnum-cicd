@@ -4,13 +4,14 @@ Synchronisation avec l'instance GitLab CPiN (Cloud Pi Natif) pour déclencher de
 
 ## Inputs
 
-| Input                 | Type   | Description                                                                                  | Requis | Défaut |
-| --------------------- | ------ | -------------------------------------------------------------------------------------------- | ------ | ------ |
-| GITLAB_URL            | string | URL de l'instance GitLab CPiN                                                                | Non    | -      |
-| GIT_MIRROR_PROJECT_ID | string | ID du projet GitLab du dépôt miroir                                                          | Non    | -      |
-| BRANCH_TO_SYNC        | string | Branche Git à synchroniser                                                                   | Non    | -      |
-| REPOSITORY_NAME       | string | Nom du dépôt GitLab à synchroniser                                                           | Non    | -      |
-| ADDITIONAL_VARIABLES  | string | Variables supplémentaires à passer au pipeline GitLab (format JSON, ex: `{"VAR1":"value1"}`) | Non    | -      |
+| Input                 | Type   | Description                                                                                  | Requis | Défaut             |
+| --------------------- | ------ | -------------------------------------------------------------------------------------------- | ------ | ------------------ |
+| GITLAB_URL            | string | URL de l'instance GitLab CPiN                                                                | Non    | -                  |
+| GIT_MIRROR_PROJECT_ID | string | ID du projet GitLab du dépôt miroir                                                          | Non    | -                  |
+| BRANCH_TO_SYNC        | string | Branche Git à synchroniser                                                                   | Non    | -                  |
+| REPOSITORY_NAME       | string | Nom du dépôt GitLab à synchroniser                                                           | Non    | -                  |
+| ADDITIONAL_VARIABLES  | string | Variables supplémentaires à passer au pipeline GitLab (format JSON, ex: `{"VAR1":"value1"}`) | Non    | -                  |
+| RUNS_ON               | string | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)       | Non    | `["ubuntu-24.04"]` |
 
 ## Secrets
 

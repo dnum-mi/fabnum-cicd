@@ -6,8 +6,7 @@ Test d'installation des charts Helm dans un cluster Kind (Kubernetes in Docker).
 
 | Input        | Type   | Description                                           | Requis | Défaut |
 | ------------ | ------ | ----------------------------------------------------- | ------ | ------ |
-| CT_CONF_PATH | string | Chemin vers le fichier de configuration chart-testing | Oui    | -      |
-
+| CT_CONF_PATH | string | Chemin vers le fichier de configuration chart-testing | Oui    | -      |  | RUNS_ON | string | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`) | Non | `["ubuntu-24.04"]` |
 ## Permissions
 
 | Scope    | Accès | Description   |

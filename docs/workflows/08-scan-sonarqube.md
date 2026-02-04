@@ -4,14 +4,15 @@ Analyse de la qualité du code avec [SonarQube](https://www.sonarqube.org/), inc
 
 ## Inputs
 
-| Input                  | Type    | Description                                                  | Requis | Défaut                |
-| ---------------------- | ------- | ------------------------------------------------------------ | ------ | --------------------- |
-| SONAR_URL              | string  | URL du serveur SonarQube                                     | Oui    | -                     |
-| SOURCES_PATH           | string  | Chemins vers le code source à analyser (ex: `apps,packages`) | Non    | -                     |
-| SONAR_EXTRA_ARGS       | string  | Arguments supplémentaires pour SonarQube                     | Non    | -                     |
-| COVERAGE_IMPORT        | boolean | Activer l'import d'artefact de couverture                    | Non    | `false`               |
-| COVERAGE_ARTIFACT_NAME | string  | Nom de l'artefact de couverture à importer                   | Non    | `unit-tests-coverage` |
-| COVERAGE_ARTIFACT_PATH | string  | Chemin de téléchargement de l'artefact de couverture         | Non    | `./coverage`          |
+| Input                  | Type    | Description                                                                            | Requis | Défaut                |
+| ---------------------- | ------- | -------------------------------------------------------------------------------------- | ------ | --------------------- |
+| SONAR_URL              | string  | URL du serveur SonarQube                                                               | Oui    | -                     |
+| SOURCES_PATH           | string  | Chemins vers le code source à analyser (ex: `apps,packages`)                           | Non    | -                     |
+| SONAR_EXTRA_ARGS       | string  | Arguments supplémentaires pour SonarQube                                               | Non    | -                     |
+| COVERAGE_IMPORT        | boolean | Activer l'import d'artefact de couverture                                              | Non    | `false`               |
+| COVERAGE_ARTIFACT_NAME | string  | Nom de l'artefact de couverture à importer                                             | Non    | `unit-tests-coverage` |
+| COVERAGE_ARTIFACT_PATH | string  | Chemin de téléchargement de l'artefact de couverture                                   | Non    | `./coverage`          |
+| RUNS_ON                | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`) | Non    | `["ubuntu-24.04"]`    |
 
 ## Secrets
 

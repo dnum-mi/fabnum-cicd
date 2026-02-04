@@ -4,12 +4,13 @@ Lint des charts Helm avec [chart-testing](https://github.com/helm/chart-testing)
 
 ## Inputs
 
-| Input             | Type    | Description                                           | Requis | Défaut   |
-| ----------------- | ------- | ----------------------------------------------------- | ------ | -------- |
-| CT_CONF_PATH      | string  | Chemin vers le fichier de configuration chart-testing | Oui    | -        |
-| HELM_DOCS_VERSION | string  | Version de helm-docs à utiliser                       | Non    | `1.14.2` |
-| LINT_CHARTS       | boolean | Exécuter le lint des charts                           | Non    | `true`   |
-| LINT_DOCS         | boolean | Exécuter la validation de la documentation            | Non    | `true`   |
+| Input             | Type    | Description                                                                            | Requis | Défaut             |
+| ----------------- | ------- | -------------------------------------------------------------------------------------- | ------ | ------------------ |
+| CT_CONF_PATH      | string  | Chemin vers le fichier de configuration chart-testing                                  | Oui    | -                  |
+| HELM_DOCS_VERSION | string  | Version de helm-docs à utiliser                                                        | Non    | `1.14.2`           |
+| LINT_CHARTS       | boolean | Exécuter le lint des charts                                                            | Non    | `true`             |
+| LINT_DOCS         | boolean | Exécuter la validation de la documentation                                             | Non    | `true`             |
+| RUNS_ON           | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`) | Non    | `["ubuntu-24.04"]` |
 
 ## Permissions
 

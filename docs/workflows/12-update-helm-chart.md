@@ -14,6 +14,7 @@ Mise à jour automatique de la version d'un chart Helm et de l'appVersion dans C
 | APP_VERSION           | string | La version de l'application à injecter dans Chart.yaml                                                                                | Oui    | -                        |
 | UPGRADE_TYPE          | string | Type de mise à jour : `major`, `minor`, `patch` ou `prerelease`                                                                       | Non    | `patch`                  |
 | PRERELEASE_IDENTIFIER | string | Identifiant de pré-release (utilisé seulement si UPGRADE_TYPE est `prerelease`)                                                       | Non    | `rc`                     |
+| RUNS_ON               | string | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                | Non    | `["ubuntu-24.04"]`       |
 
 ## Secrets
 

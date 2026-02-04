@@ -4,15 +4,16 @@ Analyse de vulnérabilités avec [Trivy](https://github.com/aquasecurity/trivy) 
 
 ## Inputs
 
-| Input               | Type    | Description                                                           | Requis | Défaut  |
-| ------------------- | ------- | --------------------------------------------------------------------- | ------ | ------- |
-| IMAGE               | string  | Image utilisée pour effectuer le scan (ex: `docker.io/debian:latest`) | Non    | -       |
-| REGISTRY_USERNAME   | string  | Nom d'utilisateur pour se connecter au registre                       | Non    | -       |
-| REGISTRY_PASSWORD   | string  | Mot de passe pour se connecter au registre                            | Non    | -       |
-| PATH                | string  | Chemin utilisé pour effectuer le scan                                 | Non    | -       |
-| FORMAT              | string  | Format du rapport (`sarif`, `table`, `json`, etc.)                    | Non    | `table` |
-| PR_NUMBER           | string  | Numéro de la PR si le workflow est déclenché par une pull request     | Non    | -       |
-| GITHUB_SECURITY_TAB | boolean | Lier l'onglet GitHub Security dans le commentaire de la PR            | Non    | `false` |
+| Input               | Type    | Description                                                                            | Requis | Défaut             |
+| ------------------- | ------- | -------------------------------------------------------------------------------------- | ------ | ------------------ |
+| IMAGE               | string  | Image utilisée pour effectuer le scan (ex: `docker.io/debian:latest`)                  | Non    | -                  |
+| REGISTRY_USERNAME   | string  | Nom d'utilisateur pour se connecter au registre                                        | Non    | -                  |
+| REGISTRY_PASSWORD   | string  | Mot de passe pour se connecter au registre                                             | Non    | -                  |
+| PATH                | string  | Chemin utilisé pour effectuer le scan                                                  | Non    | -                  |
+| FORMAT              | string  | Format du rapport (`sarif`, `table`, `json`, etc.)                                     | Non    | `table`            |
+| PR_NUMBER           | string  | Numéro de la PR si le workflow est déclenché par une pull request                      | Non    | -                  |
+| GITHUB_SECURITY_TAB | boolean | Lier l'onglet GitHub Security dans le commentaire de la PR                             | Non    | `false`            |
+| RUNS_ON             | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`) | Non    | `["ubuntu-24.04"]` |
 
 ## Permissions
 

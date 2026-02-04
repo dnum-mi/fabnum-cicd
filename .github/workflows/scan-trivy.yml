@@ -34,6 +34,11 @@ on:
         required: false
         default: false
         type: boolean
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
 
 permissions:
   contents: read
@@ -45,7 +50,7 @@ jobs:
   images-scan:
     name: Scan images vulnerabilities
     if: ${{ inputs.IMAGE != '' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     steps:
     - name: Checks-out repository
       uses: actions/checkout@v5
@@ -88,7 +93,7 @@ jobs:
   config-scan:
     name: Scan config files vulnerabilities
     if: ${{ inputs.PATH != '' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     steps:
     - name: Checks-out repository
       uses: actions/checkout@v5

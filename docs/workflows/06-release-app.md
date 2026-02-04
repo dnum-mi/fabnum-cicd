@@ -4,19 +4,20 @@ Gestion automatisée des releases d'application avec [release-please](https://gi
 
 ## Inputs
 
-| Input                    | Type    | Description                                                   | Requis | Défaut                             |
-| ------------------------ | ------- | ------------------------------------------------------------- | ------ | ---------------------------------- |
-| ENABLE_PRERELEASE        | boolean | Activer la fonctionnalité de pré-release                      | Non    | `false`                            |
-| TAG_MAJOR_AND_MINOR      | boolean | Taguer les versions majeure et mineure                        | Non    | `false`                            |
-| AUTOMERGE_PRERELEASE     | boolean | Fusionner automatiquement la PR de pré-release                | Non    | `false`                            |
-| AUTOMERGE_RELEASE        | boolean | Fusionner automatiquement la PR de release                    | Non    | `false`                            |
-| PRERELEASE_BRANCH        | string  | Branche sur laquelle créer les pré-releases                   | Non    | `develop`                          |
-| RELEASE_BRANCH           | string  | Branche sur laquelle créer les releases                       | Non    | `main`                             |
-| REBASE_PRERELEASE_BRANCH | boolean | Rebaser la branche de pré-release après une release           | Non    | `false`                            |
-| RELEASE_CONFIG_FILE      | string  | Fichier de configuration release-please pour les releases     | Non    | `release-please-config.json`       |
-| RELEASE_MANIFEST_FILE    | string  | Fichier manifest release-please pour les releases             | Non    | `.release-please-manifest.json`    |
-| PRERELEASE_CONFIG_FILE   | string  | Fichier de configuration release-please pour les pré-releases | Non    | `release-please-config-rc.json`    |
-| PRERELEASE_MANIFEST_FILE | string  | Fichier manifest release-please pour les pré-releases         | Non    | `.release-please-manifest-rc.json` |
+| Input                    | Type    | Description                                                                            | Requis | Défaut                             |
+| ------------------------ | ------- | -------------------------------------------------------------------------------------- | ------ | ---------------------------------- |
+| ENABLE_PRERELEASE        | boolean | Activer la fonctionnalité de pré-release                                               | Non    | `false`                            |
+| TAG_MAJOR_AND_MINOR      | boolean | Taguer les versions majeure et mineure                                                 | Non    | `false`                            |
+| AUTOMERGE_PRERELEASE     | boolean | Fusionner automatiquement la PR de pré-release                                         | Non    | `false`                            |
+| AUTOMERGE_RELEASE        | boolean | Fusionner automatiquement la PR de release                                             | Non    | `false`                            |
+| PRERELEASE_BRANCH        | string  | Branche sur laquelle créer les pré-releases                                            | Non    | `develop`                          |
+| RELEASE_BRANCH           | string  | Branche sur laquelle créer les releases                                                | Non    | `main`                             |
+| REBASE_PRERELEASE_BRANCH | boolean | Rebaser la branche de pré-release après une release                                    | Non    | `false`                            |
+| RELEASE_CONFIG_FILE      | string  | Fichier de configuration release-please pour les releases                              | Non    | `release-please-config.json`       |
+| RELEASE_MANIFEST_FILE    | string  | Fichier manifest release-please pour les releases                                      | Non    | `.release-please-manifest.json`    |
+| PRERELEASE_CONFIG_FILE   | string  | Fichier de configuration release-please pour les pré-releases                          | Non    | `release-please-config-rc.json`    |
+| PRERELEASE_MANIFEST_FILE | string  | Fichier manifest release-please pour les pré-releases                                  | Non    | `.release-please-manifest-rc.json` |
+| RUNS_ON                  | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`) | Non    | `["ubuntu-24.04"]`                 |
 
 ## Secrets
 

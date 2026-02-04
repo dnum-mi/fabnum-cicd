@@ -12,6 +12,7 @@ Valide que les messages de commit respectent la spécification [Conventional Com
 | ALLOWED_TYPES      | string  | Liste des types de commit autorisés, séparés par des virgules                                  | Non    | `feat,fix,docs,style,refactor,perf,test,build,ci,chore,revert` |
 | REQUIRE_SCOPE      | boolean | Exiger un scope dans les messages de commit                                                    | Non    | `false`                                                        |
 | MAX_SUBJECT_LENGTH | number  | Longueur maximale de la ligne de sujet du commit                                               | Non    | `100`                                                          |
+| RUNS_ON            | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)         | Non    | `["ubuntu-24.04"]`                                             |
 
 ## Permissions
 
