@@ -37,7 +37,12 @@ Mise à jour automatique de la version d'un chart Helm et de l'appVersion dans C
   - **called** : Effectue la mise à jour directement dans le dépôt actuel
 - Met à jour automatiquement `appVersion` dans Chart.yaml avec la version fournie.
 - Incrémente la version du chart selon le type de mise à jour spécifié.
+- **Logique prerelease** : 
+  - Si la version actuelle est stable (ex: `0.2.0`), passe à la version prerelease suivante en incrémentant le patch (ex: `0.2.1-rc`)
+  - Si la version actuelle est déjà une prerelease sans numéro (ex: `0.2.1-rc`), ajoute `.1` (ex: `0.2.1-rc.1`)
+  - Si la version actuelle a un numéro de prerelease (ex: `0.2.1-rc.1`), l'incrémente (ex: `0.2.1-rc.2`)
 - Crée une pull request avec les changements.
+- Régénère automatiquement la documentation du chart avec helm-docs.
 - Utile pour synchroniser les versions d'application avec les versions de chart.
 - Suit le versioning sémantique (semver).
 

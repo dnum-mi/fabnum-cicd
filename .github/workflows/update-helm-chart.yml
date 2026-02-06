@@ -113,8 +113,9 @@ jobs:
             PRERELEASE="${BASH_REMATCH[5]}"
             
             if [[ -z "$PRERELEASE" ]]; then
-              # No prerelease: add first prerelease without number (Release Please style)
-              NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-${{ inputs.PRERELEASE_IDENTIFIER }}"
+              # No prerelease: bump patch then add prerelease identifier
+              # This prepares the next version (e.g., 0.2.0 -> 0.2.1-rc)
+              NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))-${{ inputs.PRERELEASE_IDENTIFIER }}"
             elif [[ "$PRERELEASE" == "${{ inputs.PRERELEASE_IDENTIFIER }}" ]]; then
               # Has prerelease without number: '1.0.0-rc' -> '1.0.0-rc.1'
               NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-${{ inputs.PRERELEASE_IDENTIFIER }}.1"
