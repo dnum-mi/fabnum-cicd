@@ -134,26 +134,33 @@ jobs:
           fi
         else
           # Standard version bump (major, minor, patch)
-          if [[ $CURRENT_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+          if [[ $CURRENT_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-(.+))?$ ]]; then
             MAJOR="${BASH_REMATCH[1]}"
             MINOR="${BASH_REMATCH[2]}"
             PATCH="${BASH_REMATCH[3]}"
+            PRERELEASE="${BASH_REMATCH[5]}"
             
-            case "${{ inputs.UPGRADE_TYPE }}" in
-              major)
-                NEXT_VERSION="$((MAJOR + 1)).0.0"
-                ;;
-              minor)
-                NEXT_VERSION="${MAJOR}.$((MINOR + 1)).0"
-                ;;
-              patch)
-                NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
-                ;;
-              *)
-                echo "Invalid upgrade type: ${{ inputs.UPGRADE_TYPE }}"
-                exit 1
-                ;;
-            esac
+            if [[ -n "$PRERELEASE" ]]; then
+              # Has prerelease: release the official version without prerelease
+              NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+            else
+              # No prerelease: perform standard version bump
+              case "${{ inputs.UPGRADE_TYPE }}" in
+                major)
+                  NEXT_VERSION="$((MAJOR + 1)).0.0"
+                  ;;
+                minor)
+                  NEXT_VERSION="${MAJOR}.$((MINOR + 1)).0"
+                  ;;
+                patch)
+                  NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+                  ;;
+                *)
+                  echo "Invalid upgrade type: ${{ inputs.UPGRADE_TYPE }}"
+                  exit 1
+                  ;;
+              esac
+            fi
           else
             echo "Invalid version format: $CURRENT_VERSION"
             exit 1

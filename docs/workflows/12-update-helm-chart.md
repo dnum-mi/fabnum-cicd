@@ -41,6 +41,9 @@ Mise à jour automatique de la version d'un chart Helm et de l'appVersion dans C
   - Si la version actuelle est stable (ex: `0.2.0`), passe à la version prerelease suivante en incrémentant le patch (ex: `0.2.1-rc`)
   - Si la version actuelle est déjà une prerelease sans numéro (ex: `0.2.1-rc`), ajoute `.1` (ex: `0.2.1-rc.1`)
   - Si la version actuelle a un numéro de prerelease (ex: `0.2.1-rc.1`), l'incrémente (ex: `0.2.1-rc.2`)
+- **Logique standard (major/minor/patch)** :
+  - Si la version actuelle est une prerelease (ex: `1.2.3-rc.1`), publie d'abord la version officielle (ex: `1.2.3`)
+  - Si la version actuelle est stable, applique le bump classique (major/minor/patch)
 - Crée une pull request avec les changements.
 - Régénère automatiquement la documentation du chart avec helm-docs.
 - Utile pour synchroniser les versions d'application avec les versions de chart.
