@@ -116,17 +116,30 @@ jobs:
               # No prerelease: bump patch then add prerelease identifier
               # This prepares the next version (e.g., 0.2.0 -> 0.2.1-rc)
               NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))-${{ inputs.PRERELEASE_IDENTIFIER }}"
-            elif [[ "$PRERELEASE" == "${{ inputs.PRERELEASE_IDENTIFIER }}" ]]; then
-              # Has prerelease without number: '1.0.0-rc' -> '1.0.0-rc.1'
-              NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-${{ inputs.PRERELEASE_IDENTIFIER }}.1"
-            elif [[ "$PRERELEASE" =~ ^${{ inputs.PRERELEASE_IDENTIFIER }}\.([0-9]+)$ ]]; then
-              # Has numbered prerelease: increment the number
-              NUM="${BASH_REMATCH[1]}"
-              NEXT_NUM=$((NUM + 1))
-              NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-${{ inputs.PRERELEASE_IDENTIFIER }}.${NEXT_NUM}"
             else
-              echo "Unexpected prerelease format: $PRERELEASE"
-              exit 1
+              # Has prerelease: extract current identifier
+              if [[ "$PRERELEASE" =~ ^([a-z]+)(\.([0-9]+))?$ ]]; then
+                CURRENT_IDENTIFIER="${BASH_REMATCH[1]}"
+                CURRENT_NUM="${BASH_REMATCH[3]}"
+                
+                if [[ "$CURRENT_IDENTIFIER" != "${{ inputs.PRERELEASE_IDENTIFIER }}" ]]; then
+                  # Different identifier: switch to new identifier without number
+                  # e.g., 1.0.0-alpha.2 -> 1.0.0-beta
+                  NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-${{ inputs.PRERELEASE_IDENTIFIER }}"
+                elif [[ -z "$CURRENT_NUM" ]]; then
+                  # Same identifier without number: add .1
+                  # e.g., 1.0.0-rc -> 1.0.0-rc.1
+                  NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-${{ inputs.PRERELEASE_IDENTIFIER }}.1"
+                else
+                  # Same identifier with number: increment
+                  # e.g., 1.0.0-rc.1 -> 1.0.0-rc.2
+                  NEXT_NUM=$((CURRENT_NUM + 1))
+                  NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-${{ inputs.PRERELEASE_IDENTIFIER }}.${NEXT_NUM}"
+                fi
+              else
+                echo "Unexpected prerelease format: $PRERELEASE"
+                exit 1
+              fi
             fi
           else
             echo "Invalid version format: $CURRENT_VERSION"
