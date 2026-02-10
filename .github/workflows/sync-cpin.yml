@@ -5,19 +5,24 @@ on:
     inputs:
       GITLAB_URL:
         description: Url of the CPiN Gitlab instance.
-        required: false
+        required: true
         type: string
       GIT_MIRROR_PROJECT_ID:
         description: Gitlab project ID of the mirror repository.
-        required: false
+        required: true
         type: string
       BRANCH_TO_SYNC:
         description: Git branch to synchronize.
         required: false
         type: string
+      SYNC_ALL:
+        description: Whether to synchronize all branches or just the specified one.
+        required: false
+        type: boolean
+        default: false
       REPOSITORY_NAME:
         description: Gitlab repository to synchronize.
-        required: false
+        required: true
         type: string
       ADDITIONAL_VARIABLES:
         description: Additional variables to pass to GitLab pipeline (JSON format, e.g., '{"VAR1":"value1","VAR2":"value2"}').
@@ -31,10 +36,7 @@ on:
     secrets:
       GIT_MIRROR_TOKEN:
         description: Gitlab token used to perfom the synchronization.
-        required: false
-
-permissions:
-  contents: write
+        required: true
 
 jobs:
   trigger-dso:
@@ -46,13 +48,22 @@ jobs:
         run: |
           # Start building curl command array
           CURL_ARGS=(
-            -X POST --fail
+            -X POST
+            -fsSL
             -F "token=${{ secrets.GIT_MIRROR_TOKEN }}"
             -F "ref=main"
-            -F "variables[GIT_BRANCH_DEPLOY]=${{ inputs.BRANCH_TO_SYNC }}"
-            -F "variables[PROJECT_NAME]=${{ inputs.REPOSITORY_NAME }}"
+            -F "variables[PROJECT_NAME]=${{ secrets.REPOSITORY_NAME || inputs.REPOSITORY_NAME }}"
             -F "variables[GITHUB_COMMIT_SHA]=${{ github.sha }}"
           )
+          
+          # Handle branch synchronization based on SYNC_ALL
+          if [ "${{ inputs.SYNC_ALL }}" = "true" ]; then
+            echo "Synchronizing all branches..."
+            CURL_ARGS+=(-F "variables[SYNC_ALL]=true")
+          else
+            echo "Synchronizing branch: ${{ inputs.BRANCH_TO_SYNC }}"
+            CURL_ARGS+=(-F "variables[GIT_BRANCH_DEPLOY]=${{ inputs.BRANCH_TO_SYNC }}")
+          fi
           
           # Add additional variables if provided
           if [ -n "${{ inputs.ADDITIONAL_VARIABLES }}" ]; then
@@ -68,9 +79,14 @@ jobs:
           fi
           
           # Add the API endpoint URL
-          CURL_ARGS+=("${{ inputs.GITLAB_URL }}/api/v4/projects/${{ inputs.GIT_MIRROR_PROJECT_ID }}/trigger/pipeline")
+          GITLAB_URL=$(echo '${{ inputs.GITLAB_URL }}' | sed 's:/*$::')
+          CURL_ARGS+=("$GITLAB_URL/api/v4/projects/${{ inputs.GIT_MIRROR_PROJECT_ID }}/trigger/pipeline")
           
           # Execute the curl command
           curl "${CURL_ARGS[@]}"
           
-          echo "Syncing repository '${{ inputs.REPOSITORY_NAME }}' (branch ${{ inputs.BRANCH_TO_SYNC }}) with CPiN."
+          if [ "${{ inputs.SYNC_ALL }}" = "true" ]; then
+            echo "Syncing all branches of repository '${{ inputs.REPOSITORY_NAME }}' with CPiN."
+          else
+            echo "Syncing repository '${{ inputs.REPOSITORY_NAME }}' (branch ${{ inputs.BRANCH_TO_SYNC }}) with CPiN."
+          fi
