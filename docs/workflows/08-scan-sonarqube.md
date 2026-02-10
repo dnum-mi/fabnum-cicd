@@ -9,6 +9,7 @@ Analyse de la qualité du code avec [SonarQube](https://www.sonarqube.org/), inc
 | SONAR_URL              | string  | URL du serveur SonarQube                                                               | Oui    | -                     |
 | SOURCES_PATH           | string  | Chemins vers le code source à analyser (ex: `apps,packages`)                           | Non    | -                     |
 | SONAR_EXTRA_ARGS       | string  | Arguments supplémentaires pour SonarQube                                               | Non    | -                     |
+| FAIL_ON_ERROR          | boolean | Faire échouer le workflow en cas d'erreur d'analyse                                    | Non    | `true`                |
 | COVERAGE_IMPORT        | boolean | Activer l'import d'artefact de couverture                                              | Non    | `false`               |
 | COVERAGE_ARTIFACT_NAME | string  | Nom de l'artefact de couverture à importer                                             | Non    | `unit-tests-coverage` |
 | COVERAGE_ARTIFACT_PATH | string  | Chemin de téléchargement de l'artefact de couverture                                   | Non    | `./coverage`          |
@@ -36,6 +37,7 @@ Analyse de la qualité du code avec [SonarQube](https://www.sonarqube.org/), inc
 - Configure automatiquement les paramètres pour les pull requests (clé, branche, base).
 - Utilise `fetch-depth: 0` pour obtenir l'historique complet Git nécessaire à l'analyse.
 - Les arguments supplémentaires permettent de personnaliser l'analyse selon les besoins du projet.
+- **FAIL_ON_ERROR** : Par défaut à `true`, le workflow échoue si l'analyse SonarQube ou la Quality Gate détecte des problèmes. Mettre à `false` pour continuer malgré les erreurs.
 
 ## Exemples
 
@@ -101,4 +103,20 @@ jobs:
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+```
+
+### Sans bloquer le workflow en cas d'erreur
+
+```yaml
+jobs:
+  scan-sonarqube:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@main
+    with:
+      SONAR_URL: https://sonarqube.example.com
+      SOURCES_PATH: src
+      FAIL_ON_ERROR: false
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+```
 ```

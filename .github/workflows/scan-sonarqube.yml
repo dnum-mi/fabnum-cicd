@@ -30,6 +30,11 @@ on:
         description: Sonarqube server URL
         required: true
         type: string
+      FAIL_ON_ERROR:
+        description: Whether to fail the workflow on linting errors
+        type: boolean
+        required: false
+        default: true
       RUNS_ON:
         description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
         required: false
@@ -84,7 +89,7 @@ jobs:
           -Dsonar.sources=${{ inputs.SOURCES_PATH}}
           ${{ github.event_name == 'pull_request' && steps.sonar-args.outputs.SONAR_ARGS_PR || steps.sonar-args.outputs.SONAR_ARGS_BRANCH }}
           ${{ inputs.SONAR_EXTRA_ARGS != '' && inputs.SONAR_EXTRA_ARGS }}
-      continue-on-error: true
+      continue-on-error: ${{ inputs.FAIL_ON_ERROR == false }}
 
     - name: SonarQube Quality Gate check
       id: sonarqube-quality-gate-check
@@ -93,4 +98,4 @@ jobs:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ inputs.SONAR_URL }}
       timeout-minutes: 5
-      continue-on-error: true
+      continue-on-error: ${{ inputs.FAIL_ON_ERROR == false }}
