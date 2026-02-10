@@ -57,17 +57,3 @@ Validation locale du code avant commit et push :
 | [yaml-lint](./git-hooks/pre-commit/yaml-lint)                     | `pre-commit` | Lint YAML avec yamllint             |
 
 Consultez la [documentation des git hooks](./docs/git-hooks/01-introduction.md) pour les instructions d'installation.
-
-## Contribution
-
-Les contributions sont les bienvenues ! Pour proposer des modifications :
-
-1. Forkez le dépôt
-2. Créez une branche pour votre fonctionnalité (`git checkout -b feat/nouvelle-fonctionnalite`)
-3. Committez vos changements en respectant les [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
-4. Poussez vers la branche (`git push origin feat/nouvelle-fonctionnalite`)
-5. Ouvrez une Pull Request
-
-## Licence
-
-Ce projet est sous licence [MIT](./LICENSE).
