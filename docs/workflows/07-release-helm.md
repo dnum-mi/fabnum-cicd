@@ -4,14 +4,15 @@ Publication des charts Helm sur un registre OCI avec [chart-releaser](https://gi
 
 ## Inputs
 
-| Input             | Type   | Description                                                                 | Requis | Défaut              |
-| ----------------- | ------ | --------------------------------------------------------------------------- | ------ | ------------------- |
-| CHARTS_DIR        | string | Répertoire contenant les charts Helm                                        | Non    | `./charts`          |
-| HELM_REPOS        | string | Dépôts Helm à ajouter (format: `name=url`, séparés par des virgules)        | Non    | -                   |
-| REGISTRY          | string | Registre OCI pour publier les charts (ex: `ghcr.io`, `registry.gitlab.com`) | Non    | `ghcr.io`           |
-| REPOSITORY        | string | Chemin du repository dans le registre OCI (défaut: `github.repository`)     | Non    | `github.repository` |
-| REGISTRY_USERNAME | string | Nom d'utilisateur pour l'authentification au registre OCI                   | Non    | -                   |
-| REGISTRY_PASSWORD | string | Mot de passe pour l'authentification au registre OCI                        | Non    | -                   |
+| Input             | Type   | Description                                                                            | Requis | Défaut              |
+| ----------------- | ------ | -------------------------------------------------------------------------------------- | ------ | ------------------- |
+| CHARTS_DIR        | string | Répertoire contenant les charts Helm                                                   | Non    | `./charts`          |
+| HELM_REPOS        | string | Dépôts Helm à ajouter (format: `name=url`, séparés par des virgules)                   | Non    | -                   |
+| REGISTRY          | string | Registre OCI pour publier les charts (ex: `ghcr.io`, `registry.gitlab.com`)            | Non    | `ghcr.io`           |
+| REPOSITORY        | string | Chemin du repository dans le registre OCI (défaut: `github.repository`)                | Non    | `github.repository` |
+| REGISTRY_USERNAME | string | Nom d'utilisateur pour l'authentification au registre OCI                              | Non    | -                   |
+| REGISTRY_PASSWORD | string | Mot de passe pour l'authentification au registre OCI                                   | Non    | -                   |
+| RUNS_ON           | string | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`) | Non    | `["ubuntu-24.04"]`  |
 
 ## Permissions
 
