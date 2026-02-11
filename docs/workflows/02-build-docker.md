@@ -29,6 +29,10 @@ Build et push d'images Docker multi-architecture (amd64/arm64) vers un registre 
 ## Notes
 
 - Supporte Ubuntu 24.04 et les runners ARM pour les builds matrix.
+- **Normalisation du nom d'image** : Le nom de l'image est automatiquement normalisé pour être compatible avec les registres OCI (notamment GHCR) :
+  - Les majuscules sont converties en minuscules
+  - Les underscores (`_`) sont remplacés par des tirets (`-`)
+  - Exemple : `ghcr.io/My-Org/My_App` → `ghcr.io/my-org/my-app`
 - L'input `LATEST_TAG` permet de taguer les images avec `latest`.
 - `TAG_MAJOR_AND_MINOR` crée des tags supplémentaires pour les releases stables (ex: `1.2.3` crée aussi `1.2` et `1`). S'applique uniquement aux versions non-prerelease.
 - Logique de connexion au registre : utilise le token GitHub pour `ghcr.io`, sinon utilise les credentials fournis.

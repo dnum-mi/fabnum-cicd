@@ -68,6 +68,7 @@ jobs:
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     outputs:
       registry: ${{ steps.infos.outputs.REGISTRY }}
+      normalized-image: ${{ steps.infos.outputs.NORMALIZED_IMAGE }}
       lower-image: ${{ steps.infos.outputs.LOWER_IMAGE }}
       major-tag: ${{ steps.infos.outputs.MAJOR_TAG }}
       minor-tag: ${{ steps.infos.outputs.MINOR_TAG }}
@@ -82,8 +83,11 @@ jobs:
     - name: Get infos
       id: infos
       run: |
-        echo "REGISTRY=$(echo '${{ inputs.IMAGE_NAME }}' | cut -d "/" -f 1)" >> $GITHUB_OUTPUT
-        echo "LOWER_IMAGE=$(echo '${{ inputs.IMAGE_NAME }}' | cut -d "/" -f 2- | sed 's/\//-/g' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+        # Normalize image name: lowercase and replace _ with -
+        NORMALIZED_IMAGE=$(echo '${{ inputs.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')
+        echo "NORMALIZED_IMAGE=$NORMALIZED_IMAGE" >> $GITHUB_OUTPUT
+        echo "REGISTRY=$(echo '${{ inputs.IMAGE_NAME }}' | cut -d "/" -f 1 | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+        echo "LOWER_IMAGE=$(echo '${{ inputs.IMAGE_NAME }}' | cut -d "/" -f 2- | sed 's/\//-/g' | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')" >> $GITHUB_OUTPUT
         if [[ "${{ inputs.IMAGE_TAG }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
           echo "VERSION_TAG=$(echo '${{ inputs.IMAGE_TAG }}' | sed 's/-.*$//')" >> $GITHUB_OUTPUT
           echo "PRERELEASE_TAG=$(echo '${{ inputs.IMAGE_TAG }}' | sed -n 's/^[0-9.]*-\(.*\)$/\1/p')" >> $GITHUB_OUTPUT
@@ -129,7 +133,7 @@ jobs:
         file: ${{ inputs.IMAGE_DOCKERFILE }}
         provenance: false
         platforms: ${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && inputs.USE_QEMU && 'linux/amd64,linux/arm64') || (inputs.BUILD_ARM64 && 'linux/arm64') || (inputs.BUILD_AMD64 && 'linux/amd64') }}
-        outputs: type=image,name=${{ inputs.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+        outputs: type=image,name=${{ needs.infos.outputs.normalized-image }},push-by-digest=true,name-canonical=true,push=true
         build-args: |
           APP_VERSION=${{ inputs.IMAGE_TAG || needs.infos.outputs.short-sha }}
 
@@ -168,7 +172,7 @@ jobs:
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ${{ inputs.IMAGE_NAME }}
+        images: ${{ needs.infos.outputs.normalized-image }}
         tags: |
           type=raw,value=${{ needs.infos.outputs.lower-branch }},enable=${{ github.head_ref != 'main' && github.head_ref != 'develop' }}
           type=raw,value=${{ needs.infos.outputs.short-sha }},enable=${{ needs.infos.outputs.short-sha != '' }}
@@ -189,8 +193,8 @@ jobs:
       working-directory: /tmp/digests/${{ needs.infos.outputs.lower-image }}
       run: |
         docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-          $(printf '${{ inputs.IMAGE_NAME }}@sha256:%s ' *)
+          $(printf '${{ needs.infos.outputs.normalized-image }}@sha256:%s ' *)
 
     - name: Inspect image
       run: |
-        docker buildx imagetools inspect ${{ inputs.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+        docker buildx imagetools inspect ${{ needs.infos.outputs.normalized-image }}:${{ steps.meta.outputs.version }}

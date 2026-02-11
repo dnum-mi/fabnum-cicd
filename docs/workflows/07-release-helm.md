@@ -25,6 +25,10 @@ Publication des charts Helm sur un registre OCI avec [chart-releaser](https://gi
 
 - Utilise chart-releaser-action pour automatiser le packaging et la publication des charts.
 - Par défaut, publie vers GitHub Container Registry (ghcr.io), mais supporte n'importe quel registre OCI.
+- **Normalisation du nom de repository** : Le chemin du repository OCI est automatiquement normalisé pour être compatible avec les registres OCI :
+  - Les majuscules sont converties en minuscules
+  - Les underscores (`_`) sont remplacés par des tirets (`-`)
+  - Exemple : `My-Org/My_Charts` → `my-org/my-charts`
 - Pour ghcr.io, utilise automatiquement les credentials GitHub (pas besoin de fournir REGISTRY_USERNAME/PASSWORD).
 - Pour les autres registres, fournissez REGISTRY_USERNAME et REGISTRY_PASSWORD.
 - Seuls les charts modifiés sont packagés et publiés.
@@ -106,5 +110,4 @@ jobs:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@main
     with:
       CHARTS_DIR: ./helm-charts
-      REGISTRY: ghcr.io
 ```
