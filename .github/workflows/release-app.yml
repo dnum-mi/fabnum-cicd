@@ -13,6 +13,10 @@ on:
         type: boolean
         required: false
         default: false
+      ADDITIONAL_RELEASE_ARTIFACTS:
+        description: Comma-separated list of additional release artifacts to upload (e.g., 'artifact/some-build-artifact.zip,artifact/another-artifact.tar.gz')
+        type: string
+        required: false
       AUTOMERGE_PRERELEASE:
         description: Automatically merge the prerelease pull request
         type: boolean
@@ -111,6 +115,12 @@ jobs:
         target-branch: ${{ github.ref_name }}
         config-file: ${{ (github.ref_name == inputs.RELEASE_BRANCH && inputs.RELEASE_CONFIG_FILE) || (inputs.ENABLE_PRERELEASE && github.ref_name == inputs.PRERELEASE_BRANCH && inputs.PRERELEASE_CONFIG_FILE) || inputs.RELEASE_CONFIG_FILE }}
         manifest-file: ${{ (github.ref_name == inputs.RELEASE_BRANCH && inputs.RELEASE_MANIFEST_FILE) || (inputs.ENABLE_PRERELEASE && github.ref_name == inputs.PRERELEASE_BRANCH && inputs.PRERELEASE_MANIFEST_FILE) || inputs.RELEASE_MANIFEST_FILE }}
+
+    - name: Upload Additional Release Artifacts
+      if: ${{ steps.release.outputs.release_created && inputs.ADDITIONAL_RELEASE_ARTIFACTS != '' }}
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: gh release upload ${{ steps.release.outputs.tag_name }} $(echo ${{ inputs.ADDITIONAL_RELEASE_ARTIFACTS }} | tr ',' ' ')
 
     - name: Tag major and minor versions
       if: ${{ steps.release.outputs.release_created && inputs.TAG_MAJOR_AND_MINOR }}

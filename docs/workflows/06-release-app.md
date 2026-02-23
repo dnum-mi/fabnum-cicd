@@ -4,20 +4,21 @@ Gestion automatisée des releases d'application avec [release-please](https://gi
 
 ## Inputs
 
-| Input                    | Type    | Description                                                                            | Requis | Défaut                             |
-| ------------------------ | ------- | -------------------------------------------------------------------------------------- | ------ | ---------------------------------- |
-| ENABLE_PRERELEASE        | boolean | Activer la fonctionnalité de pré-release                                               | Non    | `false`                            |
-| TAG_MAJOR_AND_MINOR      | boolean | Taguer les versions majeure et mineure                                                 | Non    | `false`                            |
-| AUTOMERGE_PRERELEASE     | boolean | Fusionner automatiquement la PR de pré-release                                         | Non    | `false`                            |
-| AUTOMERGE_RELEASE        | boolean | Fusionner automatiquement la PR de release                                             | Non    | `false`                            |
-| PRERELEASE_BRANCH        | string  | Branche sur laquelle créer les pré-releases                                            | Non    | `develop`                          |
-| RELEASE_BRANCH           | string  | Branche sur laquelle créer les releases                                                | Non    | `main`                             |
-| REBASE_PRERELEASE_BRANCH | boolean | Rebaser la branche de pré-release après une release                                    | Non    | `false`                            |
-| RELEASE_CONFIG_FILE      | string  | Fichier de configuration release-please pour les releases                              | Non    | `release-please-config.json`       |
-| RELEASE_MANIFEST_FILE    | string  | Fichier manifest release-please pour les releases                                      | Non    | `.release-please-manifest.json`    |
-| PRERELEASE_CONFIG_FILE   | string  | Fichier de configuration release-please pour les pré-releases                          | Non    | `release-please-config-rc.json`    |
-| PRERELEASE_MANIFEST_FILE | string  | Fichier manifest release-please pour les pré-releases                                  | Non    | `.release-please-manifest-rc.json` |
-| RUNS_ON                  | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`) | Non    | `["ubuntu-24.04"]`                 |
+| Input                        | Type    | Description                                                                                                               | Requis | Défaut                             |
+| ---------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------- | ------ | ---------------------------------- |
+| ENABLE_PRERELEASE            | boolean | Activer la fonctionnalité de pré-release                                                                                  | Non    | `false`                            |
+| TAG_MAJOR_AND_MINOR          | boolean | Taguer les versions majeure et mineure                                                                                    | Non    | `false`                            |
+| ADDITIONAL_RELEASE_ARTIFACTS | string  | Liste d'artefacts supplémentaires à uploader, séparés par des virgules (ex: `artifact/build.zip,artifact/archive.tar.gz`) | Non    |                                    |
+| AUTOMERGE_PRERELEASE         | boolean | Fusionner automatiquement la PR de pré-release                                                                            | Non    | `false`                            |
+| AUTOMERGE_RELEASE            | boolean | Fusionner automatiquement la PR de release                                                                                | Non    | `false`                            |
+| PRERELEASE_BRANCH            | string  | Branche sur laquelle créer les pré-releases                                                                               | Non    | `develop`                          |
+| RELEASE_BRANCH               | string  | Branche sur laquelle créer les releases                                                                                   | Non    | `main`                             |
+| REBASE_PRERELEASE_BRANCH     | boolean | Rebaser la branche de pré-release après une release                                                                       | Non    | `false`                            |
+| RELEASE_CONFIG_FILE          | string  | Fichier de configuration release-please pour les releases                                                                 | Non    | `release-please-config.json`       |
+| RELEASE_MANIFEST_FILE        | string  | Fichier manifest release-please pour les releases                                                                         | Non    | `.release-please-manifest.json`    |
+| PRERELEASE_CONFIG_FILE       | string  | Fichier de configuration release-please pour les pré-releases                                                             | Non    | `release-please-config-rc.json`    |
+| PRERELEASE_MANIFEST_FILE     | string  | Fichier manifest release-please pour les pré-releases                                                                     | Non    | `.release-please-manifest-rc.json` |
+| RUNS_ON                      | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                    | Non    | `["ubuntu-24.04"]`                 |
 
 ## Secrets
 
@@ -50,6 +51,7 @@ Gestion automatisée des releases d'application avec [release-please](https://gi
 - Sur `RELEASE_BRANCH` (par défaut `main`), utilise les fichiers spécifiés par `RELEASE_CONFIG_FILE` et `RELEASE_MANIFEST_FILE`.
 - Sur `PRERELEASE_BRANCH` (par défaut `develop`), utilise les fichiers spécifiés par `PRERELEASE_CONFIG_FILE` et `PRERELEASE_MANIFEST_FILE` (seulement quand `ENABLE_PRERELEASE: true`).
 - Si `TAG_MAJOR_AND_MINOR: true`, crée les tags `v<major>` et `v<major>.<minor>` après la création d'une release.
+- Si `ADDITIONAL_RELEASE_ARTIFACTS` est défini, les artefacts listés (séparés par des virgules) sont uploadés sur la release GitHub via `gh release upload` après sa création.
 - Si `AUTOMERGE_*` est activé et qu'un PAT est fourni, tente de fusionner automatiquement la PR de release.
 - Optionnellement, rebase `PRERELEASE_BRANCH` sur `RELEASE_BRANCH` après une release quand `REBASE_PRERELEASE_BRANCH: true` (seulement quand `ENABLE_PRERELEASE: true`).
 
@@ -229,6 +231,27 @@ jobs:
       AUTOMERGE_RELEASE: true
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
+```
+
+### Avec upload d'artefacts supplémentaires
+
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: make build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: dist/
+
+  release:
+    needs: build
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@main
+    with:
+      ADDITIONAL_RELEASE_ARTIFACTS: artifact/dist.zip,artifact/checksums.txt
 ```
 
 ### Avec fichiers de configuration personnalisés
