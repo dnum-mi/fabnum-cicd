@@ -4,40 +4,33 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 
 ## Liste des workflows disponibles
 
-### Build & Déploiement
-
-- [**02 - Build Docker**](./02-build-docker.md) - Build et push d'images Docker multi-architecture
-
-### Maintenance
-
-- [**03 - Clean Cache**](./03-clean-cache.md) - Nettoyage du cache GitHub Actions et des images GHCR
-
 ### Linting & Validation
 
-- [**04 - Lint Commits**](./04-lint-commits.md) - Validation des messages de commit (Conventional Commits)
-- [**05 - Lint Helm**](./05-lint-helm.md) - Lint des charts Helm avec chart-testing
+- [**Lint Commits**](./lint-commits.md) - Validation des messages de commit (Conventional Commits)
+- [**Lint Helm**](./lint-helm.md) - Lint des charts Helm avec chart-testing
+- [**Lint Helm Schema**](./lint-helm-schema.md) - Validation des values Helm contre un JSON Schema
+- [**Lint YAML**](./lint-yaml.md) - Lint des fichiers YAML avec yamllint
 
-### Release & Versioning
+### Build & Release
 
-- [**06 - Release App**](./06-release-app.md) - Gestion automatisée des releases d'application avec release-please
-- [**07 - Release Helm**](./07-release-helm.md) - Publication de charts Helm sur registres OCI
+- [**Build Docker**](./build-docker.md) - Build et push d'images Docker multi-architecture
+- [**Release App**](./release-app.md) - Gestion automatisée des releases d'application avec release-please
+- [**Release Helm**](./release-helm.md) - Publication de charts Helm sur registres OCI
+- [**Update Helm Chart**](./update-helm-chart.md) - Mise à jour automatique des versions de charts Helm
 
 ### Sécurité & Qualité
 
-- [**08 - Scan SonarQube**](./08-scan-sonarqube.md) - Analyse de qualité du code avec SonarQube
-- [**09 - Scan Trivy**](./09-scan-trivy.md) - Analyse de vulnérabilités avec Trivy
-
-### Synchronisation
-
-- [**10 - Sync CPiN**](./10-sync-cpin.md) - Synchronisation avec l'instance GitLab CPiN
+- [**Scan SonarQube**](./scan-sonarqube.md) - Analyse de qualité du code avec SonarQube
+- [**Scan Trivy**](./scan-trivy.md) - Analyse de vulnérabilités avec Trivy
 
 ### Tests
 
-- [**11 - Test Helm**](./11-test-helm.md) - Test d'installation des charts Helm dans un cluster Kind
+- [**Test Helm**](./test-helm.md) - Test d'installation des charts Helm dans un cluster Kind
 
 ### Utilitaires
 
-- [**12 - Update Helm Chart**](./12-update-helm-chart.md) - Mise à jour automatique des versions de charts Helm
+- [**Clean Cache**](./clean-cache.md) - Nettoyage du cache GitHub Actions et des images GHCR
+- [**Sync CPiN**](./sync-cpin.md) - Synchronisation avec l'instance GitLab CPiN
 
 ## Utilisation rapide
 
