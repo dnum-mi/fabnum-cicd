@@ -1,61 +1,79 @@
 # Fabrique Numérique - CI/CD
 
-Ce dépôt centralise les workflows GitHub Actions réutilisables et les git hooks pour maintenir la cohérence et la qualité du code dans tous les dépôts de la Fabrique Numérique.
+Ce dépôt centralise les [workflows GitHub Actions réutilisables](https://docs.github.com/en/actions/sharing-automations/reusing-workflows) et les git hooks pour maintenir la cohérence et la qualité du code dans tous les dépôts de la Fabrique Numérique.
 
-## Documentation
+## Utilisation rapide
 
-### Workflows GitHub Actions
+Référencez un workflow avec `uses` dans votre fichier de workflow :
 
-Workflows réutilisables pour l'intégration et le déploiement continu :
+```yaml
+jobs:
+  lint-commits:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@main
+```
 
-- [01 - Introduction](./docs/workflows/01-introduction.md) - Vue d'ensemble et utilisation
-- [02 - Build Docker](./docs/workflows/02-build-docker.md) - Build d'images multi-architecture
-- [03 - Clean Cache](./docs/workflows/03-clean-cache.md) - Nettoyage du cache GitHub Actions et GHCR
-- [04 - Lint Commits](./docs/workflows/04-lint-commits.md) - Validation Conventional Commits
-- [05 - Lint Helm](./docs/workflows/05-lint-helm.md) - Lint des charts Helm
-- [06 - Release App](./docs/workflows/06-release-app.md) - Gestion automatisée des releases
-- [07 - Release Helm](./docs/workflows/07-release-helm.md) - Publication de charts Helm
-- [08 - Scan SonarQube](./docs/workflows/08-scan-sonarqube.md) - Analyse qualité du code
-- [09 - Scan Trivy](./docs/workflows/09-scan-trivy.md) - Analyse de vulnérabilités
-- [10 - Sync CPiN](./docs/workflows/10-sync-cpin.md) - Synchronisation GitLab CPiN
-- [11 - Test Helm](./docs/workflows/11-test-helm.md) - Tests d'installation des charts
-- [12 - Update Helm Chart](./docs/workflows/12-update-helm-chart.md) - Mise à jour des versions de charts
-- [13 - Lint YAML](./docs/workflows/13-lint-yaml.md) - Lint des fichiers YAML
-- [14 - Lint Helm Schemas](./docs/workflows/14-lint-helm-schema.md) - Lint des fichiers de schemas Helm
+> [!TIP]
+> Consultez l'[introduction](./docs/workflows/introduction.md) pour un guide complet avec des exemples de pipelines CI, CD et Helm.
 
-### Git Hooks
+## Workflows
 
-Validation locale du code avant commit et push :
+### Linting & Validation
 
-- [01 - Introduction](./docs/git-hooks/01-introduction.md) - Installation et configuration
-- [02 - Hooks commit-msg](./docs/git-hooks/02-commit-msg.md) - Validation des messages de commit
-- [03 - Hooks pre-commit](./docs/git-hooks/03-pre-commit.md) - Lint avant commit
-- [04 - Hooks pre-push](./docs/git-hooks/04-pre-push.md) - Vérification des signatures GPG
+| Workflow | Description | Docs |
+| --- | --- | --- |
+| [lint-commits.yml](./.github/workflows/lint-commits.yml) | Validation des messages de commit ([Conventional Commits](https://www.conventionalcommits.org)) | [docs](./docs/workflows/lint-commits.md) |
+| [lint-helm.yml](./.github/workflows/lint-helm.yml) | Lint des charts Helm avec `chart-testing` | [docs](./docs/workflows/lint-helm.md) |
+| [lint-helm-schema.yml](./.github/workflows/lint-helm-schema.yml) | Validation des values Helm contre un JSON Schema avec `check-jsonschema` | [docs](./docs/workflows/lint-helm-schema.md) |
+| [lint-yaml.yml](./.github/workflows/lint-yaml.yml) | Lint des fichiers YAML avec `yamllint` | [docs](./docs/workflows/lint-yaml.md) |
 
-## Workflows disponibles
+### Build & Release
 
-| Workflow                                                           | Description                                          |
-| ------------------------------------------------------------------ | ---------------------------------------------------- |
-| [build-docker.yml](./.github/workflows/build-docker.yml)           | Build et push d'images Docker multi-architecture     |
-| [clean-cache.yml](./.github/workflows/clean-cache.yml)             | Nettoyage du cache GitHub Actions et des images GHCR |
-| [lint-commits.yml](./.github/workflows/lint-commits.yml)           | Validation Conventional Commits                      |
-| [lint-helm.yml](./.github/workflows/lint-helm.yml)                 | Lint des charts Helm avec chart-testing              |
-| [release-app.yml](./.github/workflows/release-app.yml)             | Gestion des releases avec release-please             |
-| [release-helm.yml](./.github/workflows/release-helm.yml)           | Publication de charts Helm sur registres OCI         |
-| [scan-sonarqube.yml](./.github/workflows/scan-sonarqube.yml)       | Analyse qualité du code avec SonarQube               |
-| [scan-trivy.yml](./.github/workflows/scan-trivy.yml)               | Analyse de vulnérabilités avec Trivy                 |
-| [sync-cpin.yml](./.github/workflows/sync-cpin.yml)                 | Synchronisation vers GitLab CPiN                     |
-| [test-helm.yml](./.github/workflows/test-helm.yml)                 | Tests d'installation des charts dans Kind            |
-| [update-helm-chart.yml](./.github/workflows/update-helm-chart.yml) | Mise à jour automatique des versions de charts       |
+| Workflow | Description | Docs |
+| --- | --- | --- |
+| [build-docker.yml](./.github/workflows/build-docker.yml) | Build et push d'images Docker multi-architecture (`amd64`/`arm64`) | [docs](./docs/workflows/build-docker.md) |
+| [release-app.yml](./.github/workflows/release-app.yml) | Gestion automatisée des releases avec `release-please` (tags, changelogs, pré-releases) | [docs](./docs/workflows/release-app.md) |
+| [release-helm.yml](./.github/workflows/release-helm.yml) | Publication de charts Helm sur registres OCI | [docs](./docs/workflows/release-helm.md) |
+| [update-helm-chart.yml](./.github/workflows/update-helm-chart.yml) | Mise à jour automatique des versions de charts Helm | [docs](./docs/workflows/update-helm-chart.md) |
 
-## Git Hooks disponibles
+### Sécurité & Qualité
 
-| Hook                                                              | Type         | Description                         |
-| ----------------------------------------------------------------- | ------------ | ----------------------------------- |
-| [conventional-commit](./git-hooks/commit-msg/conventional-commit) | `commit-msg` | Validation Conventional Commits     |
-| [eslint-lint](./git-hooks/pre-commit/eslint-lint)                 | `pre-commit` | Lint JS/TS/JSON/MD/YAML avec ESLint |
-| [helm-lint](./git-hooks/pre-commit/helm-lint)                     | `pre-commit` | Lint des charts Helm                |
-| [signed-commit](./git-hooks/pre-push/signed-commit)               | `pre-push`   | Vérification des signatures GPG     |
-| [yaml-lint](./git-hooks/pre-commit/yaml-lint)                     | `pre-commit` | Lint YAML avec yamllint             |
+| Workflow | Description | Docs |
+| --- | --- | --- |
+| [scan-sonarqube.yml](./.github/workflows/scan-sonarqube.yml) | Analyse qualité du code avec SonarQube | [docs](./docs/workflows/scan-sonarqube.md) |
+| [scan-trivy.yml](./.github/workflows/scan-trivy.yml) | Analyse de vulnérabilités (images, config, filesystem) avec Trivy | [docs](./docs/workflows/scan-trivy.md) |
 
-Consultez la [documentation des git hooks](./docs/git-hooks/01-introduction.md) pour les instructions d'installation.
+### Tests
+
+| Workflow | Description | Docs |
+| --- | --- | --- |
+| [test-helm.yml](./.github/workflows/test-helm.yml) | Tests d'installation des charts dans un cluster Kind | [docs](./docs/workflows/test-helm.md) |
+
+### Utilitaires
+
+| Workflow | Description | Docs |
+| --- | --- | --- |
+| [clean-cache.yml](./.github/workflows/clean-cache.yml) | Nettoyage du cache GitHub Actions et des images GHCR | [docs](./docs/workflows/clean-cache.md) |
+| [sync-cpin.yml](./.github/workflows/sync-cpin.yml) | Synchronisation vers l'instance GitLab CPiN | [docs](./docs/workflows/sync-cpin.md) |
+
+### Secrets requis
+
+Certains workflows nécessitent des secrets à configurer dans les **Settings > Secrets** du dépôt :
+
+| Secret | Workflows | Description |
+| --- | --- | --- |
+| `GH_PAT` | release-app, update-helm-chart | Personal Access Token GitHub (pour automerge et cross-repo) |
+| `SONAR_TOKEN` | scan-sonarqube | Token d'authentification SonarQube |
+| `SONAR_PROJECT_KEY` | scan-sonarqube | Clé du projet SonarQube |
+| `GIT_MIRROR_TOKEN` | sync-cpin | Token GitLab pour la synchronisation CPiN |
+
+## Git Hooks
+
+Validation locale du code avant commit et push. Consultez l'[introduction](./docs/git-hooks/01-introduction.md) pour les instructions d'installation.
+
+| Hook | Type | Description | Docs |
+| --- | --- | --- | --- |
+| [conventional-commit](./git-hooks/commit-msg/conventional-commit) | `commit-msg` | Validation Conventional Commits | [docs](./docs/git-hooks/02-commit-msg.md) |
+| [eslint-lint](./git-hooks/pre-commit/eslint-lint) | `pre-commit` | Lint JS/TS/JSON/MD/YAML avec ESLint | [docs](./docs/git-hooks/03-pre-commit.md) |
+| [helm-lint](./git-hooks/pre-commit/helm-lint) | `pre-commit` | Lint des charts Helm | [docs](./docs/git-hooks/03-pre-commit.md) |
+| [yaml-lint](./git-hooks/pre-commit/yaml-lint) | `pre-commit` | Lint YAML avec `yamllint` | [docs](./docs/git-hooks/03-pre-commit.md) |
+| [signed-commit](./git-hooks/pre-push/signed-commit) | `pre-push` | Vérification des signatures GPG | [docs](./docs/git-hooks/04-pre-push.md) |
