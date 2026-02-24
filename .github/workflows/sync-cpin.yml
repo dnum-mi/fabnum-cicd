@@ -43,50 +43,50 @@ jobs:
     name: Trigger CPiN synchro
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     steps:
-      - name: Send request to CPiN api
-        shell: bash
-        run: |
-          # Start building curl command array
-          CURL_ARGS=(
-            -X POST
-            -fsSL
-            -F "token=${{ secrets.GIT_MIRROR_TOKEN }}"
-            -F "ref=main"
-            -F "variables[PROJECT_NAME]=${{ secrets.REPOSITORY_NAME || inputs.REPOSITORY_NAME }}"
-            -F "variables[GITHUB_COMMIT_SHA]=${{ github.sha }}"
-          )
-          
-          # Handle branch synchronization based on SYNC_ALL
-          if [ "${{ inputs.SYNC_ALL }}" = "true" ]; then
-            echo "Synchronizing all branches..."
-            CURL_ARGS+=(-F "variables[SYNC_ALL]=true")
-          else
-            echo "Synchronizing branch: ${{ inputs.BRANCH_TO_SYNC }}"
-            CURL_ARGS+=(-F "variables[GIT_BRANCH_DEPLOY]=${{ inputs.BRANCH_TO_SYNC }}")
-          fi
-          
-          # Add additional variables if provided
-          if [ -n "${{ inputs.ADDITIONAL_VARIABLES }}" ]; then
-            echo "Processing additional variables..."
-            
-            # Read JSON and parse it safely
-            while IFS= read -r key && IFS= read -r value; do
-              if [ -n "$key" ]; then
-                CURL_ARGS+=(-F "variables[$key]=$value")
-                echo "Adding variable: $key"
-              fi
-            done < <(echo '${{ inputs.ADDITIONAL_VARIABLES }}' | jq -r 'to_entries | .[] | (.key, .value)')
-          fi
-          
-          # Add the API endpoint URL
-          GITLAB_URL=$(echo '${{ inputs.GITLAB_URL }}' | sed 's:/*$::')
-          CURL_ARGS+=("$GITLAB_URL/api/v4/projects/${{ inputs.GIT_MIRROR_PROJECT_ID }}/trigger/pipeline")
-          
-          # Execute the curl command
-          curl "${CURL_ARGS[@]}"
-          
-          if [ "${{ inputs.SYNC_ALL }}" = "true" ]; then
-            echo "Syncing all branches of repository '${{ inputs.REPOSITORY_NAME }}' with CPiN."
-          else
-            echo "Syncing repository '${{ inputs.REPOSITORY_NAME }}' (branch ${{ inputs.BRANCH_TO_SYNC }}) with CPiN."
-          fi
+    - name: Send request to CPiN api
+      shell: bash
+      run: |
+        # Start building curl command array
+        CURL_ARGS=(
+          -X POST
+          -fsSL
+          -F "token=${{ secrets.GIT_MIRROR_TOKEN }}"
+          -F "ref=main"
+          -F "variables[PROJECT_NAME]=${{ secrets.REPOSITORY_NAME || inputs.REPOSITORY_NAME }}"
+          -F "variables[GITHUB_COMMIT_SHA]=${{ github.sha }}"
+        )
+
+        # Handle branch synchronization based on SYNC_ALL
+        if [ "${{ inputs.SYNC_ALL }}" = "true" ]; then
+          echo "Synchronizing all branches..."
+          CURL_ARGS+=(-F "variables[SYNC_ALL]=true")
+        else
+          echo "Synchronizing branch: ${{ inputs.BRANCH_TO_SYNC }}"
+          CURL_ARGS+=(-F "variables[GIT_BRANCH_DEPLOY]=${{ inputs.BRANCH_TO_SYNC }}")
+        fi
+
+        # Add additional variables if provided
+        if [ -n "${{ inputs.ADDITIONAL_VARIABLES }}" ]; then
+          echo "Processing additional variables..."
+
+          # Read JSON and parse it safely
+          while IFS= read -r key && IFS= read -r value; do
+            if [ -n "$key" ]; then
+              CURL_ARGS+=(-F "variables[$key]=$value")
+              echo "Adding variable: $key"
+            fi
+          done < <(echo '${{ inputs.ADDITIONAL_VARIABLES }}' | jq -r 'to_entries | .[] | (.key, .value)')
+        fi
+
+        # Add the API endpoint URL
+        GITLAB_URL=$(echo '${{ inputs.GITLAB_URL }}' | sed 's:/*$::')
+        CURL_ARGS+=("$GITLAB_URL/api/v4/projects/${{ inputs.GIT_MIRROR_PROJECT_ID }}/trigger/pipeline")
+
+        # Execute the curl command
+        curl "${CURL_ARGS[@]}"
+
+        if [ "${{ inputs.SYNC_ALL }}" = "true" ]; then
+          echo "Syncing all branches of repository '${{ inputs.REPOSITORY_NAME }}' with CPiN."
+        else
+          echo "Syncing repository '${{ inputs.REPOSITORY_NAME }}' (branch ${{ inputs.BRANCH_TO_SYNC }}) with CPiN."
+        fi

@@ -85,16 +85,16 @@ jobs:
 
         if [ "${{ inputs.COMMITS_SOURCE }}" = "pr" ] && [ -n "${{ github.event.pull_request.number }}" ]; then
           echo "Linting commits from PR #${{ github.event.pull_request.number }}"
-          
+
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
           HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-          
+
           echo "base-sha=${BASE_SHA}" >> $GITHUB_OUTPUT
           echo "head-sha=${HEAD_SHA}" >> $GITHUB_OUTPUT
           echo "commit-range=${BASE_SHA}..${HEAD_SHA}" >> $GITHUB_OUTPUT
         else
           echo "Linting commits from push event"
-          
+
           if [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
             # New branch, use first commit
             BASE_SHA=$(git rev-list --max-parents=0 HEAD | tail -1)
@@ -102,7 +102,7 @@ jobs:
             BASE_SHA="${{ github.event.before }}"
           fi
           HEAD_SHA="${{ github.sha }}"
-          
+
           echo "base-sha=${BASE_SHA}" >> $GITHUB_OUTPUT
           echo "head-sha=${HEAD_SHA}" >> $GITHUB_OUTPUT
           echo "commit-range=${BASE_SHA}..${HEAD_SHA}" >> $GITHUB_OUTPUT
@@ -140,7 +140,7 @@ jobs:
         for COMMIT in $COMMITS; do
           MESSAGE=$(git log --format=%s -n 1 $COMMIT)
           SHORT_SHA=$(echo $COMMIT | cut -c1-7)
-          
+
           if echo "$MESSAGE" | bunx commitlint $CONFIG_FLAG; then
             echo "| ✅ | \`$SHORT_SHA\` | $MESSAGE |" >> $GITHUB_STEP_SUMMARY
             PASSED_COMMITS=$((PASSED_COMMITS + 1))

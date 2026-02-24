@@ -55,7 +55,7 @@ jobs:
         PR_NUMBER: ${{ inputs.PR_NUMBER }}
       run: |
         set -euo pipefail
-        
+
         if [ -n "$BRANCH_NAME" ]; then
           BRANCH="$BRANCH_NAME"
         elif [ -n "$PR_NUMBER" ]; then
@@ -64,15 +64,15 @@ jobs:
           echo "Neither BRANCH_NAME nor PR_NUMBER provided"
           exit 1
         fi
-        
+
         echo "Fetching cache keys for branch: $BRANCH"
         CACHE_KEYS=$(gh cache list -R "$REPO" -r "$BRANCH" -L 100 | cut -f 1 || true)
-        
+
         if [ -z "$CACHE_KEYS" ]; then
           echo "No cache keys found"
           exit 0
         fi
-        
+
         echo "Deleting cache keys..."
         set +e
         while IFS= read -r CACHE_KEY; do
@@ -81,7 +81,7 @@ jobs:
           fi
         done <<< "$CACHE_KEYS"
         set -e
-        
+
         echo "Cache cleanup completed"
 
   cleanup-image:
@@ -103,7 +103,7 @@ jobs:
         OWNER: ${{ github.repository_owner }}
       run: |
         set -euo pipefail
-        
+
         # Parse image name
         REGISTRY_CHECK="${IMAGE%%/*}"
         if [[ "$REGISTRY_CHECK" == *.* || "$REGISTRY_CHECK" == *:* || "$REGISTRY_CHECK" == "localhost" ]]; then
@@ -112,40 +112,40 @@ jobs:
         else
           PROCESSED_IMAGE="$IMAGE"
         fi
-        
+
         IMAGE_NAME="${PROCESSED_IMAGE%%:*}"
         IMAGE_TAG="${PROCESSED_IMAGE#*:}"
         IMAGE_NAME_URL_ENCODED="$(jq -rn --arg x "$IMAGE_NAME" '$x | @uri')"
-        
+
         # Determine owner type
         OWNER_TYPE="$(gh api "/users/$OWNER" --jq '.type')"
-        
+
         if [ "$OWNER_TYPE" = "Organization" ]; then
           API_MODE="orgs"
         else
           API_MODE="users"
         fi
-        
+
         echo "Owner: $OWNER ($OWNER_TYPE)"
         echo "Image: $IMAGE_NAME"
         echo "Tag: $IMAGE_TAG"
-        
+
         # Fetch all versions
         ALL_VERSIONS=$(gh api -H "Accept: application/vnd.github+json" \
           "/$API_MODE/$OWNER/packages/container/$IMAGE_NAME_URL_ENCODED/versions" \
           --paginate --jq '.')
-        
+
         # Get main image ID
         MAIN_IMAGE_ID=$(echo "$ALL_VERSIONS" | jq -r --arg t "$IMAGE_TAG" \
           '.[] | select(.metadata.container.tags[]? | contains($t)) | .id' | head -n1)
-        
+
         if [ -z "$MAIN_IMAGE_ID" ]; then
           echo "Image with tag '$IMAGE_TAG' not found"
           exit 0
         fi
-        
+
         echo "Found image ID: $MAIN_IMAGE_ID"
-        
+
         # Delete multi-arch manifests
         if MANIFEST_OUTPUT=$(docker buildx imagetools inspect "ghcr.io/$OWNER/$IMAGE_NAME:$IMAGE_TAG" --raw 2>/dev/null); then
           if MANIFESTS=$(echo "$MANIFEST_OUTPUT" | jq -r '.manifests[]? | .digest' 2>/dev/null); then
@@ -155,7 +155,7 @@ jobs:
                 if [ -n "$SHA" ]; then
                   MANIFEST_ID=$(echo "$ALL_VERSIONS" | jq -r --arg s "$SHA" \
                     '.[] | select(.name == $s) | .id')
-                  
+
                   if [ -n "$MANIFEST_ID" ] && [ "$MANIFEST_ID" != "null" ]; then
                     echo "Deleting manifest: $SHA"
                     gh api --method DELETE -H "Accept: application/vnd.github+json" \
@@ -167,12 +167,12 @@ jobs:
             fi
           fi
         fi
-        
+
         # Delete main image
         echo "Deleting main image: $IMAGE_NAME:$IMAGE_TAG"
         gh api --method DELETE -H "Accept: application/vnd.github+json" \
           "/$API_MODE/$OWNER/packages/container/$IMAGE_NAME_URL_ENCODED/versions/$MAIN_IMAGE_ID"
-        
+
         echo "Image deletion completed"
 
   cleanup-orphaned-image:
@@ -187,7 +187,7 @@ jobs:
         OWNER: ${{ github.repository_owner }}
       run: |
         set -euo pipefail
-        
+
         # Parse image name
         REGISTRY_CHECK="${IMAGE%%/*}"
         if [[ "$REGISTRY_CHECK" == *.* || "$REGISTRY_CHECK" == *:* || "$REGISTRY_CHECK" == "localhost" ]]; then
@@ -196,52 +196,52 @@ jobs:
         else
           PROCESSED_IMAGE="$IMAGE"
         fi
-        
+
         IMAGE_NAME="${PROCESSED_IMAGE%%:*}"
         IMAGE_NAME_URL_ENCODED="$(jq -rn --arg x "$IMAGE_NAME" '$x | @uri')"
-        
+
         # Determine owner type
         OWNER_TYPE="$(gh api "/users/$OWNER" --jq '.type')"
-        
+
         if [ "$OWNER_TYPE" = "Organization" ]; then
           API_MODE="orgs"
         else
           API_MODE="users"
         fi
-        
+
         echo "Owner: $OWNER ($OWNER_TYPE)"
         echo "Image: $IMAGE_NAME"
         echo "Searching for orphaned SHA-only images..."
-        
+
         # Fetch all versions and filter SHA-only images
         ALL_VERSIONS=$(gh api -H "Accept: application/vnd.github+json" \
           "/$API_MODE/$OWNER/packages/container/$IMAGE_NAME_URL_ENCODED/versions" \
           --paginate --jq '.')
-        
+
         ORPHANED_IMAGES=$(echo "$ALL_VERSIONS" | jq -c \
-          '.[] | select(.metadata.container.tags != null and .metadata.container.tags != []) | 
+          '.[] | select(.metadata.container.tags != null and .metadata.container.tags != []) |
           select(
-            (.metadata.container.tags | length) == 1 and 
+            (.metadata.container.tags | length) == 1 and
             (.metadata.container.tags[0] | test("^[0-9a-f]{7}$"))
           ) | {id: .id, tags: .metadata.container.tags}')
-        
+
         if [ -z "$ORPHANED_IMAGES" ]; then
           echo "No orphaned SHA-only images found"
           exit 0
         fi
-        
+
         ORPHANED_COUNT=$(echo "$ORPHANED_IMAGES" | wc -l | tr -d ' ')
         echo "Found $ORPHANED_COUNT orphaned image(s)"
-        
+
         # Delete each orphaned image
         while IFS= read -r ORPHANED_IMAGE; do
           IMAGE_ID=$(echo "$ORPHANED_IMAGE" | jq -r '.id')
           IMAGE_TAGS=$(echo "$ORPHANED_IMAGE" | jq -r '.tags | join(", ")')
-          
+
           echo "Deleting orphaned image ID: $IMAGE_ID (tags: $IMAGE_TAGS)"
           gh api --method DELETE -H "Accept: application/vnd.github+json" \
             "/$API_MODE/$OWNER/packages/container/$IMAGE_NAME_URL_ENCODED/versions/$IMAGE_ID" \
             2>/dev/null || echo "Failed to delete image ID: $IMAGE_ID"
         done <<< "$ORPHANED_IMAGES"
-        
+
         echo "Orphaned images cleanup completed"

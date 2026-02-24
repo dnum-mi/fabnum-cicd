@@ -1,0 +1,20 @@
+name: CD
+
+on:
+  push:
+    branches:
+    - main
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: ./.github/workflows/release-app.yml
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: write
+    with:
+      TAG_MAJOR_AND_MINOR: true
+      AUTOMERGE_RELEASE: false
+    # secrets:
+    #   GH_PAT: ${{ secrets.GH_PAT }}

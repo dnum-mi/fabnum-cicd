@@ -77,14 +77,13 @@ jobs:
         pages_branch: ""
       env:
         CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-      
+
     - name: Login to OCI Registry
       if: steps.chart-releaser.outputs.changed_charts != ''
       run: |
         REGISTRY="${{ inputs.REGISTRY }}"
         USERNAME="${{ inputs.REGISTRY == 'ghcr.io' && github.actor || inputs.REGISTRY_USERNAME }}"
         PASSWORD="${{ inputs.REGISTRY == 'ghcr.io' && secrets.GITHUB_TOKEN || inputs.REGISTRY_PASSWORD }}"
-        
         echo "$PASSWORD" | helm registry login "$REGISTRY" -u "$USERNAME" --password-stdin
 
     - name: Publish charts to OCI registry
@@ -95,19 +94,19 @@ jobs:
         if [ -z "$OCI_REPO" ]; then
           OCI_REPO="${{ github.repository }}"
         fi
-        
+
         # Normalize OCI repository path: lowercase and replace _ with -
         OCI_REPO=$(echo "$OCI_REPO" | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')
-        
+
         # Only process charts that were actually released
         for chart_package in .cr-release-packages/*.tgz; do
           if [ ! -f "$chart_package" ]; then
             echo "No charts to publish"
             continue
           fi
-          
+
           chart_file=$(basename "$chart_package")
-          
+
           # Push to OCI registry
           echo "Publishing ${chart_file} to OCI registry..."
           helm push "$chart_package" oci://${{ inputs.REGISTRY }}/${OCI_REPO}
