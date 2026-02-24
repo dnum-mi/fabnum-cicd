@@ -1,0 +1,72 @@
+name: Lint Helm schema
+
+on:
+  workflow_call:
+    inputs:
+      CHART_PATH:
+        description: Path to the Helm chart directory containing the JSON schema
+        type: string
+        required: true
+      SCHEMA_FILE:
+        description: JSON schema filename relative to CHART_PATH
+        type: string
+        required: false
+        default: values.schema.json
+      VALUES_FILES:
+        description: Comma-separated list of values files to validate against the schema, relative to CHART_PATH (e.g., 'values.yaml,test-values.yaml,values/dev.yaml')
+        type: string
+        required: false
+        default: values.yaml
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
+
+permissions:
+  contents: read
+
+jobs:
+  lint-helm-schema:
+    name: Validate Helm values against schema
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@v5
+
+    - name: Install check-jsonschema
+      run: pip install check-jsonschema
+
+    - name: Validate values files against JSON schema
+      working-directory: ${{ inputs.CHART_PATH }}
+      run: |
+        set -euo pipefail
+
+        SCHEMA_FILE="${{ inputs.SCHEMA_FILE }}"
+
+        if [ ! -f "$SCHEMA_FILE" ]; then
+          echo "::error::Schema file '$SCHEMA_FILE' not found in '${{ inputs.CHART_PATH }}'"
+          exit 1
+        fi
+
+        FILES=""
+
+        IFS=',' read -ra ITEMS <<< "${{ inputs.VALUES_FILES }}"
+        for file in "${ITEMS[@]}"; do
+          file=$(echo "$file" | xargs)
+          if [ -n "$file" ] && [ -f "$file" ]; then
+            FILES="$FILES $file"
+          elif [ -n "$file" ]; then
+            echo "::warning::Values file '$file' not found, skipping"
+          fi
+        done
+
+        if [ -z "$FILES" ]; then
+          echo "::error::No values files found to validate"
+          exit 1
+        fi
+
+        echo "Validating files against schema '$SCHEMA_FILE':"
+        echo "$FILES" | tr ' ' '\n' | grep -v '^$' | sed 's/^/  - /'
+
+        check-jsonschema --schemafile "$SCHEMA_FILE" $FILES

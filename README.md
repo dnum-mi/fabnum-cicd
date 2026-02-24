@@ -21,6 +21,7 @@ Workflows réutilisables pour l'intégration et le déploiement continu :
 - [11 - Test Helm](./docs/workflows/11-test-helm.md) - Tests d'installation des charts
 - [12 - Update Helm Chart](./docs/workflows/12-update-helm-chart.md) - Mise à jour des versions de charts
 - [13 - Lint YAML](./docs/workflows/13-lint-yaml.md) - Lint des fichiers YAML
+- [14 - Lint Helm Schemas](./docs/workflows/14-lint-helm-schema.md) - Lint des fichiers de schemas Helm
 
 ### Git Hooks
 
