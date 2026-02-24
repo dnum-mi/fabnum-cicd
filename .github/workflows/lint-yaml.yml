@@ -1,0 +1,55 @@
+name: Lint YAML
+
+on:
+  workflow_call:
+    inputs:
+      CONFIG_FILE:
+        description: Path to yamllint configuration file
+        type: string
+        required: false
+        default: ""
+      SCAN_PATH:
+        description: Path to scan for YAML files
+        type: string
+        required: false
+        default: "."
+      STRICT:
+        description: Whether to use strict mode (treats warnings as errors)
+        type: boolean
+        required: false
+        default: false
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
+
+permissions:
+  contents: read
+
+jobs:
+  lint-yaml:
+    name: Lint YAML files
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@v5
+
+    - name: Install yamllint
+      run: pip install yamllint
+
+    - name: Run yamllint
+      run: |
+        set -euo pipefail
+
+        ARGS=""
+
+        if [ -n "${{ inputs.CONFIG_FILE }}" ] && [ -f "${{ inputs.CONFIG_FILE }}" ]; then
+          ARGS="--config-file ${{ inputs.CONFIG_FILE }}"
+        fi
+
+        if [ "${{ inputs.STRICT }}" = "true" ]; then
+          ARGS="$ARGS --strict"
+        fi
+
+        yamllint $ARGS ${{ inputs.SCAN_PATH }}
