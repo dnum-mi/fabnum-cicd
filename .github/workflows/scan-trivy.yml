@@ -53,10 +53,10 @@ jobs:
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
 
     - name: Run Trivy vulnerability scanner on images
-      uses: aquasecurity/trivy-action@0.33.1
+      uses: aquasecurity/trivy-action@0.34.2
       with:
         image-ref: "${{ inputs.IMAGE }}"
         format: ${{ inputs.FORMAT }}
@@ -96,10 +96,10 @@ jobs:
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
 
     - name: Run Trivy vulnerability scanner on config files
-      uses: aquasecurity/trivy-action@0.33.1
+      uses: aquasecurity/trivy-action@0.34.2
       with:
         scan-ref: "${{ inputs.PATH }}"
         scan-type: config

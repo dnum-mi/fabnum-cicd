@@ -87,7 +87,7 @@ jobs:
     if: ${{ inputs.RUN_MODE == 'called' }}
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
 
     - name: update chart version
       id: update-chart
@@ -198,7 +198,7 @@ jobs:
         echo "BRANCH_NAME=${{ inputs.CHART_NAME }}-v$NEXT_VERSION" >> $GITHUB_OUTPUT
 
     - name: Create pull request
-      uses: peter-evans/create-pull-request@v7
+      uses: peter-evans/create-pull-request@v8
       with:
         branch: ${{ steps.update-chart.outputs.BRANCH_NAME }}
         base: main
