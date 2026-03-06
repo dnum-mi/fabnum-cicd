@@ -42,7 +42,7 @@ on:
 
 jobs:
   cleanup:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/clean-cache.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/clean-cache.yml@v0
     with:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       CLEAN_GH_CACHE: true
@@ -55,7 +55,7 @@ jobs:
 ```yaml
 jobs:
   cleanup:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/clean-cache.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/clean-cache.yml@v0
     with:
       BRANCH_NAME: ${{ github.event.ref }}
       CLEAN_GH_CACHE: true
@@ -66,7 +66,7 @@ jobs:
 ```yaml
 jobs:
   cleanup-orphaned:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/clean-cache.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/clean-cache.yml@v0
     with:
       CLEAN_GH_CACHE: false
       CLEAN_ORPHANED_GHCR_IMAGE: true

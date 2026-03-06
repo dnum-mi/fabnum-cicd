@@ -24,7 +24,7 @@ Lint des fichiers YAML avec [yamllint](https://github.com/adrienverge/yamllint).
 ```yaml
 jobs:
   lint-yaml:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-yaml.yml@v1
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-yaml.yml@v0
     permissions:
       contents: read
 ```
@@ -34,7 +34,7 @@ jobs:
 ```yaml
 jobs:
   lint-yaml:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-yaml.yml@v1
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-yaml.yml@v0
     permissions:
       contents: read
     with:
@@ -46,7 +46,7 @@ jobs:
 ```yaml
 jobs:
   lint-yaml:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-yaml.yml@v1
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-yaml.yml@v0
     permissions:
       contents: read
     with:

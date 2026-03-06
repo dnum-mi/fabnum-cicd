@@ -40,7 +40,7 @@ Valide que les messages de commit respectent la spécification [Conventional Com
 ```yaml
 jobs:
   lint-commits:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
 ```
 
 ### Exiger un scope
@@ -48,7 +48,7 @@ jobs:
 ```yaml
 jobs:
   lint-commits:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
     with:
       REQUIRE_SCOPE: true
 ```
@@ -58,7 +58,7 @@ jobs:
 ```yaml
 jobs:
   lint-commits:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
     with:
       ALLOWED_TYPES: "feat,fix,docs,chore"
       MAX_SUBJECT_LENGTH: 72
@@ -69,7 +69,7 @@ jobs:
 ```yaml
 jobs:
   lint-commits:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
     with:
       CONFIG_FILE: ".commitlintrc.js"
 ```
@@ -79,7 +79,7 @@ jobs:
 ```yaml
 jobs:
   lint-commits:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
     with:
       FAIL_ON_ERROR: false
 ```
@@ -95,7 +95,7 @@ on:
 
 jobs:
   lint-commits:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
     with:
       COMMITS_SOURCE: push
 ```

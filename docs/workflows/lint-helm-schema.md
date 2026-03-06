@@ -31,7 +31,7 @@ Validation des fichiers values Helm contre un JSON schema existant avec [check-j
 ```yaml
 jobs:
   lint-helm-schema:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm-schema.yml@v1
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm-schema.yml@v0
     permissions:
       contents: read
     with:
@@ -43,7 +43,7 @@ jobs:
 ```yaml
 jobs:
   lint-helm-schema:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm-schema.yml@v1
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm-schema.yml@v0
     permissions:
       contents: read
     with:
@@ -56,7 +56,7 @@ jobs:
 ```yaml
 jobs:
   lint-schema-app-a:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm-schema.yml@v1
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm-schema.yml@v0
     permissions:
       contents: read
     with:
@@ -64,7 +64,7 @@ jobs:
       VALUES_FILES: values.yaml,values/dev.yaml,values/prod.yaml
 
   lint-schema-app-b:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm-schema.yml@v1
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm-schema.yml@v0
     permissions:
       contents: read
     with:
