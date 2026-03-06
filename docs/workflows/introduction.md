@@ -48,11 +48,11 @@ on:
 jobs:
   # Exemple : Lint des commits
   lint-commits:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
 
   # Exemple : Build Docker
   build:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
     with:
       IMAGE_NAME: ghcr.io/my-org/my-app
       IMAGE_TAG: ${{ github.sha }}
@@ -62,7 +62,7 @@ jobs:
   # Exemple : Scan de sécurité
   security:
     needs: build
-    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@v0
     with:
       IMAGE: ghcr.io/my-org/my-app:${{ github.sha }}
       FORMAT: sarif
@@ -142,14 +142,14 @@ jobs:
       run: echo "Exposing env vars"
 
   lint-commits:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
     if: ${{ !github.event.pull_request.draft }}
     permissions:
       pull-requests: read
       contents: read
 
   scan-sonarqube:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@v0
     needs:
     - expose-vars
     permissions:
@@ -165,7 +165,7 @@ jobs:
       SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
 
   scan-trivy-conf:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@v0
     needs:
     - expose-vars
     permissions:
@@ -179,7 +179,7 @@ jobs:
       GITHUB_SECURITY_TAB: false
 
   build-docker:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
     needs:
     - expose-vars
     permissions:
@@ -206,7 +206,7 @@ jobs:
     secrets: inherit
 
   scan-trivy-images:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@v0
     needs:
     - expose-vars
     - build-docker
@@ -316,7 +316,7 @@ jobs:
       run: echo "Exposing env vars"
 
   release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
     needs:
     - expose-vars
     permissions:
@@ -339,7 +339,7 @@ jobs:
     #   GH_PAT: ${{ secrets.GH_PAT }} # Required for automerge PRs
 
   build-docker:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
     if: ${{ needs.release.outputs.release-created == 'true' }}
     needs:
     - expose-vars
@@ -369,7 +369,7 @@ jobs:
     secrets: inherit
 
   bump-chart:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
     needs:
     - expose-vars
     - release
@@ -392,7 +392,7 @@ jobs:
       GH_PAT: ${{ secrets.GH_PAT }}
 
   sync-cpin:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/sync-cpin.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/sync-cpin.yml@v0
     needs:
     - expose-vars
     - release
@@ -425,20 +425,20 @@ on:
 jobs:
   lint-helm:
     if: github.event_name == 'pull_request'
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@v0
     with:
       CT_CONF_PATH: ci/configs/ct.yaml
   
   test-helm:
     if: github.event_name == 'pull_request'
     needs: lint-helm
-    uses: dnum-mi/fabnum-cicd/.github/workflows/test-helm.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/test-helm.yml@v0
     with:
       CT_CONF_PATH: ci/configs/ct.yaml
   
   release-helm:
     if: github.event_name == 'push'
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
     with:
       CHARTS_DIR: ./charts
 ```

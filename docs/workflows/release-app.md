@@ -172,7 +172,7 @@ Si vous souhaitez utiliser plusieurs identifiants (ex: `alpha`, `beta`, `rc`) po
 # .github/workflows/release-dev.yml (branche dev)
 jobs:
   release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
     with:
       ENABLE_PRERELEASE: true
       PRERELEASE_BRANCH: dev
@@ -182,7 +182,7 @@ jobs:
 # .github/workflows/release-staging.yml (branche staging)
 jobs:
   release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
     with:
       ENABLE_PRERELEASE: true
       PRERELEASE_BRANCH: staging
@@ -208,7 +208,7 @@ Le workflow typique de progression des versions est :
 ```yaml
 jobs:
   release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
     with:
       ENABLE_PRERELEASE: true
       TAG_MAJOR_AND_MINOR: true
@@ -224,7 +224,7 @@ jobs:
 ```yaml
 jobs:
   release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
     with:
       ENABLE_PRERELEASE: false
       TAG_MAJOR_AND_MINOR: true
@@ -249,7 +249,7 @@ jobs:
 
   release:
     needs: build
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
     with:
       ADDITIONAL_RELEASE_ARTIFACTS: artifact/dist.zip,artifact/checksums.txt
 ```
@@ -259,7 +259,7 @@ jobs:
 ```yaml
 jobs:
   release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
     with:
       ENABLE_PRERELEASE: true
       RELEASE_CONFIG_FILE: custom-release-config.json

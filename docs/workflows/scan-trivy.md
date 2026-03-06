@@ -46,7 +46,7 @@ on:
 
 jobs:
   scan:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@v0
     with:
       IMAGE: ghcr.io/my-org/my-app:latest
       FORMAT: table
@@ -57,7 +57,7 @@ jobs:
 ```yaml
 jobs:
   scan:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@v0
     with:
       IMAGE: ghcr.io/my-org/my-app:${{ github.sha }}
       FORMAT: sarif
@@ -70,7 +70,7 @@ jobs:
 ```yaml
 jobs:
   scan:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@v0
     with:
       PATH: ./
       FORMAT: table
@@ -81,7 +81,7 @@ jobs:
 ```yaml
 jobs:
   scan:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@v0
     with:
       IMAGE: docker.io/my-org/my-app:latest
       FORMAT: json

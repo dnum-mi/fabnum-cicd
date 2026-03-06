@@ -38,7 +38,7 @@ on:
 
 jobs:
   lint-helm:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@v0
     with:
       CT_CONF_PATH: ci/configs/ct.yaml
 ```
@@ -48,7 +48,7 @@ jobs:
 ```yaml
 jobs:
   lint-helm:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@v0
     with:
       CT_CONF_PATH: ci/configs/ct.yaml
       LINT_CHARTS: true
@@ -60,7 +60,7 @@ jobs:
 ```yaml
 jobs:
   lint-helm:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@v0
     with:
       CT_CONF_PATH: .github/ct.yaml
       HELM_DOCS_VERSION: "1.13.0"

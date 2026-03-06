@@ -51,7 +51,7 @@ on:
 
 jobs:
   scan-sonarqube:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@v0
     with:
       SONAR_URL: https://sonarqube.example.com
       SOURCES_PATH: apps,packages
@@ -78,7 +78,7 @@ jobs:
 
   scan-sonarqube:
     needs: test
-    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@v0
     with:
       SONAR_URL: https://sonarqube.example.com
       SOURCES_PATH: src
@@ -95,7 +95,7 @@ jobs:
 ```yaml
 jobs:
   scan-sonarqube:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@v0
     with:
       SONAR_URL: https://sonarqube.example.com
       SOURCES_PATH: src
@@ -110,7 +110,7 @@ jobs:
 ```yaml
 jobs:
   scan-sonarqube:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@v0
     with:
       SONAR_URL: https://sonarqube.example.com
       SOURCES_PATH: src

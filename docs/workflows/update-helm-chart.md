@@ -64,14 +64,14 @@ on:
 
 jobs:
   release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
 
   update-chart:
     needs: release
     if: ${{ needs.release.outputs.release-created }}
-    uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
     with:
       RUN_MODE: caller
       CHART_REPO: my-org/helm-charts
@@ -106,7 +106,7 @@ on:
 
 jobs:
   update:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
     with:
       RUN_MODE: called
       CHART_NAME: my-app
@@ -121,7 +121,7 @@ jobs:
 ```yaml
 jobs:
   update-chart:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
     with:
       RUN_MODE: caller
       CHART_REPO: my-org/helm-charts
@@ -139,7 +139,7 @@ jobs:
 jobs:
   # Passage de alpha à beta (ex: 1.2.3-alpha.2 -> 1.2.3-beta)
   update-chart:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
     with:
       RUN_MODE: caller
       CHART_REPO: my-org/helm-charts

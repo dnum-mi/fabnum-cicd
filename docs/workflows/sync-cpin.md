@@ -45,7 +45,7 @@ on:
 
 jobs:
   sync:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/sync-cpin.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/sync-cpin.yml@v0
     with:
       GITLAB_URL: https://gitlab.cpin.example.com
       GIT_MIRROR_PROJECT_ID: "12345"
@@ -60,7 +60,7 @@ jobs:
 ```yaml
 jobs:
   sync:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/sync-cpin.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/sync-cpin.yml@v0
     with:
       GITLAB_URL: https://gitlab.cpin.example.com
       GIT_MIRROR_PROJECT_ID: "12345"
@@ -83,14 +83,14 @@ on:
 
 jobs:
   release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
 
   sync:
     needs: release
     if: ${{ needs.release.outputs.release-created }}
-    uses: dnum-mi/fabnum-cicd/.github/workflows/sync-cpin.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/sync-cpin.yml@v0
     with:
       GITLAB_URL: https://gitlab.cpin.example.com
       GIT_MIRROR_PROJECT_ID: "12345"
@@ -105,7 +105,7 @@ jobs:
 ```yaml
 jobs:
   sync-all:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/sync-cpin.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/sync-cpin.yml@v0
     with:
       GITLAB_URL: https://gitlab.cpin.example.com
       GIT_MIRROR_PROJECT_ID: "12345"

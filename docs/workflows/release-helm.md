@@ -49,7 +49,7 @@ on:
 
 jobs:
   release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
 ```
 
 ### Avec dépôts Helm personnalisés
@@ -57,7 +57,7 @@ jobs:
 ```yaml
 jobs:
   release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
     with:
       CHARTS_DIR: ./charts
       HELM_REPOS: "bitnami=https://charts.bitnami.com/bitnami,stable=https://charts.helm.sh/stable"
@@ -68,7 +68,7 @@ jobs:
 ```yaml
 jobs:
   release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
     with:
       REGISTRY: registry.gitlab.com
       REPOSITORY: my-group/my-project
@@ -81,7 +81,7 @@ jobs:
 ```yaml
 jobs:
   release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
     with:
       REGISTRY: registry-1.docker.io
       REPOSITORY: my-org/charts
@@ -94,7 +94,7 @@ jobs:
 ```yaml
 jobs:
   release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
     with:
       REGISTRY: myregistry.azurecr.io
       REPOSITORY: helm-charts
@@ -107,7 +107,7 @@ jobs:
 ```yaml
 jobs:
   release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@main
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
     with:
       CHARTS_DIR: ./helm-charts
 ```
