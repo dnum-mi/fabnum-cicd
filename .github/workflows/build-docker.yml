@@ -57,14 +57,6 @@ on:
         required: false
         default: false
         type: boolean
-      REGISTRY_USERNAME:
-        description: Username used to login into registry
-        required: false
-        type: string
-      REGISTRY_PASSWORD:
-        description: Password used to login into registry
-        required: false
-        type: string
       RUNS_ON:
         description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
         required: false
@@ -77,6 +69,13 @@ on:
       image:
         description: Normalized image name (lowercase, registry-compatible)
         value: ${{ jobs.infos.outputs.normalized-image }}
+    secrets:
+      REGISTRY_USERNAME:
+        description: Username used to login into registry
+        required: false
+      REGISTRY_PASSWORD:
+        description: Password used to login into registry
+        required: false
 
 jobs:
   infos:
@@ -147,8 +146,8 @@ jobs:
       uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
       with:
         registry: ${{ needs.infos.outputs.registry }}
-        username: ${{ startsWith(inputs.IMAGE_NAME, 'ghcr.io') && github.actor || inputs.REGISTRY_USERNAME }}
-        password: ${{ startsWith(inputs.IMAGE_NAME, 'ghcr.io') && github.token || inputs.REGISTRY_PASSWORD }}
+        username: ${{ startsWith(inputs.IMAGE_NAME, 'ghcr.io') && github.actor || secrets.REGISTRY_USERNAME }}
+        password: ${{ startsWith(inputs.IMAGE_NAME, 'ghcr.io') && github.token || secrets.REGISTRY_PASSWORD }}
         logout: true
 
     - name: Build and push docker image
@@ -219,8 +218,8 @@ jobs:
       uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
       with:
         registry: ${{ needs.infos.outputs.registry }}
-        username: ${{ needs.infos.outputs.registry == 'ghcr.io' && github.actor || inputs.REGISTRY_USERNAME }}
-        password: ${{ needs.infos.outputs.registry == 'ghcr.io' && github.token || inputs.REGISTRY_PASSWORD }}
+        username: ${{ needs.infos.outputs.registry == 'ghcr.io' && github.actor || secrets.REGISTRY_USERNAME }}
+        password: ${{ needs.infos.outputs.registry == 'ghcr.io' && github.token || secrets.REGISTRY_PASSWORD }}
         logout: true
 
     - name: Create manifest list and push

@@ -4,15 +4,20 @@ Publication des charts Helm sur un registre OCI avec [chart-releaser](https://gi
 
 ## Inputs
 
-| Input             | Type   | Description                                                                            | Requis | Défaut              |
-| ----------------- | ------ | -------------------------------------------------------------------------------------- | ------ | ------------------- |
-| CHARTS_DIR        | string | Répertoire contenant les charts Helm                                                   | Non    | `./charts`          |
-| HELM_REPOS        | string | Dépôts Helm à ajouter (format: `name=url`, séparés par des virgules)                   | Non    | -                   |
-| REGISTRY          | string | Registre OCI pour publier les charts (ex: `ghcr.io`, `registry.gitlab.com`)            | Non    | `ghcr.io`           |
-| REPOSITORY        | string | Chemin du repository dans le registre OCI (défaut: `github.repository`)                | Non    | `github.repository` |
-| REGISTRY_USERNAME | string | Nom d'utilisateur pour l'authentification au registre OCI                              | Non    | -                   |
-| REGISTRY_PASSWORD | string | Mot de passe pour l'authentification au registre OCI                                   | Non    | -                   |
-| RUNS_ON           | string | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`) | Non    | `["ubuntu-24.04"]`  |
+| Input      | Type   | Description                                                                            | Requis | Défaut              |
+| ---------- | ------ | -------------------------------------------------------------------------------------- | ------ | ------------------- |
+| CHARTS_DIR | string | Répertoire contenant les charts Helm                                                   | Non    | `./charts`          |
+| HELM_REPOS | string | Dépôts Helm à ajouter (format: `name=url`, séparés par des virgules)                   | Non    | -                   |
+| REGISTRY   | string | Registre OCI pour publier les charts (ex: `ghcr.io`, `registry.gitlab.com`)            | Non    | `ghcr.io`           |
+| REPOSITORY | string | Chemin du repository dans le registre OCI (défaut: `github.repository`)                | Non    | `github.repository` |
+| RUNS_ON    | string | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`) | Non    | `["ubuntu-24.04"]`  |
+
+## Secrets
+
+| Secret            | Description                                               | Requis |
+| ----------------- | --------------------------------------------------------- | ------ |
+| REGISTRY_USERNAME | Nom d'utilisateur pour l'authentification au registre OCI | Non    |
+| REGISTRY_PASSWORD | Mot de passe pour l'authentification au registre OCI      | Non    |
 
 ## Permissions
 
@@ -30,7 +35,7 @@ Publication des charts Helm sur un registre OCI avec [chart-releaser](https://gi
   - Les underscores (`_`) sont remplacés par des tirets (`-`)
   - Exemple : `My-Org/My_Charts` → `my-org/my-charts`
 - Pour ghcr.io, utilise automatiquement les credentials GitHub (pas besoin de fournir REGISTRY_USERNAME/PASSWORD).
-- Pour les autres registres, fournissez REGISTRY_USERNAME et REGISTRY_PASSWORD.
+- Pour les autres registres, fournissez `REGISTRY_USERNAME` et `REGISTRY_PASSWORD` en tant que secrets.
 - Seuls les charts modifiés sont packagés et publiés.
 - Les dépôts Helm peuvent être ajoutés pour résoudre les dépendances des charts.
 - Configure Git avec le bot GitHub Actions pour les commits automatiques.
@@ -72,6 +77,7 @@ jobs:
     with:
       REGISTRY: registry.gitlab.com
       REPOSITORY: my-group/my-project
+    secrets:
       REGISTRY_USERNAME: ${{ secrets.GITLAB_USERNAME }}
       REGISTRY_PASSWORD: ${{ secrets.GITLAB_TOKEN }}
 ```
@@ -85,6 +91,7 @@ jobs:
     with:
       REGISTRY: registry-1.docker.io
       REPOSITORY: my-org/charts
+    secrets:
       REGISTRY_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       REGISTRY_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 ```
@@ -98,6 +105,7 @@ jobs:
     with:
       REGISTRY: myregistry.azurecr.io
       REPOSITORY: helm-charts
+    secrets:
       REGISTRY_USERNAME: ${{ secrets.AZURE_CLIENT_ID }}
       REGISTRY_PASSWORD: ${{ secrets.AZURE_CLIENT_SECRET }}
 ```

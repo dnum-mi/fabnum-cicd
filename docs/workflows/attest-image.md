@@ -4,15 +4,20 @@ Génère et attache des attestations de sécurité (provenance SLSA et/ou SBOM) 
 
 ## Inputs
 
-| Input             | Type    | Description                                                                                              | Requis | Défaut             |
-| ----------------- | ------- | -------------------------------------------------------------------------------------------------------- | ------ | ------------------ |
-| IMAGE_NAME        | string  | Nom de l'image à attester (ex: `ghcr.io/my-org/my-image`). Normalisé automatiquement.                    | Oui    | -                  |
-| DIGEST            | string  | Digest de l'image à attester (ex: `sha256:abc123...`). Utiliser l'output `digest` de `build-docker.yml`. | Oui    | -                  |
-| PROVENANCE        | boolean | Générer une attestation de provenance [SLSA](https://slsa.dev/) pour l'image                             | Non    | `false`            |
-| SBOM              | boolean | Générer une attestation SBOM (Software Bill of Materials) pour l'image                                   | Non    | `false`            |
-| REGISTRY_USERNAME | string  | Nom d'utilisateur pour le registre (non requis pour `ghcr.io`)                                           | Non    | -                  |
-| REGISTRY_PASSWORD | string  | Mot de passe pour le registre (non requis pour `ghcr.io`)                                                | Non    | -                  |
-| RUNS_ON           | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                   | Non    | `["ubuntu-24.04"]` |
+| Input      | Type    | Description                                                                                              | Requis | Défaut             |
+| ---------- | ------- | -------------------------------------------------------------------------------------------------------- | ------ | ------------------ |
+| IMAGE_NAME | string  | Nom de l'image à attester (ex: `ghcr.io/my-org/my-image`). Normalisé automatiquement.                    | Oui    | -                  |
+| DIGEST     | string  | Digest de l'image à attester (ex: `sha256:abc123...`). Utiliser l'output `digest` de `build-docker.yml`. | Oui    | -                  |
+| PROVENANCE | boolean | Générer une attestation de provenance [SLSA](https://slsa.dev/) pour l'image                             | Non    | `false`            |
+| SBOM       | boolean | Générer une attestation SBOM (Software Bill of Materials) pour l'image                                   | Non    | `false`            |
+| RUNS_ON    | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                   | Non    | `["ubuntu-24.04"]` |
+
+## Secrets
+
+| Secret            | Description                                                    | Requis |
+| ----------------- | -------------------------------------------------------------- | ------ |
+| REGISTRY_USERNAME | Nom d'utilisateur pour le registre (non requis pour `ghcr.io`) | Non    |
+| REGISTRY_PASSWORD | Mot de passe pour le registre (non requis pour `ghcr.io`)      | Non    |
 
 ## Permissions
 
@@ -29,7 +34,7 @@ Génère et attache des attestations de sécurité (provenance SLSA et/ou SBOM) 
 - **Provenance SLSA** : génère une attestation conforme à [SLSA niveau 3](https://slsa.dev/spec/v1.0/levels) attachée à l'image dans le registre.
 - **SBOM** : génère un fichier SBOM au format SPDX via Trivy, puis l'atteste et l'attache à l'image dans le registre.
 - Le nom d'image est normalisé automatiquement (minuscules, `_` remplacés par `-`) pour être compatible avec les registres OCI.
-- Pour `ghcr.io`, l'authentification utilise automatiquement `github.token` ; pour les autres registres, fournir `REGISTRY_USERNAME` et `REGISTRY_PASSWORD`.
+- Pour `ghcr.io`, l'authentification utilise automatiquement `github.token` ; pour les autres registres, fournir `REGISTRY_USERNAME` et `REGISTRY_PASSWORD` en tant que secrets.
 
 ## Exemples
 
@@ -91,6 +96,7 @@ jobs:
     needs:
     - build
     permissions:
+      packages: write
       id-token: write
       attestations: write
     with:
