@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.1.0...v0.1.1) (2026-03-10)
+
+
+### Code Refactoring
+
+* **workflows:** pin actions versions and improve some workflows ([0a0c47d](https://github.com/dnum-mi/fabnum-cicd/commit/0a0c47db85dd35260ecb037946850bacbab441de))
+
 ## [0.1.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.0.1...v0.1.0) (2026-03-05)
 
 
