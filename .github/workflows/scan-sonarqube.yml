@@ -48,15 +48,14 @@ on:
         description: Sonarqube project key
         required: true
 
-permissions:
-  contents: read
-  issues: write
-  pull-requests: write
-
 jobs:
   code-scan:
     name: Run code quality analysis
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     steps:
     - name: Checks-out repository
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

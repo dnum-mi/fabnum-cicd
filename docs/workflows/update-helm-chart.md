@@ -24,11 +24,10 @@ Mise à jour automatique de la version d'un chart Helm et de l'appVersion dans C
 
 ## Permissions
 
-| Scope         | Accès | Description                                   |
-| ------------- | ----- | --------------------------------------------- |
-| pull-requests | write | Créer des PRs pour les mises à jour           |
-| contents      | write | Modifier les fichiers Chart.yaml              |
-| actions       | write | Déclencher des workflows dans d'autres dépôts |
+| Scope         | Accès | Description                                         |
+| ------------- | ----- | --------------------------------------------------- |
+| pull-requests | write | Créer des PRs pour les mises à jour (mode `called`) |
+| contents      | write | Modifier les fichiers Chart.yaml (mode `called`)    |
 
 ## Notes
 

@@ -81,16 +81,12 @@ on:
         type: string
         default: '["ubuntu-24.04"]'
 
-permissions:
-  packages: write
-  contents: read
-  id-token: write
-  attestations: write
-
 jobs:
   infos:
     name: Get build infos
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      contents: read
     outputs:
       registry: ${{ steps.infos.outputs.REGISTRY }}
       normalized-image: ${{ steps.infos.outputs.NORMALIZED_IMAGE }}
@@ -131,6 +127,9 @@ jobs:
   build:
     name: Build application
     runs-on: ${{ matrix.runners }}
+    permissions:
+      packages: write
+      contents: read
     needs:
     - infos
     strategy:
@@ -188,6 +187,8 @@ jobs:
   merge:
     name: Merge digest
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      packages: write
     needs:
     - infos
     - build
@@ -246,6 +247,10 @@ jobs:
   attest:
     name: Attest image
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      packages: write
+      id-token: write
+      attestations: write
     needs:
     - infos
     - merge

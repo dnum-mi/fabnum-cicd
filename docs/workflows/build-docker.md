@@ -26,12 +26,12 @@ Build et push d'images Docker multi-architecture (amd64/arm64) vers un registre 
 
 ## Permissions
 
-| Scope        | Accès | Description                                                |
-| ------------ | ----- | ---------------------------------------------------------- |
-| packages     | write | Push des images vers GHCR lorsque applicable               |
-| contents     | read  | Lecture du dépôt pour construire le contexte               |
-| id-token     | write | Requis pour les attestations de provenance et SBOM         |
-| attestations | write | Requis pour générer les attestations de provenance et SBOM |
+| Scope        | Accès | Description                                                            |
+| ------------ | ----- | ---------------------------------------------------------------------- |
+| packages     | write | Push des images vers GHCR lorsque applicable                           |
+| contents     | read  | Lecture du dépôt pour construire le contexte (jobs `infos` et `build`) |
+| id-token     | write | Requis uniquement si `PROVENANCE: true` ou `SBOM: true` (job `attest`) |
+| attestations | write | Requis uniquement si `PROVENANCE: true` ou `SBOM: true` (job `attest`) |
 
 ## Notes
 

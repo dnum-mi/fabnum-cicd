@@ -49,15 +49,11 @@ on:
         description: GitHub Personal Access Token (needed for automerge)
         required: false
 
-permissions:
-  pull-requests: write
-  contents: write
-  actions: write
-
 jobs:
   caller:
     name: Update chart
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions: {}
     if: ${{ inputs.RUN_MODE == 'caller' }}
     steps:
     - name: Trigger helm-charts update
@@ -91,6 +87,9 @@ jobs:
   called:
     name: Update chart
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      contents: write
+      pull-requests: write
     if: ${{ inputs.RUN_MODE == 'called' }}
     steps:
     - name: Checks-out repository
