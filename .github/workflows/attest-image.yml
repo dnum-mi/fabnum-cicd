@@ -1,0 +1,87 @@
+name: Attest image
+
+on:
+  workflow_call:
+    inputs:
+      IMAGE_NAME:
+        description: Full image name including registry and path (e.g. 'ghcr.io/my-org/my-image'). Normalized automatically (lowercase, underscores replaced by dashes).
+        required: true
+        type: string
+      DIGEST:
+        description: Digest of the image to attest (e.g. 'sha256:abc123...'). Use the 'digest' output of build-docker.yml.
+        required: true
+        type: string
+      PROVENANCE:
+        description: Generate SLSA provenance attestation for the image
+        required: false
+        default: false
+        type: boolean
+      SBOM:
+        description: Generate SBOM attestation for the image
+        required: false
+        default: false
+        type: boolean
+      REGISTRY_USERNAME:
+        description: Username used to login into registry (not needed for ghcr.io)
+        required: false
+        type: string
+      REGISTRY_PASSWORD:
+        description: Password used to login into registry (not needed for ghcr.io)
+        required: false
+        type: string
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
+
+jobs:
+  attest:
+    name: Attest image
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+    - name: Normalize image name
+      id: normalize
+      env:
+        INPUT_IMAGE_NAME: ${{ inputs.IMAGE_NAME }}
+      run: |
+        NORMALIZED_IMAGE=$(echo "$INPUT_IMAGE_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')
+        echo "NORMALIZED_IMAGE=$NORMALIZED_IMAGE" >> $GITHUB_OUTPUT
+        echo "REGISTRY=$(echo "$INPUT_IMAGE_NAME" | cut -d "/" -f 1 | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+    - name: Login to registry
+      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+      with:
+        registry: ${{ steps.normalize.outputs.REGISTRY }}
+        username: ${{ steps.normalize.outputs.REGISTRY == 'ghcr.io' && github.actor || inputs.REGISTRY_USERNAME }}
+        password: ${{ steps.normalize.outputs.REGISTRY == 'ghcr.io' && github.token || inputs.REGISTRY_PASSWORD }}
+        logout: true
+
+    - name: Generate SBOM with Trivy
+      if: ${{ inputs.SBOM }}
+      uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+      with:
+        image-ref: ${{ steps.normalize.outputs.NORMALIZED_IMAGE }}@${{ inputs.DIGEST }}
+        format: spdx-json
+        output: sbom.spdx.json
+
+    - name: Attest SBOM
+      if: ${{ inputs.SBOM }}
+      uses: actions/attest-sbom@07e74fc4e78d1aad915e867f9a094073a9f71527 # v4.0.0
+      with:
+        subject-name: ${{ steps.normalize.outputs.NORMALIZED_IMAGE }}
+        subject-digest: ${{ inputs.DIGEST }}
+        sbom-path: sbom.spdx.json
+        push-to-registry: true
+
+    - name: Attest build provenance
+      if: ${{ inputs.PROVENANCE }}
+      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+      with:
+        subject-name: ${{ steps.normalize.outputs.NORMALIZED_IMAGE }}
+        subject-digest: ${{ inputs.DIGEST }}
+        push-to-registry: true

@@ -17,12 +17,17 @@ Build et push d'images Docker multi-architecture (amd64/arm64) vers un registre 
 | BUILD_ARM64         | boolean | Build pour l'architecture arm64                                                                    | Non    | `true`             |
 | USE_QEMU            | boolean | Utiliser l'émulateur QEMU pour arm64                                                               | Non    | `false`            |
 | BUILD_ARGS          | string  | Liste de build args Docker séparés par des sauts de ligne (ex: `MY_ARG=value`)                     | Non    | -                  |
-| PROVENANCE          | boolean | Générer une attestation de provenance pour l'image                                                 | Non    | `false`            |
-| SBOM                | boolean | Générer une attestation SBOM pour l'image                                                          | Non    | `false`            |
 | CACHE               | boolean | Activer le cache de build Docker (utilise le backend de cache GitHub Actions)                      | Non    | `false`            |
 | REGISTRY_USERNAME   | string  | Nom d'utilisateur pour le registre                                                                 | Non    | -                  |
 | REGISTRY_PASSWORD   | string  | Mot de passe pour le registre                                                                      | Non    | -                  |
 | RUNS_ON             | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)             | Non    | `["ubuntu-24.04"]` |
+
+## Outputs
+
+| Output | Description                                                     |
+| ------ | --------------------------------------------------------------- |
+| digest | Digest de l'image construite (ex: `sha256:abc123...`)           |
+| image  | Nom normalisé de l'image (minuscules, compatible registres OCI) |
 
 ## Permissions
 
@@ -44,8 +49,6 @@ Build et push d'images Docker multi-architecture (amd64/arm64) vers un registre 
 - `TAG_MAJOR_AND_MINOR` crée des tags supplémentaires pour les releases stables (ex: `1.2.3` crée aussi `1.2` et `1`). S'applique uniquement aux versions non-prerelease.
 - `IMAGE_TARGET` permet de cibler une étape spécifique dans un Dockerfile multi-stage. Si non défini, la dernière étape est construite.
 - `BUILD_ARGS` permet de passer des arguments de build Docker, un par ligne (ex: `MY_ARG=value`).
-- **Attestation de provenance** : Si `PROVENANCE: true`, une attestation de provenance [SLSA](https://slsa.dev/) est générée et attachée à l'image après le build.
-- **Attestation SBOM** : Si `SBOM: true`, un Software Bill of Materials (SBOM) est généré et attesté pour l'image.
 - **Cache de build** : Si `CACHE: true`, le cache Docker est activé via le backend GitHub Actions (`type=gha`), accélérant les builds subséquents.
 - Logique de connexion au registre : utilise le token GitHub pour `ghcr.io`, sinon utilise les credentials fournis.
 - Les artefacts digest sont uploadés et fusionnés pour les images multi-arch.
@@ -92,18 +95,35 @@ jobs:
 
 ### Build avec attestation et SBOM
 
+Utiliser le workflow dédié [`attest-image.yml`](./attest-image.md) après le build :
+
 ```yaml
 jobs:
   build:
     uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    permissions:
+      packages: write
+      contents: read
     with:
       IMAGE_NAME: ghcr.io/my-org/my-app
       IMAGE_TAG: 1.0.0
       IMAGE_CONTEXT: ./
       IMAGE_DOCKERFILE: ./Dockerfile
+      CACHE: true
+
+  attest:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/attest-image.yml@v0
+    needs:
+    - build
+    permissions:
+      packages: write
+      id-token: write
+      attestations: write
+    with:
+      IMAGE_NAME: ${{ needs.build.outputs.image }}
+      DIGEST: ${{ needs.build.outputs.digest }}
       PROVENANCE: true
       SBOM: true
-      CACHE: true
 ```
 
 ### Build multi-stage avec build args

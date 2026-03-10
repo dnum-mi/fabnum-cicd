@@ -52,16 +52,6 @@ on:
         description: Newline-separated list of Docker build args (e.g. 'MY_ARG=value')
         required: false
         type: string
-      PROVENANCE:
-        description: Generate provenance attestation for the image
-        required: false
-        default: false
-        type: boolean
-      SBOM:
-        description: Generate SBOM attestation for the image
-        required: false
-        default: false
-        type: boolean
       CACHE:
         description: Enable Docker build cache (uses GitHub Actions cache backend)
         required: false
@@ -80,6 +70,13 @@ on:
         required: false
         type: string
         default: '["ubuntu-24.04"]'
+    outputs:
+      digest:
+        description: Digest of the built image (sha256:...)
+        value: ${{ jobs.merge.outputs.digest }}
+      image:
+        description: Normalized image name (lowercase, registry-compatible)
+        value: ${{ jobs.infos.outputs.normalized-image }}
 
 jobs:
   infos:
@@ -243,48 +240,3 @@ jobs:
     - name: Inspect image
       run: |
         docker buildx imagetools inspect ${{ needs.infos.outputs.normalized-image }}:${{ steps.meta.outputs.version }}
-
-  attest:
-    name: Attest image
-    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
-    permissions:
-      packages: write
-      id-token: write
-      attestations: write
-    needs:
-    - infos
-    - merge
-    if: ${{ inputs.PROVENANCE || inputs.SBOM }}
-    steps:
-    - name: Login to registry
-      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
-      with:
-        registry: ${{ needs.infos.outputs.registry }}
-        username: ${{ needs.infos.outputs.registry == 'ghcr.io' && github.actor || inputs.REGISTRY_USERNAME }}
-        password: ${{ needs.infos.outputs.registry == 'ghcr.io' && github.token || inputs.REGISTRY_PASSWORD }}
-        logout: true
-
-    - name: Generate SBOM with Trivy
-      if: ${{ inputs.SBOM }}
-      uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
-      with:
-        image-ref: ${{ needs.infos.outputs.normalized-image }}@${{ needs.merge.outputs.digest }}
-        format: spdx-json
-        output: sbom.spdx.json
-
-    - name: Attest SBOM
-      if: ${{ inputs.SBOM }}
-      uses: actions/attest-sbom@07e74fc4e78d1aad915e867f9a094073a9f71527 # v4.0.0
-      with:
-        subject-name: ${{ needs.infos.outputs.normalized-image }}
-        subject-digest: ${{ needs.merge.outputs.digest }}
-        sbom-path: sbom.spdx.json
-        push-to-registry: true
-
-    - name: Attest build provenance
-      if: ${{ inputs.PROVENANCE }}
-      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-      with:
-        subject-name: ${{ needs.infos.outputs.normalized-image }}
-        subject-digest: ${{ needs.merge.outputs.digest }}
-        push-to-registry: true
