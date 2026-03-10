@@ -4,27 +4,34 @@ Build et push d'images Docker multi-architecture (amd64/arm64) vers un registre 
 
 ## Inputs
 
-| Input               | Type    | Description                                                                            | Requis | Défaut             |
-| ------------------- | ------- | -------------------------------------------------------------------------------------- | ------ | ------------------ |
-| IMAGE_NAME          | string  | Nom de l'image à construire (ex: `ghcr.io/my-org/my-image`)                            | Oui    | -                  |
-| IMAGE_TAG           | string  | Tag utilisé pour construire l'image                                                    | Oui    | -                  |
-| LATEST_TAG          | boolean | Taguer également l'image avec `latest`                                                 | Non    | `false`            |
-| TAG_MAJOR_AND_MINOR | boolean | Créer des tags pour les versions majeure et mineure (ex: `1.2.3` → `1.2` et `1`)       | Non    | `false`            |
-| IMAGE_DOCKERFILE    | string  | Chemin vers le Dockerfile                                                              | Oui    | -                  |
-| IMAGE_CONTEXT       | string  | Chemin du contexte de build                                                            | Oui    | -                  |
-| BUILD_AMD64         | boolean | Build pour l'architecture amd64                                                        | Non    | `true`             |
-| BUILD_ARM64         | boolean | Build pour l'architecture arm64                                                        | Non    | `true`             |
-| USE_QEMU            | boolean | Utiliser l'émulateur QEMU pour arm64                                                   | Non    | `false`            |
-| REGISTRY_USERNAME   | string  | Nom d'utilisateur pour le registre                                                     | Non    | -                  |
-| REGISTRY_PASSWORD   | string  | Mot de passe pour le registre                                                          | Non    | -                  |
-| RUNS_ON             | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`) | Non    | `["ubuntu-24.04"]` |
+| Input               | Type    | Description                                                                                        | Requis | Défaut             |
+| ------------------- | ------- | -------------------------------------------------------------------------------------------------- | ------ | ------------------ |
+| IMAGE_NAME          | string  | Nom de l'image à construire (ex: `ghcr.io/my-org/my-image`)                                        | Oui    | -                  |
+| IMAGE_TAG           | string  | Tag utilisé pour construire l'image                                                                | Oui    | -                  |
+| LATEST_TAG          | boolean | Taguer également l'image avec `latest`                                                             | Non    | `false`            |
+| IMAGE_DOCKERFILE    | string  | Chemin vers le Dockerfile                                                                          | Oui    | -                  |
+| IMAGE_CONTEXT       | string  | Chemin du contexte de build                                                                        | Oui    | -                  |
+| IMAGE_TARGET        | string  | Étape cible à construire dans le Dockerfile (optionnel, construit la dernière étape si non défini) | Non    | -                  |
+| TAG_MAJOR_AND_MINOR | boolean | Créer des tags pour les versions majeure et mineure (ex: `1.2.3` → `1.2` et `1`)                   | Non    | `false`            |
+| BUILD_AMD64         | boolean | Build pour l'architecture amd64                                                                    | Non    | `true`             |
+| BUILD_ARM64         | boolean | Build pour l'architecture arm64                                                                    | Non    | `true`             |
+| USE_QEMU            | boolean | Utiliser l'émulateur QEMU pour arm64                                                               | Non    | `false`            |
+| BUILD_ARGS          | string  | Liste de build args Docker séparés par des sauts de ligne (ex: `MY_ARG=value`)                     | Non    | -                  |
+| PROVENANCE          | boolean | Générer une attestation de provenance pour l'image                                                 | Non    | `false`            |
+| SBOM                | boolean | Générer une attestation SBOM pour l'image                                                          | Non    | `false`            |
+| CACHE               | boolean | Activer le cache de build Docker (utilise le backend de cache GitHub Actions)                      | Non    | `false`            |
+| REGISTRY_USERNAME   | string  | Nom d'utilisateur pour le registre                                                                 | Non    | -                  |
+| REGISTRY_PASSWORD   | string  | Mot de passe pour le registre                                                                      | Non    | -                  |
+| RUNS_ON             | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)             | Non    | `["ubuntu-24.04"]` |
 
 ## Permissions
 
-| Scope    | Accès | Description                                  |
-| -------- | ----- | -------------------------------------------- |
-| packages | write | Push des images vers GHCR lorsque applicable |
-| contents | read  | Lecture du dépôt pour construire le contexte |
+| Scope        | Accès | Description                                                |
+| ------------ | ----- | ---------------------------------------------------------- |
+| packages     | write | Push des images vers GHCR lorsque applicable               |
+| contents     | read  | Lecture du dépôt pour construire le contexte               |
+| id-token     | write | Requis pour les attestations de provenance et SBOM         |
+| attestations | write | Requis pour générer les attestations de provenance et SBOM |
 
 ## Notes
 
@@ -35,6 +42,11 @@ Build et push d'images Docker multi-architecture (amd64/arm64) vers un registre 
   - Exemple : `ghcr.io/My-Org/My_App` → `ghcr.io/my-org/my-app`
 - L'input `LATEST_TAG` permet de taguer les images avec `latest`.
 - `TAG_MAJOR_AND_MINOR` crée des tags supplémentaires pour les releases stables (ex: `1.2.3` crée aussi `1.2` et `1`). S'applique uniquement aux versions non-prerelease.
+- `IMAGE_TARGET` permet de cibler une étape spécifique dans un Dockerfile multi-stage. Si non défini, la dernière étape est construite.
+- `BUILD_ARGS` permet de passer des arguments de build Docker, un par ligne (ex: `MY_ARG=value`).
+- **Attestation de provenance** : Si `PROVENANCE: true`, une attestation de provenance [SLSA](https://slsa.dev/) est générée et attachée à l'image après le build.
+- **Attestation SBOM** : Si `SBOM: true`, un Software Bill of Materials (SBOM) est généré et attesté pour l'image.
+- **Cache de build** : Si `CACHE: true`, le cache Docker est activé via le backend GitHub Actions (`type=gha`), accélérant les builds subséquents.
 - Logique de connexion au registre : utilise le token GitHub pour `ghcr.io`, sinon utilise les credentials fournis.
 - Les artefacts digest sont uploadés et fusionnés pour les images multi-arch.
 - Une manifest list est créée et pushée après le build.
@@ -76,6 +88,39 @@ jobs:
       TAG_MAJOR_AND_MINOR: true
       BUILD_AMD64: true
       BUILD_ARM64: true
+```
+
+### Build avec attestation et SBOM
+
+```yaml
+jobs:
+  build:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    with:
+      IMAGE_NAME: ghcr.io/my-org/my-app
+      IMAGE_TAG: 1.0.0
+      IMAGE_CONTEXT: ./
+      IMAGE_DOCKERFILE: ./Dockerfile
+      PROVENANCE: true
+      SBOM: true
+      CACHE: true
+```
+
+### Build multi-stage avec build args
+
+```yaml
+jobs:
+  build:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    with:
+      IMAGE_NAME: ghcr.io/my-org/my-app
+      IMAGE_TAG: 1.0.0
+      IMAGE_CONTEXT: ./
+      IMAGE_DOCKERFILE: ./Dockerfile
+      IMAGE_TARGET: production
+      BUILD_ARGS: |
+        NODE_ENV=production
+        API_URL=https://api.example.com
 ```
 
 ### Build avec registre personnalisé
