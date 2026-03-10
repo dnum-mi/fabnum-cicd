@@ -92,15 +92,14 @@ on:
         description: Patch version tag
         value: ${{ jobs.release.outputs.patch-tag }}
 
-permissions:
-  contents: write
-  issues: write
-  pull-requests: write
-
 jobs:
   release:
     name: Create new release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     outputs:
       release-created: ${{ steps.release.outputs.release_created }}
       version: ${{ steps.release.outputs.version }}

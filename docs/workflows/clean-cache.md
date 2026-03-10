@@ -19,7 +19,6 @@ Nettoyage du cache GitHub Actions et des images GHCR (GitHub Container Registry)
 | Scope    | Accès | Description                    |
 | -------- | ----- | ------------------------------ |
 | packages | write | Supprimer les images de GHCR   |
-| contents | read  | Lire le dépôt                  |
 | actions  | write | Supprimer les entrées de cache |
 
 ## Notes

@@ -36,15 +36,12 @@ on:
         type: string
         default: '["ubuntu-24.04"]'
 
-permissions:
-  packages: write
-  contents: read
-  actions: write
-
 jobs:
   cleanup-cache:
     name: Delete GitHub Actions cache
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      actions: write
     if: ${{ inputs.CLEAN_GH_CACHE && (inputs.PR_NUMBER || inputs.BRANCH_NAME) }}
     steps:
     - name: Clean cache for branch
@@ -87,6 +84,8 @@ jobs:
   cleanup-image:
     name: Delete image from ghcr.io
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      packages: write
     if: ${{ inputs.CLEAN_GHCR_IMAGE && inputs.IMAGE }}
     steps:
     - name: Login to GitHub Container Registry
@@ -178,6 +177,8 @@ jobs:
   cleanup-orphaned-image:
     name: Delete orphaned images from ghcr.io
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      packages: write
     if: ${{ inputs.CLEAN_ORPHANED_GHCR_IMAGE && inputs.IMAGE }}
     steps:
     - name: Delete orphaned SHA-only images
