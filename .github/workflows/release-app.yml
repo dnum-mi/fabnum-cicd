@@ -13,8 +13,12 @@ on:
         type: boolean
         required: false
         default: false
-      ADDITIONAL_RELEASE_ARTIFACTS:
-        description: Comma-separated list of additional release artifacts to upload (e.g., 'artifact/some-build-artifact.zip,artifact/another-artifact.tar.gz')
+      RELEASE_ASSET_PATHS:
+        description: Comma-separated list of local file paths to upload as release assets (e.g., 'dist/app-linux-amd64,dist/app-darwin-amd64')
+        type: string
+        required: false
+      RELEASE_ARTIFACT_NAMES:
+        description: Artifact name or glob pattern matching one or more artifacts (uploaded by previous jobs via actions/upload-artifact) to download and attach to the release (e.g., 'my-binaries' or 'my-app-*')
         type: string
         required: false
       AUTOMERGE_PRERELEASE:
@@ -105,10 +109,10 @@ jobs:
       patch-tag: ${{ steps.release.outputs.patch }}
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
     - name: Release new version
-      uses: googleapis/release-please-action@v4
+      uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4.4.0
       id: release
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
@@ -116,11 +120,37 @@ jobs:
         config-file: ${{ (github.ref_name == inputs.RELEASE_BRANCH && inputs.RELEASE_CONFIG_FILE) || (inputs.ENABLE_PRERELEASE && github.ref_name == inputs.PRERELEASE_BRANCH && inputs.PRERELEASE_CONFIG_FILE) || inputs.RELEASE_CONFIG_FILE }}
         manifest-file: ${{ (github.ref_name == inputs.RELEASE_BRANCH && inputs.RELEASE_MANIFEST_FILE) || (inputs.ENABLE_PRERELEASE && github.ref_name == inputs.PRERELEASE_BRANCH && inputs.PRERELEASE_MANIFEST_FILE) || inputs.RELEASE_MANIFEST_FILE }}
 
+    - name: Download release artifacts
+      if: ${{ steps.release.outputs.release_created && inputs.RELEASE_ARTIFACT_NAMES != '' }}
+      uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+      with:
+        name: ${{ inputs.RELEASE_ARTIFACT_NAMES }}
+        path: /tmp/release-artifacts/
+        merge-multiple: true
+
     - name: Upload Additional Release Artifacts
-      if: ${{ steps.release.outputs.release_created && inputs.ADDITIONAL_RELEASE_ARTIFACTS != '' }}
+      if: ${{ steps.release.outputs.release_created && (inputs.RELEASE_ASSET_PATHS != '' || inputs.RELEASE_ARTIFACT_NAMES != '') }}
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: gh release upload ${{ steps.release.outputs.tag_name }} $(echo ${{ inputs.ADDITIONAL_RELEASE_ARTIFACTS }} | tr ',' ' ')
+        TAG_NAME: ${{ steps.release.outputs.tag_name }}
+        ARTIFACT_PATHS: ${{ inputs.RELEASE_ASSET_PATHS }}
+      run: |
+        FILES=()
+        if [[ -n "$ARTIFACT_PATHS" ]]; then
+          ARTIFACT_PATHS="${ARTIFACT_PATHS//[[:space:]]/}"
+          IFS=',' read -ra PATHS <<< "$ARTIFACT_PATHS"
+          for p in "${PATHS[@]}"; do
+            [[ -z "$p" ]] && continue
+            FILES+=("$p")
+          done
+        fi
+        if [[ -d /tmp/release-artifacts ]]; then
+          mapfile -d '' -t DOWNLOADED < <(find /tmp/release-artifacts -type f -print0)
+          FILES+=("${DOWNLOADED[@]}")
+        fi
+        if [[ ${#FILES[@]} -gt 0 ]]; then
+          gh release upload "$TAG_NAME" "${FILES[@]}"
+        fi
 
     - name: Tag major and minor versions
       if: ${{ steps.release.outputs.release_created && inputs.TAG_MAJOR_AND_MINOR }}
@@ -173,19 +203,22 @@ jobs:
       if: ${{ ((inputs.ENABLE_PRERELEASE && inputs.AUTOMERGE_PRERELEASE && github.ref_name == inputs.PRERELEASE_BRANCH) || (inputs.AUTOMERGE_RELEASE && github.ref_name == inputs.RELEASE_BRANCH)) && !steps.release.outputs.release_created }}
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
       run: |
-        if [ -n "${{ secrets.GH_PAT }}" ]; then
+        if [ -n "$GH_TOKEN" ]; then
           echo "Using provided GitHub PAT for automerge"
 
-          AUTOMERGE_ALLOWED=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          AUTOMERGE_ALLOWED=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}" | jq '.allow_auto_merge')
+            "https://api.github.com/repos/$GITHUB_REPOSITORY" | jq '.allow_auto_merge')
 
           if [ "$AUTOMERGE_ALLOWED" == "true" ]; then
-            echo "Auto-merge is enabled for repo '${{ github.repository }}', setting up automerge gh flag"
+            echo "Auto-merge is enabled for repo '$GITHUB_REPOSITORY', setting up automerge gh flag"
             GH_EXTRA_ARGS="--auto"
           else
-            echo "Auto-merge is not enabled for repo '${{ github.repository }}', setting up admin gh flag"
+            echo "Auto-merge is not enabled for repo '$GITHUB_REPOSITORY', setting up admin gh flag"
             GH_EXTRA_ARGS="--admin"
           fi
 
@@ -193,15 +226,15 @@ jobs:
           git config user.email github-actions[bot]@users.noreply.github.com
           git fetch --all --prune
 
-          pr_branch=$(git branch -r | grep "release-please--branches--${{ github.ref_name }}" | sed 's|origin/||' | xargs)
+          pr_branch=$(git branch -r | grep "release-please--branches--$GITHUB_REF_NAME" | sed 's|origin/||' | xargs)
           if [ -n "$pr_branch" ]; then
             pr_number=$(gh pr list --head $pr_branch --json number --jq '.[0].number')
 
-            echo "Merging PR #$pr_number ('$pr_branch' > '${{ github.ref_name }}')"
+            echo "Merging PR #$pr_number ('$pr_branch' > '$GITHUB_REF_NAME')"
 
             gh pr merge $pr_number --rebase $GH_EXTRA_ARGS
           else
-            echo "No release-please branch found for branch '${{ github.ref_name }}', skipping automerge"
+            echo "No release-please branch found for branch '$GITHUB_REF_NAME', skipping automerge"
           fi
         else
           echo "No GitHub PAT provided, skipping automerge"
@@ -209,20 +242,23 @@ jobs:
 
     - name: Ensure ${{ inputs.PRERELEASE_BRANCH }} is up to date with ${{ inputs.RELEASE_BRANCH }}
       if: ${{ inputs.ENABLE_PRERELEASE && inputs.REBASE_PRERELEASE_BRANCH && github.ref_name == inputs.RELEASE_BRANCH && steps.release.outputs.release_created }}
+      env:
+        RELEASE_BRANCH: ${{ inputs.RELEASE_BRANCH }}
+        PRERELEASE_BRANCH: ${{ inputs.PRERELEASE_BRANCH }}
       run: |
         set -euo pipefail
-        git fetch origin ${{ inputs.RELEASE_BRANCH }} ${{ inputs.PRERELEASE_BRANCH }} || true
+        git fetch origin "$RELEASE_BRANCH" "$PRERELEASE_BRANCH" || true
 
-        if git ls-remote --exit-code --heads origin ${{ inputs.PRERELEASE_BRANCH }} >/dev/null 2>&1; then
-          echo "'${{ inputs.PRERELEASE_BRANCH }}' branch exists. Attempting rebase on ${{ inputs.RELEASE_BRANCH }}..."
+        if git ls-remote --exit-code --heads origin "$PRERELEASE_BRANCH" >/dev/null 2>&1; then
+          echo "'$PRERELEASE_BRANCH' branch exists. Attempting rebase on $RELEASE_BRANCH..."
 
-          git checkout ${{ inputs.PRERELEASE_BRANCH }}
-          git reset --hard origin/${{ inputs.PRERELEASE_BRANCH }}
+          git checkout "$PRERELEASE_BRANCH"
+          git reset --hard "origin/$PRERELEASE_BRANCH"
 
-          if git rebase origin/${{ inputs.RELEASE_BRANCH }}; then
-            echo "Rebase successful. Pushing updated ${{ inputs.PRERELEASE_BRANCH }}..."
+          if git rebase "origin/$RELEASE_BRANCH"; then
+            echo "Rebase successful. Pushing updated $PRERELEASE_BRANCH..."
 
-            git push --force-with-lease origin ${{ inputs.PRERELEASE_BRANCH }}
+            git push --force-with-lease origin "$PRERELEASE_BRANCH"
           else
             echo "Rebase failed due to conflicts. Aborting."
 
@@ -230,8 +266,8 @@ jobs:
             exit 1
           fi
         else
-          echo "'${{ inputs.PRERELEASE_BRANCH }}' branch does not exist. Creating from ${{ inputs.RELEASE_BRANCH }}..."
+          echo "'$PRERELEASE_BRANCH' branch does not exist. Creating from $RELEASE_BRANCH..."
 
-          git checkout -b ${{ inputs.PRERELEASE_BRANCH }} origin/${{ inputs.RELEASE_BRANCH }}
-          git push origin ${{ inputs.PRERELEASE_BRANCH }}
+          git checkout -b "$PRERELEASE_BRANCH" "origin/$RELEASE_BRANCH"
+          git push origin "$PRERELEASE_BRANCH"
         fi

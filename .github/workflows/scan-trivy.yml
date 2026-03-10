@@ -53,10 +53,10 @@ jobs:
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
     - name: Run Trivy vulnerability scanner on images
-      uses: aquasecurity/trivy-action@0.34.2
+      uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
       with:
         image-ref: "${{ inputs.IMAGE }}"
         format: ${{ inputs.FORMAT }}
@@ -79,7 +79,7 @@ jobs:
         echo '```' >> $GITHUB_STEP_SUMMARY
 
     - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4.32.6
       if: ${{ inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif' }}
       with:
         sarif_file: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
@@ -96,10 +96,10 @@ jobs:
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
     - name: Run Trivy vulnerability scanner on config files
-      uses: aquasecurity/trivy-action@0.34.2
+      uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
       with:
         scan-ref: "${{ inputs.PATH }}"
         scan-type: config
@@ -120,7 +120,7 @@ jobs:
         echo '```' >> $GITHUB_STEP_SUMMARY
 
     - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@v4
+      uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4.32.6
       if: ${{ inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif' }}
       with:
         sarif_file: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
@@ -140,7 +140,7 @@ jobs:
     - config-scan
     steps:
     - name: Comment PR
-      uses: thollander/actions-comment-pull-request@v3
+      uses: thollander/actions-comment-pull-request@24bffb9b452ba05a4f3f77933840a6a841d1b32b # v3.0.1
       if: ${{ inputs.PR_NUMBER != '' }}
       with:
         message: |

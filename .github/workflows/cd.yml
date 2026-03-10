@@ -4,7 +4,6 @@ on:
   push:
     branches:
     - main
-  workflow_dispatch:
 
 jobs:
   path-filter:
@@ -13,30 +12,31 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      git-hooks: ${{ steps.filter.outputs.git-hooks }}
       workflows: ${{ steps.filter.outputs.workflows }}
-      docs: ${{ steps.filter.outputs.docs }}
+      release: ${{ steps.filter.outputs.release }}
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
     - name: Check updated files paths
-      uses: dorny/paths-filter@v3
+      uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
       id: filter
       with:
+        # 'every' is required for negation patterns (!) to work correctly.
+        # With the default 'some', a file matching any positive rule wins,
+        # so '!ci.yml' exclusions are silently ignored.
+        predicate-quantifier: 'every'
         filters: |
-          git-hooks:
-            - 'git-hooks/**'
           workflows:
             - '.github/workflows/**'
             - '!.github/workflows/ci.yml'
             - '!.github/workflows/cd.yml'
-          docs:
-            - 'docs/**'
+          release:
+            - '.release-please-manifest.json'
 
   release:
     uses: ./.github/workflows/release-app.yml
-    if: ${{ needs.path-filter.outputs.workflows == 'true' }}
+    if: ${{ needs.path-filter.outputs.workflows == 'true' || needs.path-filter.outputs.release == 'true' }}
     needs:
     - path-filter
     permissions:
