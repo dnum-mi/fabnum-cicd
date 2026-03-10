@@ -7,14 +7,6 @@ on:
         description: Image used to perform scan (eg. docker.io/debian:latest)
         required: false
         type: string
-      REGISTRY_USERNAME:
-        description: Username used to login into registry
-        required: false
-        type: string
-      REGISTRY_PASSWORD:
-        description: Password used to login into registry
-        required: false
-        type: string
 
       PATH:
         description: Path used to perform scan
@@ -39,6 +31,13 @@ on:
         required: false
         type: string
         default: '["ubuntu-24.04"]'
+    secrets:
+      REGISTRY_USERNAME:
+        description: Username used to login into registry
+        required: false
+      REGISTRY_PASSWORD:
+        description: Password used to login into registry
+        required: false
 
 jobs:
   images-scan:
@@ -63,8 +62,8 @@ jobs:
         output: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
         github-pat: ${{ github.token }}
       env:
-        TRIVY_USERNAME: ${{ startsWith(inputs.IMAGE, 'ghcr.io') && github.actor || inputs.REGISTRY_USERNAME }}
-        TRIVY_PASSWORD: ${{ startsWith(inputs.IMAGE, 'ghcr.io') && github.token || inputs.REGISTRY_PASSWORD }}
+        TRIVY_USERNAME: ${{ startsWith(inputs.IMAGE, 'ghcr.io') && github.actor || secrets.REGISTRY_USERNAME }}
+        TRIVY_PASSWORD: ${{ startsWith(inputs.IMAGE, 'ghcr.io') && github.token || secrets.REGISTRY_PASSWORD }}
       continue-on-error: true
 
     - name: Print Trivy scan results

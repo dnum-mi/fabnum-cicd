@@ -21,19 +21,18 @@ on:
         description: Repository path in the OCI registry (defaults to github.repository)
         type: string
         required: false
-      REGISTRY_USERNAME:
-        description: Username for OCI registry authentication
-        type: string
-        required: false
-      REGISTRY_PASSWORD:
-        description: Password for OCI registry authentication
-        type: string
-        required: false
       RUNS_ON:
         description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
         required: false
         type: string
         default: '["ubuntu-24.04"]'
+    secrets:
+      REGISTRY_USERNAME:
+        description: Username for OCI registry authentication
+        required: false
+      REGISTRY_PASSWORD:
+        description: Password for OCI registry authentication
+        required: false
 
 jobs:
   release:
@@ -81,8 +80,8 @@ jobs:
       if: steps.chart-releaser.outputs.changed_charts != ''
       env:
         REGISTRY: ${{ inputs.REGISTRY }}
-        USERNAME: ${{ inputs.REGISTRY == 'ghcr.io' && github.actor || inputs.REGISTRY_USERNAME }}
-        PASSWORD: ${{ inputs.REGISTRY == 'ghcr.io' && secrets.GITHUB_TOKEN || inputs.REGISTRY_PASSWORD }}
+        USERNAME: ${{ inputs.REGISTRY == 'ghcr.io' && github.actor || secrets.REGISTRY_USERNAME }}
+        PASSWORD: ${{ inputs.REGISTRY == 'ghcr.io' && secrets.GITHUB_TOKEN || secrets.REGISTRY_PASSWORD }}
       run: |
         echo "$PASSWORD" | helm registry login "$REGISTRY" -u "$USERNAME" --password-stdin
 

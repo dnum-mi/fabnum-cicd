@@ -18,9 +18,14 @@ Build et push d'images Docker multi-architecture (amd64/arm64) vers un registre 
 | USE_QEMU            | boolean | Utiliser l'émulateur QEMU pour arm64                                                               | Non    | `false`            |
 | BUILD_ARGS          | string  | Liste de build args Docker séparés par des sauts de ligne (ex: `MY_ARG=value`)                     | Non    | -                  |
 | CACHE               | boolean | Activer le cache de build Docker (utilise le backend de cache GitHub Actions)                      | Non    | `false`            |
-| REGISTRY_USERNAME   | string  | Nom d'utilisateur pour le registre                                                                 | Non    | -                  |
-| REGISTRY_PASSWORD   | string  | Mot de passe pour le registre                                                                      | Non    | -                  |
 | RUNS_ON             | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)             | Non    | `["ubuntu-24.04"]` |
+
+## Secrets
+
+| Secret            | Description                        | Requis |
+| ----------------- | ---------------------------------- | ------ |
+| REGISTRY_USERNAME | Nom d'utilisateur pour le registre | Non    |
+| REGISTRY_PASSWORD | Mot de passe pour le registre      | Non    |
 
 ## Outputs
 
@@ -31,12 +36,10 @@ Build et push d'images Docker multi-architecture (amd64/arm64) vers un registre 
 
 ## Permissions
 
-| Scope        | Accès | Description                                                            |
-| ------------ | ----- | ---------------------------------------------------------------------- |
-| packages     | write | Push des images vers GHCR lorsque applicable                           |
-| contents     | read  | Lecture du dépôt pour construire le contexte (jobs `infos` et `build`) |
-| id-token     | write | Requis uniquement si `PROVENANCE: true` ou `SBOM: true` (job `attest`) |
-| attestations | write | Requis uniquement si `PROVENANCE: true` ou `SBOM: true` (job `attest`) |
+| Scope    | Accès | Description                                                            |
+| -------- | ----- | ---------------------------------------------------------------------- |
+| packages | write | Push des images vers GHCR lorsque applicable                           |
+| contents | read  | Lecture du dépôt pour construire le contexte (jobs `infos` et `build`) |
 
 ## Notes
 
@@ -156,6 +159,7 @@ jobs:
       IMAGE_DOCKERFILE: ./Dockerfile
       BUILD_AMD64: true
       BUILD_ARM64: false
+    secrets:
       REGISTRY_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       REGISTRY_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 ```
