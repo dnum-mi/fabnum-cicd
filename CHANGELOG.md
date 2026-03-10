@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.2.0...v0.3.0) (2026-03-10)
+
+
+### Features
+
+* **build-docker:** split workflow with dedicated attestation workflow ([dcceedd](https://github.com/dnum-mi/fabnum-cicd/commit/dcceeddb2e015d88466237eacec5f13bcca007e1))
+* improve security by passing sensitive data as secrets ([446ca8a](https://github.com/dnum-mi/fabnum-cicd/commit/446ca8abb69e09c2a784c2599e944d0128caa569))
+
 ## [0.2.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.1.1...v0.2.0) (2026-03-10)
 
 
