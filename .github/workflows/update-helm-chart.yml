@@ -22,7 +22,7 @@ on:
         type: string
         default: charts
       CHART_NAME:
-        description: Name of the folder containing the chart (in CHART_DIR)
+        description: Name of the chart to update (in CHART_DIR)
         required: true
         type: string
       APP_VERSION:
@@ -63,22 +63,29 @@ jobs:
     - name: Trigger helm-charts update
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
+        CHART_DIR: ${{ inputs.CHART_DIR }}
+        CHART_REPO: ${{ inputs.CHART_REPO }}
+        WORKFLOW_NAME: ${{ inputs.WORKFLOW_NAME }}
+        CHART_NAME: ${{ inputs.CHART_NAME }}
+        APP_VERSION: ${{ inputs.APP_VERSION }}
+        UPGRADE_TYPE: ${{ inputs.UPGRADE_TYPE }}
+        PRERELEASE_IDENTIFIER: ${{ inputs.PRERELEASE_IDENTIFIER }}
       run: |
         # Remove trailing slashes
-        CHART_DIR=$(echo '${{ inputs.CHART_DIR }}' | sed 's:/*$::')
+        CHART_DIR=$(echo "$CHART_DIR" | sed 's:/*$::')
 
-        if [ -z "${{ inputs.CHART_REPO }}" ]; then
+        if [ -z "$CHART_REPO" ]; then
           echo "CHART_REPO input is required when using 'caller' mode"
           exit 1
         fi
 
-        echo "Trigger workflow '${{ inputs.WORKFLOW_NAME }}' in repository '${{ inputs.CHART_REPO }}' to update chart '$CHART_DIR/${{ inputs.CHART_NAME }}' with app version '${{ inputs.APP_VERSION }}'"
+        echo "Trigger workflow '$WORKFLOW_NAME' in repository '$CHART_REPO' to update chart '$CHART_DIR/$CHART_NAME' with app version '$APP_VERSION'"
 
-        gh workflow --repo ${{ inputs.CHART_REPO }} run ${{ inputs.WORKFLOW_NAME }} \
-          -f APP_VERSION=${{inputs.APP_VERSION }} \
-          -f CHART_NAME=${{ inputs.CHART_NAME }} \
-          -f UPGRADE_TYPE=${{ inputs.UPGRADE_TYPE }} \
-          -f PRERELEASE_IDENTIFIER=${{ inputs.PRERELEASE_IDENTIFIER }} \
+        gh workflow --repo "$CHART_REPO" run "$WORKFLOW_NAME" \
+          -f "APP_VERSION=$APP_VERSION" \
+          -f "CHART_NAME=$CHART_NAME" \
+          -f "UPGRADE_TYPE=$UPGRADE_TYPE" \
+          -f "PRERELEASE_IDENTIFIER=$PRERELEASE_IDENTIFIER" \
           -f RUN_MODE=called
 
   called:
@@ -87,24 +94,30 @@ jobs:
     if: ${{ inputs.RUN_MODE == 'called' }}
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
     - name: update chart version
       id: update-chart
+      env:
+        CHART_DIR: ${{ inputs.CHART_DIR }}
+        CHART_NAME: ${{ inputs.CHART_NAME }}
+        APP_VERSION: ${{ inputs.APP_VERSION }}
+        UPGRADE_TYPE: ${{ inputs.UPGRADE_TYPE }}
+        PRERELEASE_IDENTIFIER: ${{ inputs.PRERELEASE_IDENTIFIER }}
       run: |
         # Remove trailing slashes
-        CHART_DIR=$(echo '${{ inputs.CHART_DIR }}' | sed 's:/*$::')
+        CHART_DIR=$(echo "$CHART_DIR" | sed 's:/*$::')
 
-        if [ ! -f $CHART_DIR/${{ inputs.CHART_NAME }}/Chart.yaml ]; then
-          echo "Chart.yaml not found in $CHART_DIR/${{ inputs.CHART_NAME }}"
+        if [ ! -f "$CHART_DIR/$CHART_NAME/Chart.yaml" ]; then
+          echo "Chart.yaml not found in $CHART_DIR/$CHART_NAME"
           exit 1
         fi
 
-        echo "Update chart '${{ inputs.CHART_NAME }}' in $CHART_DIR/${{ inputs.CHART_NAME }} with app version '${{ inputs.APP_VERSION }}'"
-        CURRENT_VERSION=$(yq '.version' ${{ inputs.CHART_DIR }}/${{ inputs.CHART_NAME }}/Chart.yaml)
+        echo "Update chart '$CHART_NAME' in $CHART_DIR/$CHART_NAME with app version '$APP_VERSION'"
+        CURRENT_VERSION=$(yq '.version' "$CHART_DIR/$CHART_NAME/Chart.yaml")
 
         # Bump version using Release Please compatible logic
-        if [[ "${{ inputs.UPGRADE_TYPE }}" == "prerelease" ]]; then
+        if [[ "$UPGRADE_TYPE" == "prerelease" ]]; then
           # Parse version: extract base version and prerelease part
           if [[ $CURRENT_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-(.+))?$ ]]; then
             MAJOR="${BASH_REMATCH[1]}"
@@ -115,26 +128,26 @@ jobs:
             if [[ -z "$PRERELEASE" ]]; then
               # No prerelease: bump patch then add prerelease identifier
               # This prepares the next version (e.g., 0.2.0 -> 0.2.1-rc)
-              NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))-${{ inputs.PRERELEASE_IDENTIFIER }}"
+              NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))-$PRERELEASE_IDENTIFIER"
             else
               # Has prerelease: extract current identifier
               if [[ "$PRERELEASE" =~ ^([a-z]+)(\.([0-9]+))?$ ]]; then
                 CURRENT_IDENTIFIER="${BASH_REMATCH[1]}"
                 CURRENT_NUM="${BASH_REMATCH[3]}"
 
-                if [[ "$CURRENT_IDENTIFIER" != "${{ inputs.PRERELEASE_IDENTIFIER }}" ]]; then
+                if [[ "$CURRENT_IDENTIFIER" != "$PRERELEASE_IDENTIFIER" ]]; then
                   # Different identifier: switch to new identifier without number
                   # e.g., 1.0.0-alpha.2 -> 1.0.0-beta
-                  NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-${{ inputs.PRERELEASE_IDENTIFIER }}"
+                  NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-$PRERELEASE_IDENTIFIER"
                 elif [[ -z "$CURRENT_NUM" ]]; then
                   # Same identifier without number: add .1
                   # e.g., 1.0.0-rc -> 1.0.0-rc.1
-                  NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-${{ inputs.PRERELEASE_IDENTIFIER }}.1"
+                  NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-$PRERELEASE_IDENTIFIER.1"
                 else
                   # Same identifier with number: increment
                   # e.g., 1.0.0-rc.1 -> 1.0.0-rc.2
                   NEXT_NUM=$((CURRENT_NUM + 1))
-                  NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-${{ inputs.PRERELEASE_IDENTIFIER }}.${NEXT_NUM}"
+                  NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-$PRERELEASE_IDENTIFIER.${NEXT_NUM}"
                 fi
               else
                 echo "Unexpected prerelease format: $PRERELEASE"
@@ -158,7 +171,7 @@ jobs:
               NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}"
             else
               # No prerelease: perform standard version bump
-              case "${{ inputs.UPGRADE_TYPE }}" in
+              case "$UPGRADE_TYPE" in
                 major)
                   NEXT_VERSION="$((MAJOR + 1)).0.0"
                   ;;
@@ -169,7 +182,7 @@ jobs:
                   NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
                   ;;
                 *)
-                  echo "Invalid upgrade type: ${{ inputs.UPGRADE_TYPE }}"
+                  echo "Invalid upgrade type: $UPGRADE_TYPE"
                   exit 1
                   ;;
               esac
@@ -183,22 +196,22 @@ jobs:
         echo "Update chart from version '$CURRENT_VERSION' to '$NEXT_VERSION'"
 
         echo "Update chart files..."
-        sed -i "s/^appVersion: .*/appVersion: ${{ inputs.APP_VERSION }}/" $CHART_DIR/${{ inputs.CHART_NAME }}/Chart.yaml
-        sed -i "s/^version: .*/version: $NEXT_VERSION/" $CHART_DIR/${{ inputs.CHART_NAME }}/Chart.yaml
+        sed -i "s/^appVersion: .*/appVersion: $APP_VERSION/" "$CHART_DIR/$CHART_NAME/Chart.yaml"
+        sed -i "s/^version: .*/version: $NEXT_VERSION/" "$CHART_DIR/$CHART_NAME/Chart.yaml"
 
         echo "Generate chart documentation..."
         docker run \
           --rm \
-          --volume "$(pwd)/$CHART_DIR/${{ inputs.CHART_NAME }}:/helm-docs" \
+          --volume "$(pwd)/$CHART_DIR/$CHART_NAME:/helm-docs" \
           -u $(id -u) \
           docker.io/jnorwood/helm-docs:latest
 
         echo "CURRENT_VERSION=$CURRENT_VERSION" >> $GITHUB_OUTPUT
         echo "NEXT_VERSION=$NEXT_VERSION" >> $GITHUB_OUTPUT
-        echo "BRANCH_NAME=${{ inputs.CHART_NAME }}-v$NEXT_VERSION" >> $GITHUB_OUTPUT
+        echo "BRANCH_NAME=$CHART_NAME-v$NEXT_VERSION" >> $GITHUB_OUTPUT
 
     - name: Create pull request
-      uses: peter-evans/create-pull-request@v8
+      uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
       with:
         branch: ${{ steps.update-chart.outputs.BRANCH_NAME }}
         base: main

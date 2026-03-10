@@ -12,24 +12,18 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      git-hooks: ${{ steps.filter.outputs.git-hooks }}
       workflows: ${{ steps.filter.outputs.workflows }}
-      docs: ${{ steps.filter.outputs.docs }}
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
     - name: Check updated files paths
-      uses: dorny/paths-filter@v3
+      uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
       id: filter
       with:
         filters: |
-          git-hooks:
-            - 'git-hooks/**'
           workflows:
             - '.github/workflows/**'
-          docs:
-            - 'docs/**'
 
   lint-commits:
     uses: ./.github/workflows/lint-commits.yml
