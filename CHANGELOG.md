@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.3.0...v0.4.0) (2026-03-12)
+
+
+### Features
+
+* **update-helm-chart:** handle auto-merge in called mode ([ac8113f](https://github.com/dnum-mi/fabnum-cicd/commit/ac8113f6ffa3fb52a0a01ae10c86ba530fc1f68d))
+
 ## [0.3.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.2.0...v0.3.0) (2026-03-10)
 
 
