@@ -14,6 +14,8 @@ Mise à jour automatique de la version d'un chart Helm et de l'appVersion dans C
 | APP_VERSION           | string | La version de l'application à injecter dans Chart.yaml                                                                                | Oui    | -                        |
 | UPGRADE_TYPE          | string | Type de mise à jour : `major`, `minor`, `patch` ou `prerelease`                                                                       | Non    | `patch`                  |
 | PRERELEASE_IDENTIFIER | string | Identifiant de pré-release (utilisé seulement si UPGRADE_TYPE est `prerelease`)                                                       | Non    | `rc`                     |
+| AUTOMERGE_PRERELEASE  | bool   | Fusionner automatiquement la PR créée quand `UPGRADE_TYPE` est `prerelease` (nécessite `GH_PAT`)                                      | Non    | `false`                  |
+| AUTOMERGE_RELEASE     | bool   | Fusionner automatiquement la PR créée quand `UPGRADE_TYPE` n'est pas `prerelease` (nécessite `GH_PAT`)                                | Non    | `false`                  |
 | RUNS_ON               | string | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                | Non    | `["ubuntu-24.04"]`       |
 
 ## Secrets
@@ -45,6 +47,9 @@ Mise à jour automatique de la version d'un chart Helm et de l'appVersion dans C
   - Si la version actuelle est une prerelease (ex: `1.2.3-rc.1`), publie d'abord la version officielle (ex: `1.2.3`)
   - Si la version actuelle est stable, applique le bump classique (major/minor/patch)
 - Crée une pull request avec les changements.
+- **Automerge (mode `called`)** : Si `AUTOMERGE_PRERELEASE: true` (quand `UPGRADE_TYPE: prerelease`) ou `AUTOMERGE_RELEASE: true` (sinon), et qu'un `GH_PAT` est fourni, tente de fusionner la PR automatiquement :
+  - Si le dépôt a l'option *Allow auto-merge* activée, utilise `--auto` (merge déclenché après passage des checks).
+  - Sinon, utilise `--admin` pour forcer le merge immédiatement.
 - Régénère automatiquement la documentation du chart avec helm-docs.
 - Utile pour synchroniser les versions d'application avec les versions de chart.
 - Suit le versioning sémantique (semver).
@@ -77,6 +82,8 @@ jobs:
       CHART_NAME: my-app
       APP_VERSION: ${{ needs.release.outputs.version }}
       UPGRADE_TYPE: minor
+      AUTOMERGE_PRERELEASE: true
+      AUTOMERGE_RELEASE: false
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
 ```
