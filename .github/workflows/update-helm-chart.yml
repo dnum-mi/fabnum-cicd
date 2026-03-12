@@ -39,6 +39,16 @@ on:
         required: false
         type: string
         default: rc
+      AUTOMERGE_PRERELEASE:
+        description: Automatically merge the PR when UPGRADE_TYPE is 'prerelease' (requires GH_PAT)
+        required: false
+        type: boolean
+        default: false
+      AUTOMERGE_RELEASE:
+        description: Automatically merge the PR when UPGRADE_TYPE is not 'prerelease' (requires GH_PAT)
+        required: false
+        type: boolean
+        default: false
       RUNS_ON:
         description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
         required: false
@@ -66,6 +76,8 @@ jobs:
         APP_VERSION: ${{ inputs.APP_VERSION }}
         UPGRADE_TYPE: ${{ inputs.UPGRADE_TYPE }}
         PRERELEASE_IDENTIFIER: ${{ inputs.PRERELEASE_IDENTIFIER }}
+        AUTOMERGE_PRERELEASE: ${{ inputs.AUTOMERGE_PRERELEASE }}
+        AUTOMERGE_RELEASE: ${{ inputs.AUTOMERGE_RELEASE }}
       run: |
         # Remove trailing slashes
         CHART_DIR=$(echo "$CHART_DIR" | sed 's:/*$::')
@@ -80,8 +92,11 @@ jobs:
         gh workflow --repo "$CHART_REPO" run "$WORKFLOW_NAME" \
           -f "APP_VERSION=$APP_VERSION" \
           -f "CHART_NAME=$CHART_NAME" \
+          -f "CHART_DIR=$CHART_DIR" \
           -f "UPGRADE_TYPE=$UPGRADE_TYPE" \
           -f "PRERELEASE_IDENTIFIER=$PRERELEASE_IDENTIFIER" \
+          -f "AUTOMERGE_PRERELEASE=$AUTOMERGE_PRERELEASE" \
+          -f "AUTOMERGE_RELEASE=$AUTOMERGE_RELEASE" \
           -f RUN_MODE=called
 
   called:
@@ -210,6 +225,7 @@ jobs:
         echo "BRANCH_NAME=$CHART_NAME-v$NEXT_VERSION" >> $GITHUB_OUTPUT
 
     - name: Create pull request
+      id: create-pr
       uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
       with:
         branch: ${{ steps.update-chart.outputs.BRANCH_NAME }}
@@ -225,3 +241,32 @@ jobs:
           - Chart version has been updated from `${{ steps.update-chart.outputs.CURRENT_VERSION }}` to `${{ steps.update-chart.outputs.NEXT_VERSION }}`
           - App version has been updated to `${{ inputs.APP_VERSION }}`
           - Chart documentation has been regenerated
+
+    - name: Automerge chart update PR
+      if: ${{ ((inputs.AUTOMERGE_PRERELEASE && inputs.UPGRADE_TYPE == 'prerelease') || (inputs.AUTOMERGE_RELEASE && inputs.UPGRADE_TYPE != 'prerelease')) && steps.create-pr.outputs.pull-request-number }}
+      env:
+        GH_TOKEN: ${{ secrets.GH_PAT }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
+      run: |
+        if [ -n "$GH_TOKEN" ]; then
+          echo "Using provided GitHub PAT for automerge"
+
+          AUTOMERGE_ALLOWED=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY" | jq '.allow_auto_merge')
+
+          if [ "$AUTOMERGE_ALLOWED" == "true" ]; then
+            echo "Auto-merge is enabled for repo '$GITHUB_REPOSITORY', setting up automerge gh flag"
+            GH_EXTRA_ARGS="--auto"
+          else
+            echo "Auto-merge is not enabled for repo '$GITHUB_REPOSITORY', setting up admin gh flag"
+            GH_EXTRA_ARGS="--admin"
+          fi
+
+          echo "Merging PR #$PR_NUMBER"
+          gh pr merge $PR_NUMBER --rebase $GH_EXTRA_ARGS
+        else
+          echo "No GitHub PAT provided, skipping automerge"
+        fi
