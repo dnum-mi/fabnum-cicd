@@ -113,10 +113,6 @@ jobs:
       REPOSITORY_NAME: my-app
     secrets:
       GIT_MIRROR_TOKEN: ${{ secrets.CPIN_GITLAB_TOKEN }}
-```
-
       REPOSITORY_NAME: my-app
       ADDITIONAL_VARIABLES: '{"VERSION":"${{ needs.release.outputs.version }}"}'
-    secrets:
-      GIT_MIRROR_TOKEN: ${{ secrets.CPIN_GITLAB_TOKEN }}
 ```
