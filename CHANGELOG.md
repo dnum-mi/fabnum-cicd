@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.4.0...v0.5.0) (2026-05-21)
+
+
+### Features
+
+* **build-docker:** add PUSH_IMAGE input to conditionally push Docker images ([aa1699f](https://github.com/dnum-mi/fabnum-cicd/commit/aa1699f301f2b13e2b1a423c552d893e4548dd66))
+
 ## [0.4.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.3.0...v0.4.0) (2026-03-12)
 
 
