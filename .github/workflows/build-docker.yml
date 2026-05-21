@@ -221,7 +221,6 @@ jobs:
 
     - name: Login to GitHub Container Registry
       uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
-      if: ${{ inputs.PUSH_IMAGE }}
       with:
         registry: ${{ needs.infos.outputs.registry }}
         username: ${{ needs.infos.outputs.registry == 'ghcr.io' && github.actor || secrets.REGISTRY_USERNAME }}
