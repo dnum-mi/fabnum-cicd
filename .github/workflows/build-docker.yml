@@ -52,6 +52,11 @@ on:
         description: Newline-separated list of Docker build args (e.g. 'MY_ARG=value')
         required: false
         type: string
+      PUSH_IMAGE:
+        description: Whether to push the built image to the registry
+        required: false
+        default: true
+        type: boolean
       CACHE:
         description: Enable Docker build cache (uses GitHub Actions cache backend)
         required: false
@@ -160,7 +165,7 @@ jobs:
         provenance: false
         sbom: false
         platforms: ${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && inputs.USE_QEMU && 'linux/amd64,linux/arm64') || (inputs.BUILD_ARM64 && 'linux/arm64') || (inputs.BUILD_AMD64 && 'linux/amd64') }}
-        outputs: type=image,name=${{ needs.infos.outputs.normalized-image }},push-by-digest=true,name-canonical=true,push=true
+        outputs: type=image,name=${{ needs.infos.outputs.normalized-image }},push-by-digest=true,name-canonical=true,push=${{ inputs.PUSH_IMAGE }}
         cache-from: ${{ inputs.CACHE && format('type=gha,scope={0}', needs.infos.outputs.lower-image) || '' }}
         cache-to: ${{ inputs.CACHE && format('type=gha,mode=max,scope={0}', needs.infos.outputs.lower-image) || '' }}
         build-args: |
@@ -216,6 +221,7 @@ jobs:
 
     - name: Login to GitHub Container Registry
       uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+      if: ${{ inputs.PUSH_IMAGE }}
       with:
         registry: ${{ needs.infos.outputs.registry }}
         username: ${{ needs.infos.outputs.registry == 'ghcr.io' && github.actor || secrets.REGISTRY_USERNAME }}
@@ -225,10 +231,11 @@ jobs:
     - name: Create manifest list and push
       working-directory: /tmp/digests/${{ needs.infos.outputs.lower-image }}
       run: |
-        docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+        docker buildx imagetools create ${{ inputs.PUSH_IMAGE && '' || '--dry-run' }} $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
           $(printf '${{ needs.infos.outputs.normalized-image }}@sha256:%s ' *)
 
     - name: Get image digest
+      if: ${{ inputs.PUSH_IMAGE }}
       id: digest
       run: |
         DIGEST=$(docker buildx imagetools inspect --raw \
@@ -237,5 +244,6 @@ jobs:
         echo "value=sha256:${DIGEST}" >> $GITHUB_OUTPUT
 
     - name: Inspect image
+      if: ${{ inputs.PUSH_IMAGE }}
       run: |
         docker buildx imagetools inspect ${{ needs.infos.outputs.normalized-image }}:${{ steps.meta.outputs.version }}
