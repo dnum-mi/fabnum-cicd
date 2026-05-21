@@ -17,6 +17,7 @@ Build et push d'images Docker multi-architecture (amd64/arm64) vers un registre 
 | BUILD_ARM64         | boolean | Build pour l'architecture arm64                                                                    | Non    | `true`             |
 | USE_QEMU            | boolean | Utiliser l'émulateur QEMU pour arm64                                                               | Non    | `false`            |
 | BUILD_ARGS          | string  | Liste de build args Docker séparés par des sauts de ligne (ex: `MY_ARG=value`)                     | Non    | -                  |
+| PUSH_IMAGE          | boolean | Pousser l'image construite vers le registre                                                        | Non    | `true`             |
 | CACHE               | boolean | Activer le cache de build Docker (utilise le backend de cache GitHub Actions)                      | Non    | `false`            |
 | RUNS_ON             | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)             | Non    | `["ubuntu-24.04"]` |
 
