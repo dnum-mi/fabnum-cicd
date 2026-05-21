@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.5.0...v0.5.1) (2026-05-21)
+
+
+### Bug Fixes
+
+* **build-docker:** re-enable registry login even without push ([871a861](https://github.com/dnum-mi/fabnum-cicd/commit/871a86185083af421cd33f53415129996c826f09))
+
 ## [0.5.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.4.0...v0.5.0) (2026-05-21)
 
 
