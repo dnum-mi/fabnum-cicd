@@ -135,7 +135,12 @@ jobs:
     - infos
     strategy:
       matrix:
-        runners: ${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && !inputs.USE_QEMU && fromJson('["ubuntu-24.04", "ubuntu-24.04-arm"]')) || (inputs.BUILD_ARM64 && !inputs.USE_QEMU && fromJson('["ubuntu-24.04-arm"]')) || fromJson('["ubuntu-24.04"]') }}
+        # Case 1: both native  → one AMD64 + one ARM64 runner
+        # Case 2: both QEMU   → single AMD64 runner builds linux/amd64,linux/arm64
+        # Case 3: ARM64 QEMU  → single AMD64 runner builds linux/arm64 via QEMU
+        # Case 4: ARM64 native → single ARM64 runner
+        # Case 5: AMD64 only / fallback → single AMD64 runner
+        runners: ${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && !inputs.USE_QEMU && fromJson('["ubuntu-24.04", "ubuntu-24.04-arm"]')) || (inputs.BUILD_ARM64 && inputs.USE_QEMU && fromJson('["ubuntu-24.04"]')) || (!inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && !inputs.USE_QEMU && fromJson('["ubuntu-24.04-arm"]')) || fromJson('["ubuntu-24.04"]') }}
     steps:
     - name: Checks-out repository
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -164,7 +169,7 @@ jobs:
         target: ${{ inputs.IMAGE_TARGET || '' }}
         provenance: false
         sbom: false
-        platforms: ${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && inputs.USE_QEMU && 'linux/amd64,linux/arm64') || (inputs.BUILD_ARM64 && 'linux/arm64') || (inputs.BUILD_AMD64 && 'linux/amd64') }}
+        platforms: ${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && inputs.USE_QEMU && 'linux/amd64,linux/arm64') || (!inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && inputs.USE_QEMU && 'linux/arm64') || (runner.arch == 'ARM64' && 'linux/arm64') || 'linux/amd64' }}
         outputs: type=image,name=${{ needs.infos.outputs.normalized-image }},push-by-digest=true,name-canonical=true,push=${{ inputs.PUSH_IMAGE }}
         cache-from: ${{ inputs.CACHE && format('type=gha,scope={0}', needs.infos.outputs.lower-image) || '' }}
         cache-to: ${{ inputs.CACHE && format('type=gha,mode=max,scope={0}', needs.infos.outputs.lower-image) || '' }}
