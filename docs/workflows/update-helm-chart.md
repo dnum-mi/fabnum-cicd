@@ -4,19 +4,19 @@ Mise à jour automatique de la version d'un chart Helm et de l'appVersion dans C
 
 ## Inputs
 
-| Input                 | Type   | Description                                                                                                                           | Requis | Défaut                   |
-| --------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------ |
-| RUN_MODE              | string | Mode d'exécution. `caller` pour déclencher le workflow dans le dépôt chart, `called` pour mettre à jour le chart dans le dépôt actuel | Oui    | -                        |
-| WORKFLOW_NAME         | string | Nom du workflow à déclencher dans le dépôt chart (ex: `update-chart.yml`)                                                             | Non    | `update-app-version.yml` |
-| CHART_REPO            | string | Nom du dépôt chart (ex: `this-is-tobi/helm-charts`)                                                                                   | Non    | -                        |
-| CHART_DIR             | string | Nom du dossier contenant le chart (dans CHART_REPO)                                                                                   | Non    | `charts`                 |
-| CHART_NAME            | string | Nom du dossier contenant le chart (dans CHART_DIR)                                                                                    | Oui    | -                        |
-| APP_VERSION           | string | La version de l'application à injecter dans Chart.yaml                                                                                | Oui    | -                        |
-| UPGRADE_TYPE          | string | Type de mise à jour : `major`, `minor`, `patch` ou `prerelease`                                                                       | Non    | `patch`                  |
-| PRERELEASE_IDENTIFIER | string | Identifiant de pré-release (utilisé seulement si UPGRADE_TYPE est `prerelease`)                                                       | Non    | `rc`                     |
-| AUTOMERGE_PRERELEASE  | bool   | Fusionner automatiquement la PR créée quand `UPGRADE_TYPE` est `prerelease` (nécessite `GH_PAT`)                                      | Non    | `false`                  |
-| AUTOMERGE_RELEASE     | bool   | Fusionner automatiquement la PR créée quand `UPGRADE_TYPE` n'est pas `prerelease` (nécessite `GH_PAT`)                                | Non    | `false`                  |
-| RUNS_ON               | string | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                | Non    | `["ubuntu-24.04"]`       |
+| Input                 | Type   | Description                                                                                                                                                                                                                                               | Requis | Défaut                   |
+| --------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------ |
+| RUN_MODE              | string | Mode d'exécution : `caller` déclenche le workflow dans le dépôt chart séparé, `called` met à jour le chart dans le dépôt actuel et crée une PR, `local` met à jour le chart dans le dépôt actuel et amende directement la branche release-please courante | Oui    | -                        |
+| WORKFLOW_NAME         | string | Nom du workflow à déclencher dans le dépôt chart (ex: `update-chart.yml`)                                                                                                                                                                                 | Non    | `update-app-version.yml` |
+| CHART_REPO            | string | Nom du dépôt chart (ex: `this-is-tobi/helm-charts`)                                                                                                                                                                                                       | Non    | -                        |
+| CHART_DIR             | string | Nom du dossier contenant le chart (dans CHART_REPO)                                                                                                                                                                                                       | Non    | `charts`                 |
+| CHART_NAME            | string | Nom du dossier contenant le chart (dans CHART_DIR)                                                                                                                                                                                                        | Oui    | -                        |
+| APP_VERSION           | string | La version de l'application à injecter dans Chart.yaml                                                                                                                                                                                                    | Oui    | -                        |
+| UPGRADE_TYPE          | string | Type de mise à jour : `major`, `minor`, `patch` ou `prerelease`                                                                                                                                                                                           | Non    | `patch`                  |
+| PRERELEASE_IDENTIFIER | string | Identifiant de pré-release (utilisé seulement si UPGRADE_TYPE est `prerelease`)                                                                                                                                                                           | Non    | `rc`                     |
+| AUTOMERGE_PRERELEASE  | bool   | Fusionner automatiquement la PR créée quand `UPGRADE_TYPE` est `prerelease` (nécessite `GH_PAT`)                                                                                                                                                          | Non    | `false`                  |
+| AUTOMERGE_RELEASE     | bool   | Fusionner automatiquement la PR créée quand `UPGRADE_TYPE` n'est pas `prerelease` (nécessite `GH_PAT`)                                                                                                                                                    | Non    | `false`                  |
+| RUNS_ON               | string | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                                                                                                                                    | Non    | `["ubuntu-24.04"]`       |
 
 ## Secrets
 
@@ -33,9 +33,22 @@ Mise à jour automatique de la version d'un chart Helm et de l'appVersion dans C
 
 ## Notes
 
+### Modes de fonctionnement (`RUN_MODE`)
+
+| Mode     | Utilisation                                                                                   | Comportement                                                                                                                                                     |
+| -------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `caller` | Le dépôt applicatif veut mettre à jour un chart dans un **dépôt chart séparé**                | Déclenche le workflow `WORKFLOW_NAME` dans `CHART_REPO` via `workflow_dispatch`. Nécessite `GH_PAT`.                                                             |
+| `called` | Le dépôt chart reçoit l'appel de `caller` et effectue la mise à jour                          | Met à jour `Chart.yaml` et le README, puis crée une Pull Request. Supporte l'automerge.                                                                          |
+| `local`  | Le chart est dans le **même dépôt** que l'application, avec une branche release-please active | Met à jour `Chart.yaml` et le README, puis amende le dernier commit de la branche `release-please--branches--<branche-courante>` et force-push. Aucune PR créée. |
+
+> **Quand utiliser `local` ?** Lorsque le chart Helm est hébergé dans le même dépôt que l'application et que release-please gère déjà une PR de release. Le mode `local` injecte les mises à jour du chart directement dans cette PR au lieu d'en créer une seconde.
+
+### Autres comportements
+
 - Deux modes de fonctionnement :
   - **caller** : Déclenche le workflow de mise à jour dans un dépôt chart séparé
   - **called** : Effectue la mise à jour directement dans le dépôt actuel
+  - **local** : Amende la branche release-please courante directement
 - Met à jour automatiquement `appVersion` dans Chart.yaml avec la version fournie.
 - Incrémente la version du chart selon le type de mise à jour spécifié.
 - **Logique prerelease** : 
@@ -156,4 +169,37 @@ jobs:
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
 ```
+
+### Mode local — chart dans le même dépôt que l'application
+
+Utiliser `local` quand le chart Helm est dans le même dépôt et que release-please gère déjà une branche de release. Le workflow retrouve automatiquement la branche `release-please--branches--<branche-courante>` et y amende le commit existant.
+
+```yaml
+name: Update Helm Chart on Release
+
+on:
+  push:
+    branches:
+    - main
+
+jobs:
+  release:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
+    secrets:
+      GH_PAT: ${{ secrets.GH_PAT }}
+
+  update-chart:
+    needs: release
+    if: ${{ needs.release.outputs.release-created }}
+    uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
+    with:
+      RUN_MODE: local
+      CHART_NAME: my-app
+      APP_VERSION: ${{ needs.release.outputs.version }}
+      UPGRADE_TYPE: minor
+    secrets:
+      GH_PAT: ${{ secrets.GH_PAT }}
+```
+
+> **Prérequis** : Une branche `release-please--branches--<branche-courante>` doit exister au moment de l'exécution. Si aucune branche release-please n'est trouvée, le step est ignoré sans erreur.
 

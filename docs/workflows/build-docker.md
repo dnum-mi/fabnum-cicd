@@ -44,7 +44,31 @@ Build et push d'images Docker multi-architecture (amd64/arm64) vers un registre 
 
 ## Notes
 
-- Supporte Ubuntu 24.04 et les runners ARM pour les builds matrix.
+### Matrice des runners et plateformes
+
+Le job `build` sélectionne automatiquement le ou les runners et la plateforme cible selon la combinaison des inputs `BUILD_AMD64`, `BUILD_ARM64` et `USE_QEMU` :
+
+| `BUILD_AMD64` | `BUILD_ARM64` | `USE_QEMU` | Runners utilisés                                                     | Plateforme(s) buildées                                      |
+| :-----------: | :-----------: | :--------: | -------------------------------------------------------------------- | ----------------------------------------------------------- |
+|       ✓       |       ✓       |     ✗      | `ubuntu-24.04` **+** `ubuntu-24.04-arm` (builds natifs en parallèle) | AMD64 runner → `linux/amd64` / ARM64 runner → `linux/arm64` |
+|       ✓       |       ✓       |     ✓      | `ubuntu-24.04` (QEMU émule arm64)                                    | `linux/amd64,linux/arm64`                                   |
+|       ✗       |       ✓       |     ✓      | `ubuntu-24.04` (QEMU émule arm64)                                    | `linux/arm64`                                               |
+|       ✗       |       ✓       |     ✗      | `ubuntu-24.04-arm` (natif)                                           | `linux/arm64`                                               |
+|       ✓       |       ✗       |     *      | `ubuntu-24.04`                                                       | `linux/amd64`                                               |
+
+> **Recommandation** : Préférer les builds natifs (`USE_QEMU: false`) quand des runners ARM sont disponibles. QEMU est significativement plus lent pour les builds complexes.
+
+### Comportement selon `PUSH_IMAGE`
+
+|  `PUSH_IMAGE`   | Comportement                                                                                                                                                                              |
+| :-------------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `true` (défaut) | Build, push des digests par plateforme, création et push de la manifest list multi-arch avec les tags configurés                                                                          |
+|     `false`     | **Build uniquement** — aucun push vers le registre, les jobs `Export digest`, `Upload digest` et `merge` sont intégralement ignorés. Le succès ou l'échec du build est le seul signal CI. |
+
+> Utiliser `PUSH_IMAGE: false` pour valider que le Dockerfile compile correctement (ex: sur les branches de feature) sans publier d'image.
+
+### Autres comportements
+
 - **Normalisation du nom d'image** : Le nom de l'image est automatiquement normalisé pour être compatible avec les registres OCI (notamment GHCR) :
   - Les majuscules sont converties en minuscules
   - Les underscores (`_`) sont remplacés par des tirets (`-`)
@@ -54,9 +78,8 @@ Build et push d'images Docker multi-architecture (amd64/arm64) vers un registre 
 - `IMAGE_TARGET` permet de cibler une étape spécifique dans un Dockerfile multi-stage. Si non défini, la dernière étape est construite.
 - `BUILD_ARGS` permet de passer des arguments de build Docker, un par ligne (ex: `MY_ARG=value`).
 - **Cache de build** : Si `CACHE: true`, le cache Docker est activé via le backend GitHub Actions (`type=gha`), accélérant les builds subséquents.
-- Logique de connexion au registre : utilise le token GitHub pour `ghcr.io`, sinon utilise les credentials fournis.
-- Les artefacts digest sont uploadés et fusionnés pour les images multi-arch.
-- Une manifest list est créée et pushée après le build.
+- Logique de connexion au registre : utilise le token GitHub pour `ghcr.io`, sinon utilise les credentials fournis (`REGISTRY_USERNAME` / `REGISTRY_PASSWORD`).
+- Les outputs `digest` et `image` ne sont disponibles que lorsque `PUSH_IMAGE: true`.
 - Les versions prerelease (contenant `-alpha`, `-beta`, `-rc`, etc.) sont détectées et traitées en conséquence.
 - Un tag SHA court est automatiquement ajouté pour la traçabilité.
 - Les tags basés sur les branches excluent les branches `main` et `develop`.
@@ -163,4 +186,38 @@ jobs:
     secrets:
       REGISTRY_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       REGISTRY_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+```
+
+### Vérification du build sans push (CI sur branches de feature)
+
+Valide que le Dockerfile compile sans publier d'image dans le registre. Aucun push n'est effectué, même par digest.
+
+```yaml
+jobs:
+  build-check:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    with:
+      IMAGE_NAME: ghcr.io/my-org/my-app
+      IMAGE_TAG: ${{ github.sha }}
+      IMAGE_CONTEXT: ./
+      IMAGE_DOCKERFILE: ./Dockerfile
+      PUSH_IMAGE: false
+```
+
+### Build ARM64 via QEMU sur runner AMD64
+
+À utiliser lorsque des runners ARM64 natifs ne sont pas disponibles. Le build est plus lent mais ne nécessite qu'un seul runner.
+
+```yaml
+jobs:
+  build:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    with:
+      IMAGE_NAME: ghcr.io/my-org/my-app
+      IMAGE_TAG: 1.0.0
+      IMAGE_CONTEXT: ./
+      IMAGE_DOCKERFILE: ./Dockerfile
+      BUILD_AMD64: true
+      BUILD_ARM64: true
+      USE_QEMU: true
 ```
