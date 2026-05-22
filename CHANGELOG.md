@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.5.1...v0.6.0) (2026-05-22)
+
+
+### Features
+
+* **update-helm-chart:** add local run mode for release-please branch ([dd3a217](https://github.com/dnum-mi/fabnum-cicd/commit/dd3a2176c7bdc52da3281726834bd6a76aa27f10))
+
+
+### Bug Fixes
+
+* **build-docker:** fix artifact names and skip merge when PUSH_IMAGE=false ([0eeb282](https://github.com/dnum-mi/fabnum-cicd/commit/0eeb282cbb51e700269ef60cb498728c096a5424))
+* **build-docker:** make multi-arch runners and platforms explicit ([0f181ba](https://github.com/dnum-mi/fabnum-cicd/commit/0f181ba68c7d41d5a3099d1e6ff971a7a475791f))
+
 ## [0.5.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.5.0...v0.5.1) (2026-05-21)
 
 
