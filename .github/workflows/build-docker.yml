@@ -177,21 +177,24 @@ jobs:
           ${{ inputs.BUILD_ARGS }}
 
     - name: Export digest
+      if: ${{ inputs.PUSH_IMAGE }}
       run: |
         mkdir -p /tmp/digests/${{ needs.infos.outputs.lower-image }}
         digest="${{ steps.build.outputs.digest }}"
         touch "/tmp/digests/${{ needs.infos.outputs.lower-image }}/${digest#sha256:}"
 
     - name: Upload digest
+      if: ${{ inputs.PUSH_IMAGE }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
-        name: digests-${{ needs.infos.outputs.lower-image }}-${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && inputs.USE_QEMU && 'multiarch') || (inputs.BUILD_ARM64 && 'arm64') || (inputs.BUILD_AMD64 && 'amd64') }}
+        name: digests-${{ needs.infos.outputs.lower-image }}-${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && inputs.USE_QEMU && 'multiarch') || (!inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && inputs.USE_QEMU && 'arm64') || (runner.arch == 'ARM64' && 'arm64') || 'amd64' }}
         path: /tmp/digests/${{ needs.infos.outputs.lower-image }}/*
         if-no-files-found: error
         retention-days: 1
 
   merge:
     name: Merge digest
+    if: ${{ inputs.PUSH_IMAGE }}
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     permissions:
       packages: write
@@ -235,7 +238,7 @@ jobs:
     - name: Create manifest list and push
       working-directory: /tmp/digests/${{ needs.infos.outputs.lower-image }}
       run: |
-        docker buildx imagetools create ${{ inputs.PUSH_IMAGE && '' || '--dry-run' }} $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+        docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
           $(printf '${{ needs.infos.outputs.normalized-image }}@sha256:%s ' *)
 
     - name: Get image digest
