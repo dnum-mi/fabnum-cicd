@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       RUN_MODE:
-        description: Mode the workflow is run in. 'caller' to trigger the workflow in the chart repository, 'called' to update the chart in the current repository
+        description: Mode the workflow is running. Use 'caller' to trigger the workflow in the chart repository, 'called' to update the chart in the current repository
         required: true
         type: string
       WORKFLOW_NAME:
@@ -105,7 +105,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    if: ${{ inputs.RUN_MODE == 'called' }}
+    if: ${{ inputs.RUN_MODE == 'called' || inputs.RUN_MODE == 'local' }}
     steps:
     - name: Checks-out repository
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -227,6 +227,7 @@ jobs:
     - name: Create pull request
       id: create-pr
       uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
+      if: ${{ inputs.RUN_MODE == 'called' }}
       with:
         branch: ${{ steps.update-chart.outputs.BRANCH_NAME }}
         base: main
@@ -242,8 +243,35 @@ jobs:
           - App version has been updated to `${{ inputs.APP_VERSION }}`
           - Chart documentation has been regenerated
 
+    - name: Commit and push helm updates
+      if: ${{ inputs.RUN_MODE == 'local' }}
+      env:
+        CHART_DIR: ${{ inputs.CHART_DIR }}
+        CHART_NAME: ${{ inputs.CHART_NAME }}
+      run: |
+        git config user.name github-actions[bot]
+        git config user.email github-actions[bot]@users.noreply.github.com
+        git fetch --all --prune
+
+        pr_branch=$(git branch -r | grep "release-please--branches--${{ github.ref_name }}" | sed 's|origin/||' | xargs)
+
+        if [ -n "$pr_branch" ]; then
+          echo "Commit and push helm updates to release-please branch '$pr_branch' for chart '$CHART_DIR/$CHART_NAME'"
+
+          git fetch origin $pr_branch
+          git checkout $pr_branch
+
+          git add $CHART_DIR/$CHART_NAME/Chart.yaml $CHART_DIR/$CHART_NAME/README.md
+          git commit --amend --no-edit
+          git push --force-with-lease --force-if-includes
+
+          echo "Helm updates pushed to release-please branch '$pr_branch' for chart '$CHART_DIR/$CHART_NAME'"
+        else
+          echo "No release-please branch found for branch '${{ github.ref_name }}', skipping synchronization"
+        fi
+
     - name: Automerge chart update PR
-      if: ${{ ((inputs.AUTOMERGE_PRERELEASE && inputs.UPGRADE_TYPE == 'prerelease') || (inputs.AUTOMERGE_RELEASE && inputs.UPGRADE_TYPE != 'prerelease')) && steps.create-pr.outputs.pull-request-number }}
+      if: ${{ inputs.RUN_MODE == 'called' && ((inputs.AUTOMERGE_PRERELEASE && inputs.UPGRADE_TYPE == 'prerelease') || (inputs.AUTOMERGE_RELEASE && inputs.UPGRADE_TYPE != 'prerelease')) && steps.create-pr.outputs.pull-request-number }}
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
