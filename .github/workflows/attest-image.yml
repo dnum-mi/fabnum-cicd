@@ -53,7 +53,7 @@ jobs:
         echo "REGISTRY=$(echo "$INPUT_IMAGE_NAME" | cut -d "/" -f 1 | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
     - name: Login to registry
-      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
       with:
         registry: ${{ steps.normalize.outputs.REGISTRY }}
         username: ${{ steps.normalize.outputs.REGISTRY == 'ghcr.io' && github.actor || secrets.REGISTRY_USERNAME }}
@@ -62,7 +62,7 @@ jobs:
 
     - name: Generate SBOM with Trivy
       if: ${{ inputs.SBOM }}
-      uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
         image-ref: ${{ steps.normalize.outputs.NORMALIZED_IMAGE }}@${{ inputs.DIGEST }}
         format: spdx-json
@@ -70,7 +70,7 @@ jobs:
 
     - name: Attest SBOM
       if: ${{ inputs.SBOM }}
-      uses: actions/attest-sbom@07e74fc4e78d1aad915e867f9a094073a9f71527 # v4.0.0
+      uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
       with:
         subject-name: ${{ steps.normalize.outputs.NORMALIZED_IMAGE }}
         subject-digest: ${{ inputs.DIGEST }}
