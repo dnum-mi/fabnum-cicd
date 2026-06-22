@@ -68,19 +68,11 @@ jobs:
         format: spdx-json
         output: sbom.spdx.json
 
-    - name: Attest SBOM
-      if: ${{ inputs.SBOM }}
-      uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+    - name: Attest SBOM and provenance
+      if: ${{ inputs.SBOM || inputs.PROVENANCE }}
+      uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
       with:
         subject-name: ${{ steps.normalize.outputs.NORMALIZED_IMAGE }}
         subject-digest: ${{ inputs.DIGEST }}
-        sbom-path: sbom.spdx.json
-        push-to-registry: true
-
-    - name: Attest build provenance
-      if: ${{ inputs.PROVENANCE }}
-      uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-      with:
-        subject-name: ${{ steps.normalize.outputs.NORMALIZED_IMAGE }}
-        subject-digest: ${{ inputs.DIGEST }}
+        sbom-path: ${{ inputs.SBOM && 'sbom.spdx.json' || '' }}
         push-to-registry: true
