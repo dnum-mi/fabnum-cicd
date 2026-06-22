@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.6.0...v0.7.0) (2026-06-22)
+
+
+### Features
+
+* **attest-image:** replace old dedicated actions by unified new attest action ([889c417](https://github.com/dnum-mi/fabnum-cicd/commit/889c4179688e22e1d77dded27410a91720c4add7))
+
+
+### Dependencies
+
+* **workflows:** upgrade actions versions ([eb7136c](https://github.com/dnum-mi/fabnum-cicd/commit/eb7136cb583ad1eb4033112e167c41caafe10904))
+
 ## [0.6.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.5.1...v0.6.0) (2026-05-22)
 
 
