@@ -4,7 +4,12 @@ on:
   workflow_call:
     inputs:
       RUN_MODE:
-        description: Mode the workflow is running. Use 'caller' to trigger the workflow in the chart repository, 'called' to update the chart in the current repository
+        description: >-
+          Mode the workflow is run in. 'caller' to trigger the workflow in a
+          remote chart repository, 'called' to update the chart in the current
+          repository via a pull request, 'local' to bump the chart and commit
+          directly on the current branch (monorepo pipelines - the new version
+          is exposed as the 'chart-version' output).
         required: true
         type: string
       WORKFLOW_NAME:
@@ -26,9 +31,13 @@ on:
         required: true
         type: string
       APP_VERSION:
-        description: The app version to inject in Chart.yaml
-        required: true
+        description: >-
+          The app version to inject in Chart.yaml (appVersion). Leave empty to
+          keep the current appVersion - a chart-only release where the chart
+          version bumps on its own lifecycle without any app change.
+        required: false
         type: string
+        default: ""
       UPGRADE_TYPE:
         description: Should update 'major', 'minor', 'patch' or 'prerelease'
         required: false
@@ -49,6 +58,11 @@ on:
         required: false
         type: boolean
         default: false
+      BASE_BRANCH:
+        description: Base branch to open the chart-update pull request against
+        required: false
+        type: string
+        default: main
       RUNS_ON:
         description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
         required: false
@@ -58,6 +72,16 @@ on:
       GH_PAT:
         description: GitHub Personal Access Token (needed for automerge)
         required: false
+    outputs:
+      chart-version:
+        description: New chart version computed by the bump (called and local modes)
+        value: ${{ jobs.called.outputs.chart-version }}
+      previous-chart-version:
+        description: Chart version before the bump (called and local modes)
+        value: ${{ jobs.called.outputs.previous-chart-version }}
+      commit-sha:
+        description: SHA of the bump commit pushed on the current branch (local mode only)
+        value: ${{ jobs.called.outputs.commit-sha }}
 
 jobs:
   caller:
@@ -106,9 +130,13 @@ jobs:
       contents: write
       pull-requests: write
     if: ${{ inputs.RUN_MODE == 'called' || inputs.RUN_MODE == 'local' }}
+    outputs:
+      chart-version: ${{ steps.update-chart.outputs.NEXT_VERSION }}
+      previous-chart-version: ${{ steps.update-chart.outputs.CURRENT_VERSION }}
+      commit-sha: ${{ steps.push-local.outputs.COMMIT_SHA }}
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.4
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: update chart version
       id: update-chart
@@ -210,7 +238,11 @@ jobs:
         echo "Update chart from version '$CURRENT_VERSION' to '$NEXT_VERSION'"
 
         echo "Update chart files..."
-        sed -i "s/^appVersion: .*/appVersion: $APP_VERSION/" "$CHART_DIR/$CHART_NAME/Chart.yaml"
+        # Empty APP_VERSION = chart-only release: the chart version bumps on
+        # its own lifecycle and the current appVersion is left untouched
+        if [ -n "$APP_VERSION" ]; then
+          sed -i "s/^appVersion: .*/appVersion: $APP_VERSION/" "$CHART_DIR/$CHART_NAME/Chart.yaml"
+        fi
         sed -i "s/^version: .*/version: $NEXT_VERSION/" "$CHART_DIR/$CHART_NAME/Chart.yaml"
 
         echo "Generate chart documentation..."
@@ -224,54 +256,53 @@ jobs:
         echo "NEXT_VERSION=$NEXT_VERSION" >> $GITHUB_OUTPUT
         echo "BRANCH_NAME=$CHART_NAME-v$NEXT_VERSION" >> $GITHUB_OUTPUT
 
+    - name: Commit and push chart bump
+      id: push-local
+      if: ${{ inputs.RUN_MODE == 'local' }}
+      env:
+        CHART_DIR: ${{ inputs.CHART_DIR }}
+        CHART_NAME: ${{ inputs.CHART_NAME }}
+        NEXT_VERSION: ${{ steps.update-chart.outputs.NEXT_VERSION }}
+      run: |
+        set -euo pipefail
+
+        CHART_DIR="${CHART_DIR%/}"
+        git config user.name 'github-actions[bot]'
+        git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+        git add "$CHART_DIR/$CHART_NAME"
+        git commit -m "chore(chart): release $CHART_NAME $NEXT_VERSION"
+
+        # Tolerate concurrent pushes from other jobs of the same pipeline
+        git pull --rebase origin "$GITHUB_REF_NAME"
+        # Pushes authenticated with GITHUB_TOKEN never trigger new workflow
+        # runs (GitHub anti-recursion), so this cannot loop the CD pipeline -
+        # release the chart in the same run using the outputs of this workflow
+        git push origin "HEAD:$GITHUB_REF_NAME"
+
+        echo "COMMIT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
     - name: Create pull request
       id: create-pr
-      uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
       if: ${{ inputs.RUN_MODE == 'called' }}
+      uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
       with:
         branch: ${{ steps.update-chart.outputs.BRANCH_NAME }}
-        base: main
-        title: Update chart ${{ inputs.CHART_NAME }} app to v${{ inputs.APP_VERSION }}
+        base: ${{ inputs.BASE_BRANCH }}
+        title: "${{ inputs.APP_VERSION != '' && format('Update chart {0} app to v{1}', inputs.CHART_NAME, inputs.APP_VERSION) || format('Update chart {0} to v{1}', inputs.CHART_NAME, steps.update-chart.outputs.NEXT_VERSION) }}"
         add-paths: |
           **/**
-        commit-message: "chore: update chart ${{ inputs.CHART_NAME }} app to v${{ inputs.APP_VERSION }}"
+        commit-message: "${{ inputs.APP_VERSION != '' && format('chore: update chart {0} app to v{1}', inputs.CHART_NAME, inputs.APP_VERSION) || format('chore: update chart {0} to v{1}', inputs.CHART_NAME, steps.update-chart.outputs.NEXT_VERSION) }}"
         draft: false
         body: |
           🤖 This PR has been automatically generated, please check updates before merging.
 
           - Chart version has been updated from `${{ steps.update-chart.outputs.CURRENT_VERSION }}` to `${{ steps.update-chart.outputs.NEXT_VERSION }}`
-          - App version has been updated to `${{ inputs.APP_VERSION }}`
+          ${{ inputs.APP_VERSION != '' && format('- App version has been updated to `{0}`', inputs.APP_VERSION) || '- App version has been left unchanged (chart-only release)' }}
           - Chart documentation has been regenerated
 
-    - name: Commit and push helm updates
-      if: ${{ inputs.RUN_MODE == 'local' }}
-      env:
-        CHART_DIR: ${{ inputs.CHART_DIR }}
-        CHART_NAME: ${{ inputs.CHART_NAME }}
-      run: |
-        git config user.name github-actions[bot]
-        git config user.email github-actions[bot]@users.noreply.github.com
-        git fetch --all --prune
-
-        pr_branch=$(git branch -r | grep "release-please--branches--${{ github.ref_name }}" | sed 's|origin/||' | xargs)
-
-        if [ -n "$pr_branch" ]; then
-          echo "Commit and push helm updates to release-please branch '$pr_branch' for chart '$CHART_DIR/$CHART_NAME'"
-
-          git fetch origin $pr_branch
-          git checkout $pr_branch
-
-          git add $CHART_DIR/$CHART_NAME/Chart.yaml $CHART_DIR/$CHART_NAME/README.md
-          git commit --amend --no-edit
-          git push --force-with-lease --force-if-includes
-
-          echo "Helm updates pushed to release-please branch '$pr_branch' for chart '$CHART_DIR/$CHART_NAME'"
-        else
-          echo "No release-please branch found for branch '${{ github.ref_name }}', skipping synchronization"
-        fi
-
     - name: Automerge chart update PR
-      if: ${{ inputs.RUN_MODE == 'called' && ((inputs.AUTOMERGE_PRERELEASE && inputs.UPGRADE_TYPE == 'prerelease') || (inputs.AUTOMERGE_RELEASE && inputs.UPGRADE_TYPE != 'prerelease')) && steps.create-pr.outputs.pull-request-number }}
+      if: ${{ ((inputs.AUTOMERGE_PRERELEASE && inputs.UPGRADE_TYPE == 'prerelease') || (inputs.AUTOMERGE_RELEASE && inputs.UPGRADE_TYPE != 'prerelease')) && steps.create-pr.outputs.pull-request-number }}
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
