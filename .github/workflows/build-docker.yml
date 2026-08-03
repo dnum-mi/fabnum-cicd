@@ -28,6 +28,14 @@ on:
         description: Target stage to build in the Dockerfile (optional, builds the last stage if not set)
         required: false
         type: string
+      PUSH:
+        description: >-
+          Whether to push the built image to the registry. When false, the image is exported
+          as a tarball artifact (one per architecture) instead, so a downstream job can load
+          it with 'docker load' and run tests against it.
+        required: false
+        default: true
+        type: boolean
       TAG_MAJOR_AND_MINOR:
         description: Whether to tag with only major and minor tags (e.g. '1.2.3' -> '1.2' & '1')
         required: false
@@ -52,13 +60,18 @@ on:
         description: Newline-separated list of Docker build args (e.g. 'MY_ARG=value')
         required: false
         type: string
-      PUSH_IMAGE:
-        description: Whether to push the built image to the registry
-        required: false
-        default: true
-        type: boolean
       CACHE:
         description: Enable Docker build cache (uses GitHub Actions cache backend)
+        required: false
+        default: false
+        type: boolean
+      PROVENANCE:
+        description: Generate SLSA provenance attestation for the image
+        required: false
+        default: false
+        type: boolean
+      SBOM:
+        description: Generate SBOM attestation for the image
         required: false
         default: false
         type: boolean
@@ -69,17 +82,29 @@ on:
         default: '["ubuntu-24.04"]'
     outputs:
       digest:
-        description: Digest of the built image (sha256:...)
+        description: Digest of the built image (sha256:...), empty when PUSH is false
         value: ${{ jobs.merge.outputs.digest }}
       image:
         description: Normalized image name (lowercase, registry-compatible)
         value: ${{ jobs.infos.outputs.normalized-image }}
+      artifact-prefix:
+        description: >-
+          Prefix of the image tarball artifacts produced when PUSH is false. Full artifact
+          names are '<prefix>-amd64' and '<prefix>-arm64', each containing a single 'image.tar'.
+        value: ${{ jobs.infos.outputs.artifact-prefix }}
     secrets:
       REGISTRY_USERNAME:
         description: Username used to login into registry
         required: false
       REGISTRY_PASSWORD:
         description: Password used to login into registry
+        required: false
+      BUILD_SECRETS:
+        description: >-
+          Newline-separated list of build secrets in KEY=VALUE form, exposed to
+          the Dockerfile via BuildKit secret mounts (e.g. RUN
+          --mount=type=secret,id=KEY). Unlike BUILD_ARGS, these are never written to
+          image layers/history.
         required: false
 
 jobs:
@@ -98,9 +123,27 @@ jobs:
       prerelease-tag: ${{ steps.infos.outputs.PRERELEASE_TAG }}
       short-sha: ${{ steps.infos.outputs.SHORT_SHA }}
       lower-branch: ${{ steps.infos.outputs.LOWER_BRANCH }}
+      artifact-prefix: image-${{ steps.infos.outputs.LOWER_IMAGE }}
     steps:
+    - name: Validate inputs
+      env:
+        PUSH: ${{ inputs.PUSH }}
+        USE_QEMU: ${{ inputs.USE_QEMU }}
+        BUILD_AMD64: ${{ inputs.BUILD_AMD64 }}
+        BUILD_ARM64: ${{ inputs.BUILD_ARM64 }}
+      run: |
+        if [ "$BUILD_AMD64" != "true" ] && [ "$BUILD_ARM64" != "true" ]; then
+          echo "::error::At least one of BUILD_AMD64 or BUILD_ARM64 must be true, otherwise there is nothing to build."
+          exit 1
+        fi
+
+        if [ "$PUSH" != "true" ] && [ "$USE_QEMU" = "true" ] && [ "$BUILD_AMD64" = "true" ] && [ "$BUILD_ARM64" = "true" ]; then
+          echo "::error::PUSH=false cannot be combined with USE_QEMU=true and both BUILD_AMD64 and BUILD_ARM64: the docker exporter cannot write a multi-platform tarball. Either set USE_QEMU=false to build each architecture on a native runner (one tarball artifact per architecture), or build a single architecture at a time."
+          exit 1
+        fi
+
     - name: Checks-out repository
-      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Get infos
       id: infos
@@ -133,68 +176,78 @@ jobs:
       contents: read
     needs:
     - infos
+    env:
+      # Registry login is required to push, and also to pull private base images even when not pushing.
+      # For ghcr.io the credentials always resolve from the job token, so login is free of charge there.
+      REGISTRY_LOGIN: ${{ inputs.PUSH || startsWith(inputs.IMAGE_NAME, 'ghcr.io') || secrets.REGISTRY_USERNAME != '' }}
     strategy:
       matrix:
-        # Case 1: both native  → one AMD64 + one ARM64 runner
-        # Case 2: both QEMU   → single AMD64 runner builds linux/amd64,linux/arm64
-        # Case 3: ARM64 QEMU  → single AMD64 runner builds linux/arm64 via QEMU
-        # Case 4: ARM64 native → single ARM64 runner
-        # Case 5: AMD64 only / fallback → single AMD64 runner
-        runners: ${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && !inputs.USE_QEMU && fromJson('["ubuntu-24.04", "ubuntu-24.04-arm"]')) || (inputs.BUILD_ARM64 && inputs.USE_QEMU && fromJson('["ubuntu-24.04"]')) || (!inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && !inputs.USE_QEMU && fromJson('["ubuntu-24.04-arm"]')) || fromJson('["ubuntu-24.04"]') }}
+        runners: ${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && !inputs.USE_QEMU && fromJson('["ubuntu-24.04", "ubuntu-24.04-arm"]')) || (inputs.BUILD_ARM64 && !inputs.USE_QEMU && fromJson('["ubuntu-24.04-arm"]')) || fromJson('["ubuntu-24.04"]') }}
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Set up Docker buildx
-      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
     - name: Set up QEMU (for multi platform build)
-      uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
+      uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
       if: ${{ inputs.USE_QEMU }}
 
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+      if: ${{ env.REGISTRY_LOGIN == 'true' }}
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
       with:
         registry: ${{ needs.infos.outputs.registry }}
         username: ${{ startsWith(inputs.IMAGE_NAME, 'ghcr.io') && github.actor || secrets.REGISTRY_USERNAME }}
         password: ${{ startsWith(inputs.IMAGE_NAME, 'ghcr.io') && github.token || secrets.REGISTRY_PASSWORD }}
         logout: true
 
-    - name: Build and push docker image
+    - name: Build docker image
       id: build
-      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
       with:
         context: ${{ inputs.IMAGE_CONTEXT }}
         file: ${{ inputs.IMAGE_DOCKERFILE }}
         target: ${{ inputs.IMAGE_TARGET || '' }}
         provenance: false
         sbom: false
-        platforms: ${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && inputs.USE_QEMU && 'linux/amd64,linux/arm64') || (!inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && inputs.USE_QEMU && 'linux/arm64') || (runner.arch == 'ARM64' && 'linux/arm64') || 'linux/amd64' }}
-        outputs: type=image,name=${{ needs.infos.outputs.normalized-image }},push-by-digest=true,name-canonical=true,push=${{ inputs.PUSH_IMAGE }}
-        cache-from: ${{ inputs.CACHE && format('type=gha,scope={0}', needs.infos.outputs.lower-image) || '' }}
-        cache-to: ${{ inputs.CACHE && format('type=gha,mode=max,scope={0}', needs.infos.outputs.lower-image) || '' }}
+        platforms: ${{ (inputs.USE_QEMU && ((inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && 'linux/amd64,linux/arm64') || (inputs.BUILD_ARM64 && 'linux/arm64') || 'linux/amd64')) || (matrix.runners == 'ubuntu-24.04-arm' && 'linux/arm64') || 'linux/amd64' }}
+        outputs: ${{ inputs.PUSH && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', needs.infos.outputs.normalized-image) || format('type=docker,name={0}:{1},dest=/tmp/image.tar', needs.infos.outputs.normalized-image, inputs.IMAGE_TAG) }}
+        cache-from: ${{ inputs.CACHE && format('type=gha,scope={0}-{1}', needs.infos.outputs.lower-image, matrix.runners) || '' }}
+        cache-to: ${{ inputs.CACHE && format('type=gha,mode=max,scope={0}-{1}', needs.infos.outputs.lower-image, matrix.runners) || '' }}
         build-args: |
           ${{ inputs.BUILD_ARGS }}
+        secrets: ${{ secrets.BUILD_SECRETS }}
 
     - name: Export digest
-      if: ${{ inputs.PUSH_IMAGE }}
+      if: ${{ inputs.PUSH }}
       run: |
         mkdir -p /tmp/digests/${{ needs.infos.outputs.lower-image }}
         digest="${{ steps.build.outputs.digest }}"
         touch "/tmp/digests/${{ needs.infos.outputs.lower-image }}/${digest#sha256:}"
 
     - name: Upload digest
-      if: ${{ inputs.PUSH_IMAGE }}
+      if: ${{ inputs.PUSH }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
-        name: digests-${{ needs.infos.outputs.lower-image }}-${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && inputs.USE_QEMU && 'multiarch') || (!inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && inputs.USE_QEMU && 'arm64') || (runner.arch == 'ARM64' && 'arm64') || 'amd64' }}
+        name: digests-${{ needs.infos.outputs.lower-image }}-${{ (inputs.USE_QEMU && 'multiarch') || (matrix.runners == 'ubuntu-24.04-arm' && 'arm64') || 'amd64' }}
         path: /tmp/digests/${{ needs.infos.outputs.lower-image }}/*
+        if-no-files-found: error
+        retention-days: 1
+
+    - name: Upload image tarball
+      if: ${{ !inputs.PUSH }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: ${{ needs.infos.outputs.artifact-prefix }}-${{ (matrix.runners == 'ubuntu-24.04-arm' && 'arm64') || (inputs.USE_QEMU && inputs.BUILD_ARM64 && 'arm64') || 'amd64' }}
+        path: /tmp/image.tar
         if-no-files-found: error
         retention-days: 1
 
   merge:
     name: Merge digest
-    if: ${{ inputs.PUSH_IMAGE }}
+    if: ${{ inputs.PUSH }}
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     permissions:
       packages: write
@@ -212,15 +265,15 @@ jobs:
         merge-multiple: true
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
     - name: Docker meta
       id: meta
-      uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+      uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
       with:
         images: ${{ needs.infos.outputs.normalized-image }}
         tags: |
-          type=raw,value=${{ needs.infos.outputs.lower-branch }},enable=${{ github.head_ref != 'main' && github.head_ref != 'develop' }}
+          type=raw,value=${{ needs.infos.outputs.lower-branch }},enable=${{ needs.infos.outputs.lower-branch != 'main' && needs.infos.outputs.lower-branch != 'develop' }}
           type=raw,value=${{ needs.infos.outputs.short-sha }},enable=${{ needs.infos.outputs.short-sha != '' }}
           type=raw,value=${{ inputs.IMAGE_TAG }},enable=${{ inputs.IMAGE_TAG != '' }}
           type=raw,value=${{ format('{0}.{1}', needs.infos.outputs.major-tag, needs.infos.outputs.minor-tag) }},enable=${{ inputs.TAG_MAJOR_AND_MINOR && needs.infos.outputs.major-tag != '' && needs.infos.outputs.minor-tag != '' && needs.infos.outputs.prerelease-tag == '' }}
@@ -228,7 +281,7 @@ jobs:
           type=raw,value=latest,enable=${{ inputs.LATEST_TAG == true }}
 
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
       with:
         registry: ${{ needs.infos.outputs.registry }}
         username: ${{ needs.infos.outputs.registry == 'ghcr.io' && github.actor || secrets.REGISTRY_USERNAME }}
@@ -242,7 +295,6 @@ jobs:
           $(printf '${{ needs.infos.outputs.normalized-image }}@sha256:%s ' *)
 
     - name: Get image digest
-      if: ${{ inputs.PUSH_IMAGE }}
       id: digest
       run: |
         DIGEST=$(docker buildx imagetools inspect --raw \
@@ -251,6 +303,25 @@ jobs:
         echo "value=sha256:${DIGEST}" >> $GITHUB_OUTPUT
 
     - name: Inspect image
-      if: ${{ inputs.PUSH_IMAGE }}
       run: |
         docker buildx imagetools inspect ${{ needs.infos.outputs.normalized-image }}:${{ steps.meta.outputs.version }}
+
+  attest:
+    if: ${{ inputs.PUSH && (inputs.PROVENANCE || inputs.SBOM) }}
+    needs:
+    - infos
+    - merge
+    uses: dnum-mi/fabnum-cicd/.github/workflows/attest-docker.yml@v0
+    permissions:
+      packages: write
+      id-token: write
+      attestations: write
+    with:
+      IMAGE_NAME: ${{ needs.infos.outputs.normalized-image }}
+      DIGEST: ${{ needs.merge.outputs.digest }}
+      PROVENANCE: ${{ inputs.PROVENANCE }}
+      SBOM: ${{ inputs.SBOM }}
+      RUNS_ON: ${{ inputs.RUNS_ON }}
+    secrets:
+      REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+      REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
