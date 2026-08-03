@@ -11,15 +11,14 @@ Valide que les messages de commit respectent la spécification [Conventional Com
 | FAIL_ON_ERROR      | boolean | Échouer le workflow si des erreurs de lint sont détectées                                      | Non    | `true`                                                         |
 | ALLOWED_TYPES      | string  | Liste des types de commit autorisés, séparés par des virgules                                  | Non    | `feat,fix,docs,style,refactor,perf,test,build,ci,chore,revert` |
 | REQUIRE_SCOPE      | boolean | Exiger un scope dans les messages de commit                                                    | Non    | `false`                                                        |
-| MAX_SUBJECT_LENGTH | number  | Longueur maximale de la ligne de sujet du commit                                               | Non    | `100`                                                          |
+| MAX_SUBJECT_LENGTH | number  | Longueur maximale de l'en-tête du commit (la première ligne complète, préfixe `type(scope): ` inclus - règle `header-max-length` de commitlint) | Non    | `100`                                                          |
 | RUNS_ON            | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)         | Non    | `["ubuntu-24.04"]`                                             |
 
 ## Permissions
 
-| Scope         | Accès | Description                                          |
-| ------------- | ----- | ---------------------------------------------------- |
-| contents      | read  | Lire l'historique des commits                        |
-| pull-requests | read  | Lire les informations de PR pour la plage de commits |
+| Scope         | Accès | Description                     |
+| ------------- | ----- | -------------------------------- |
+| contents      | read  | Lire l'historique des commits    |
 
 ## Notes
 
