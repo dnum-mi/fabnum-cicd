@@ -89,7 +89,7 @@ jobs:
     if: ${{ inputs.CLEAN_GHCR_IMAGE && inputs.IMAGE }}
     steps:
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
@@ -136,7 +136,7 @@ jobs:
 
         # Get main image ID
         MAIN_IMAGE_ID=$(echo "$ALL_VERSIONS" | jq -r --arg t "$IMAGE_TAG" \
-          '.[] | select(.metadata.container.tags[]? | contains($t)) | .id' | head -n1)
+          '.[] | select(.metadata.container.tags[]? == $t) | .id' | head -n1)
 
         if [ -z "$MAIN_IMAGE_ID" ]; then
           echo "Image with tag '$IMAGE_TAG' not found"
@@ -181,7 +181,17 @@ jobs:
       packages: write
     if: ${{ inputs.CLEAN_ORPHANED_GHCR_IMAGE && inputs.IMAGE }}
     steps:
-    - name: Delete orphaned SHA-only images
+    - name: Set up Docker buildx
+      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Delete orphaned build artifacts
       env:
         IMAGE: ${{ inputs.IMAGE }}
         GH_TOKEN: ${{ github.token }}
@@ -212,32 +222,57 @@ jobs:
 
         echo "Owner: $OWNER ($OWNER_TYPE)"
         echo "Image: $IMAGE_NAME"
-        echo "Searching for orphaned SHA-only images..."
+        echo "Searching for orphaned build artifacts..."
 
-        # Fetch all versions and filter SHA-only images
+        # Fetch all versions
         ALL_VERSIONS=$(gh api -H "Accept: application/vnd.github+json" \
           "/$API_MODE/$OWNER/packages/container/$IMAGE_NAME_URL_ENCODED/versions" \
           --paginate --jq '.')
 
+        # A version is orphaned once every tag it still carries is a short/long
+        # git SHA: a moving tag like 'pr-<N>' or a branch name was reassigned to
+        # a newer build, and nothing meaningful (branch, PR, semver, latest)
+        # keeps this one alive anymore. Matching on "all tags are SHA-like"
+        # (rather than requiring exactly one tag) also catches builds that carry
+        # more than one SHA-shaped tag at once.
         ORPHANED_IMAGES=$(echo "$ALL_VERSIONS" | jq -c \
           '.[] | select(.metadata.container.tags != null and .metadata.container.tags != []) |
-          select(
-            (.metadata.container.tags | length) == 1 and
-            (.metadata.container.tags[0] | test("^[0-9a-f]{7}$"))
-          ) | {id: .id, tags: .metadata.container.tags}')
+          select(.metadata.container.tags | all(test("^[0-9a-f]{7,40}$"))) |
+          {id: .id, digest: .name, tags: .metadata.container.tags}')
 
         if [ -z "$ORPHANED_IMAGES" ]; then
-          echo "No orphaned SHA-only images found"
+          echo "No orphaned build artifacts found"
           exit 0
         fi
 
         ORPHANED_COUNT=$(echo "$ORPHANED_IMAGES" | wc -l | tr -d ' ')
-        echo "Found $ORPHANED_COUNT orphaned image(s)"
+        echo "Found $ORPHANED_COUNT orphaned build artifact(s)"
 
-        # Delete each orphaned image
+        # Delete each orphaned image, along with the per-platform images it
+        # references if it is a multi-arch manifest list (those are never
+        # tagged themselves and would otherwise be left dangling forever).
         while IFS= read -r ORPHANED_IMAGE; do
           IMAGE_ID=$(echo "$ORPHANED_IMAGE" | jq -r '.id')
+          IMAGE_DIGEST=$(echo "$ORPHANED_IMAGE" | jq -r '.digest')
           IMAGE_TAGS=$(echo "$ORPHANED_IMAGE" | jq -r '.tags | join(", ")')
+
+          if MANIFEST_OUTPUT=$(docker buildx imagetools inspect "ghcr.io/$OWNER/$IMAGE_NAME@$IMAGE_DIGEST" --raw 2>/dev/null); then
+            if MANIFESTS=$(echo "$MANIFEST_OUTPUT" | jq -r '.manifests[]? | .digest' 2>/dev/null); then
+              while IFS= read -r SHA; do
+                if [ -n "$SHA" ]; then
+                  MANIFEST_ID=$(echo "$ALL_VERSIONS" | jq -r --arg s "$SHA" \
+                    '.[] | select(.name == $s) | .id')
+
+                  if [ -n "$MANIFEST_ID" ] && [ "$MANIFEST_ID" != "null" ]; then
+                    echo "Deleting platform image: $SHA"
+                    gh api --method DELETE -H "Accept: application/vnd.github+json" \
+                      "/$API_MODE/$OWNER/packages/container/$IMAGE_NAME_URL_ENCODED/versions/$MANIFEST_ID" \
+                      2>/dev/null || echo "Failed to delete platform image $SHA"
+                  fi
+                fi
+              done <<< "$MANIFESTS"
+            fi
+          fi
 
           echo "Deleting orphaned image ID: $IMAGE_ID (tags: $IMAGE_TAGS)"
           gh api --method DELETE -H "Accept: application/vnd.github+json" \
@@ -245,4 +280,4 @@ jobs:
             2>/dev/null || echo "Failed to delete image ID: $IMAGE_ID"
         done <<< "$ORPHANED_IMAGES"
 
-        echo "Orphaned images cleanup completed"
+        echo "Orphaned build artifacts cleanup completed"
