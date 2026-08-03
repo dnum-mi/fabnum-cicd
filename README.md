@@ -31,8 +31,9 @@ jobs:
 | Workflow                                                           | Description                                                                                   | Docs                                          |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- | --------------------------------------------- |
 | [build-docker.yml](./.github/workflows/build-docker.yml)           | Build et push (optionnel) d'images Docker multi-architecture (`amd64`/`arm64`) avec support d'attestation | [docs](./docs/workflows/build-docker.md)      |
+| [attest-docker.yml](./.github/workflows/attest-docker.yml)         | Génération d'attestations de sécurité (provenance SLSA, SBOM, signature cosign)               | [docs](./docs/workflows/attest-docker.md)     |
 | [release-app.yml](./.github/workflows/release-app.yml)             | Gestion automatisée des releases avec `release-please` (tags, changelogs, pré-releases)       | [docs](./docs/workflows/release-app.md)       |
-| [release-helm.yml](./.github/workflows/release-helm.yml)           | Publication de charts Helm sur registres OCI                                                  | [docs](./docs/workflows/release-helm.md)      |
+| [release-helm.yml](./.github/workflows/release-helm.yml)           | Publication de charts Helm sur registres OCI (`chart-releaser` ou `local` pour monorepo)      | [docs](./docs/workflows/release-helm.md)      |
 | [update-helm-chart.yml](./.github/workflows/update-helm-chart.yml) | Mise à jour automatique des versions de charts Helm                                           | [docs](./docs/workflows/update-helm-chart.md) |
 
 ### Sécurité & Qualité
