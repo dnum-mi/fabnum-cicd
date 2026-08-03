@@ -14,7 +14,7 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 ### Build & Release
 
 - [**Build Docker**](./build-docker.md) - Build et push (optionnel) d'images Docker multi-architecture
-- [**Attest Image**](./attest-image.md) - Génération d'attestations de sécurité (provenance SLSA, SBOM) pour une image construite
+- [**Attest Docker**](./attest-docker.md) - Génération d'attestations de sécurité (provenance SLSA, SBOM, signature cosign) pour une image construite
 - [**Release App**](./release-app.md) - Gestion automatisée des releases d'application avec release-please
 - [**Release Helm**](./release-helm.md) - Publication de charts Helm sur registres OCI
 - [**Update Helm Chart**](./update-helm-chart.md) - Mise à jour automatique des versions de charts Helm
@@ -43,7 +43,7 @@ name: Mon Pipeline CI/CD
 on:
   push:
     branches:
-      - main
+    - main
   pull_request:
 
 jobs:
@@ -418,10 +418,10 @@ name: Helm CI/CD
 on:
   push:
     branches:
-      - main
+    - main
   pull_request:
     paths:
-      - 'charts/**'
+    - "charts/**"
 
 jobs:
   lint-helm:
@@ -429,14 +429,14 @@ jobs:
     uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@v0
     with:
       CT_CONF_PATH: ci/configs/ct.yaml
-  
+
   test-helm:
     if: github.event_name == 'pull_request'
     needs: lint-helm
     uses: dnum-mi/fabnum-cicd/.github/workflows/test-helm.yml@v0
     with:
       CT_CONF_PATH: ci/configs/ct.yaml
-  
+
   release-helm:
     if: github.event_name == 'push'
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0

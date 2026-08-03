@@ -29,7 +29,9 @@ on:
         required: false
         default: false
       MAX_SUBJECT_LENGTH:
-        description: Maximum length of the commit subject line
+        description: >-
+          Maximum length of the commit header - the whole first line, including
+          the 'type(scope): ' prefix (commitlint's header-max-length rule).
         type: number
         required: false
         default: 100
@@ -45,10 +47,9 @@ jobs:
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     permissions:
       contents: read
-      pull-requests: read
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: 0
 
@@ -69,7 +70,6 @@ jobs:
           rules: {
             'type-enum': [2, 'always', '${{ inputs.ALLOWED_TYPES }}'.split(',').map(t => t.trim())],
             'scope-empty': [${{ inputs.REQUIRE_SCOPE && '2' || '0' }}, '${{ inputs.REQUIRE_SCOPE && 'never' || 'always' }}'],
-            'subject-max-length': [2, 'always', ${{ inputs.MAX_SUBJECT_LENGTH }}],
             'header-max-length': [2, 'always', ${{ inputs.MAX_SUBJECT_LENGTH }}],
           },
         };
@@ -77,8 +77,6 @@ jobs:
 
     - name: Get commits to lint
       id: get-commits
-      env:
-        GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
 
