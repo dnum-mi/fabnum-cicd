@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.8.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.7.0...v0.8.0) (2026-08-03)
+
+
+### Features
+
+* **build-docker:** rename attest-image to attest-docker; add optional PUSH input ([30d1743](https://github.com/dnum-mi/fabnum-cicd/commit/30d1743078e08d296a99ef23b9f37e91d4e47459))
+* **release-helm:** add local mode for monorepo chart releases ([df2dd16](https://github.com/dnum-mi/fabnum-cicd/commit/df2dd161a5e6edf67189157f7092824d996949b8))
+* **update-helm-chart:** support chart-only local releases ([dffdd90](https://github.com/dnum-mi/fabnum-cicd/commit/dffdd90d9af7b161dc8ac20151fb168dc14b55c2))
+
+
+### Bug Fixes
+
+* **clean-cache:** improve orphaned image and manifest detection ([ef67583](https://github.com/dnum-mi/fabnum-cicd/commit/ef67583d66aad5a7f668c7d767e5fc00a35296a8))
+* **scan-sonarqube:** avoid shell injection via PR/branch refs ([98df78b](https://github.com/dnum-mi/fabnum-cicd/commit/98df78b4053e418b821d1abe96940cfc8d6cba15))
+* **scan-trivy:** fix failure detection, command substitution bug and add local tarball scanning ([4dd0f85](https://github.com/dnum-mi/fabnum-cicd/commit/4dd0f8565080439060b59fd1ade11ab8d8c9575a))
+
+
+### Dependencies
+
+* **workflows:** sync lint, test-helm and release-app workflows with upstream ([c6afc41](https://github.com/dnum-mi/fabnum-cicd/commit/c6afc4154355b6279dc9f372db0101d25f03e81a))
+
 ## [0.7.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.6.0...v0.7.0) (2026-06-22)
 
 
