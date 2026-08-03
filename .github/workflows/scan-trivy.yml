@@ -7,6 +7,18 @@ on:
         description: Image used to perform scan (eg. docker.io/debian:latest)
         required: false
         type: string
+      IMAGE_ARTIFACT:
+        description: >-
+          Name of a workflow artifact holding an image tarball to scan locally, instead of
+          pulling IMAGE from a registry (e.g. produced by 'build-docker.yml' with PUSH set
+          to false). Takes precedence over IMAGE when both are set.
+        required: false
+        type: string
+      IMAGE_ARTIFACT_FILE:
+        description: Name of the tarball file inside IMAGE_ARTIFACT
+        required: false
+        type: string
+        default: image.tar
 
       PATH:
         description: Path used to perform scan
@@ -18,7 +30,7 @@ on:
         type: string
         default: table
       PR_NUMBER:
-        description: Whether the caller workflow is triggered by a pull request
+        description: Number of the pull request to post the scan summary comment on
         required: false
         type: string
       GITHUB_SECURITY_TAB:
@@ -42,20 +54,33 @@ on:
 jobs:
   images-scan:
     name: Scan images vulnerabilities
-    if: ${{ inputs.IMAGE != '' }}
+    if: ${{ inputs.IMAGE != '' || inputs.IMAGE_ARTIFACT != '' }}
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     permissions:
       contents: read
       security-events: write
       packages: read
+    env:
+      # Label used in the summary/warning messages, since the scan target can be
+      # either a registry reference or a locally downloaded tarball
+      SCAN_TARGET: ${{ inputs.IMAGE_ARTIFACT != '' && format('artifact {0}', inputs.IMAGE_ARTIFACT) || inputs.IMAGE }}
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Download image artifact
+      if: ${{ inputs.IMAGE_ARTIFACT != '' }}
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        name: ${{ inputs.IMAGE_ARTIFACT }}
+        path: /tmp/trivy-image
 
     - name: Run Trivy vulnerability scanner on images
+      id: scan
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
-        image-ref: "${{ inputs.IMAGE }}"
+        image-ref: ${{ inputs.IMAGE_ARTIFACT == '' && inputs.IMAGE || '' }}
+        input: ${{ inputs.IMAGE_ARTIFACT != '' && format('/tmp/trivy-image/{0}', inputs.IMAGE_ARTIFACT_FILE) || '' }}
         format: ${{ inputs.FORMAT }}
         vuln-type: "os,library"
         ignore-unfixed: true
@@ -67,25 +92,30 @@ jobs:
       continue-on-error: true
 
     - name: Print Trivy scan results
-      if: ${{ inputs.FORMAT == 'table' }}
+      # Guard on the scan outcome: a failed scan writes no report file, and a
+      # missing file would fail this step and skip the warning step below
+      if: ${{ inputs.FORMAT == 'table' && steps.scan.outcome == 'success' }}
       run: |
-        echo "## Trivy Scan Results for image '${{ inputs.IMAGE }}'" >> $GITHUB_STEP_SUMMARY
+        echo "## Trivy Scan Results for image '${SCAN_TARGET}'" >> $GITHUB_STEP_SUMMARY
         echo '---' >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
         cat ${{ format('trivy-results.{0}', inputs.FORMAT) }} >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
 
     - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+      id: upload
+      uses: github/codeql-action/upload-sarif@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
       if: ${{ inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif' }}
       with:
         sarif_file: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
       continue-on-error: true
 
     - name: Warn about error
-      if: failure()
+      # Every scan/upload step above is continue-on-error, so job.status stays
+      # 'success' and failure() never fires - key off the step outcomes instead
+      if: ${{ steps.scan.outcome == 'failure' || steps.upload.outcome == 'failure' }}
       run: |
-        echo ":warning: The Trivy scan report for image `${{ inputs.IMAGE }}` was not successfully completed and could not be uploaded to the Github Security Panel." >> $GITHUB_STEP_SUMMARY
+        echo ":warning: The Trivy scan report for image \`${SCAN_TARGET}\` was not successfully completed and could not be uploaded to the GitHub Security Panel." >> "$GITHUB_STEP_SUMMARY"
 
   config-scan:
     name: Scan config files vulnerabilities
@@ -96,9 +126,10 @@ jobs:
       security-events: write
     steps:
     - name: Checks-out repository
-      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Run Trivy vulnerability scanner on config files
+      id: scan
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
         scan-ref: "${{ inputs.PATH }}"
@@ -111,7 +142,9 @@ jobs:
       continue-on-error: true
 
     - name: Print Trivy scan results
-      if: ${{ inputs.FORMAT == 'table' }}
+      # Guard on the scan outcome: a failed scan writes no report file, and a
+      # missing file would fail this step and skip the warning step below
+      if: ${{ inputs.FORMAT == 'table' && steps.scan.outcome == 'success' }}
       run: |
         echo "## Trivy Scan Results for path '${{ inputs.PATH }}'" >> $GITHUB_STEP_SUMMARY
         echo '---' >> $GITHUB_STEP_SUMMARY
@@ -120,20 +153,23 @@ jobs:
         echo '```' >> $GITHUB_STEP_SUMMARY
 
     - name: Upload Trivy scan results to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+      id: upload
+      uses: github/codeql-action/upload-sarif@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
       if: ${{ inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif' }}
       with:
         sarif_file: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
       continue-on-error: true
 
     - name: Warn about error
-      if: failure()
+      # Every scan/upload step above is continue-on-error, so job.status stays
+      # 'success' and failure() never fires - key off the step outcomes instead
+      if: ${{ steps.scan.outcome == 'failure' || steps.upload.outcome == 'failure' }}
       run: |
-        echo ":warning: The Trivy scan report for configuration was not successfully completed and could not be uploaded to the Github Security Panel." >> $GITHUB_STEP_SUMMARY
+        echo ":warning: The Trivy scan report for configuration was not successfully completed and could not be uploaded to the GitHub Security Panel." >> "$GITHUB_STEP_SUMMARY"
 
   scan-notif:
     name: Notify users
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     permissions:
       pull-requests: write
     if: ${{ always() && (needs.images-scan.result == 'success' || needs.config-scan.result == 'success') }}
