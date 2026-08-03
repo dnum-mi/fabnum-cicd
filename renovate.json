@@ -1,0 +1,31 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "semanticCommits": "enabled",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Bump tool versions pinned as workflow input defaults, marked with a 'renovate:' comment on the line above.",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[^\\s]+)\\s+default: (?<currentValue>[^\\s]+)"
+      ],
+      "extractVersionTemplate": "^v?(?<version>.*)$"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Action and pinned tool bumps land as 'build' so they appear under the Dependencies changelog section; release-please treats 'build' as releasable (hidden: false in release-please-config.json) and cuts a patch release, updating the v0 tag that downstream repos consume.",
+      "matchManagers": ["github-actions", "custom.regex"],
+      "semanticCommitType": "build",
+      "commitMessageTopic": "{{depName}}"
+    },
+    {
+      "description": "Internal self-references use the moving v0 major tag on purpose - don't pin or bump them.",
+      "matchDepNames": ["dnum-mi/fabnum-cicd"],
+      "enabled": false
+    }
+  ]
+}
