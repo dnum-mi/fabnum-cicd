@@ -38,6 +38,42 @@ on:
         required: false
         default: false
         type: boolean
+      TRIVYIGNORES:
+        description: >-
+          Comma separated paths to Trivy ignore files, relative to the repository
+          root (e.g. '.trivyignore.yaml'). Trivy auto-detects a plain
+          '.trivyignore', but the YAML form - the only one supporting per-path
+          scoping and a documented reason per entry - has to be named explicitly.
+        required: false
+        type: string
+      CATEGORY:
+        description: >-
+          Code scanning category for the SARIF upload. Set a distinct value per
+          target when several callers upload from the same repository (e.g. one
+          matrix leg per image) - uploads sharing a category replace one another,
+          leaving only whichever finished last.
+        required: false
+        type: string
+      SEVERITY:
+        description: >-
+          Comma separated severities to report (e.g. 'CRITICAL,HIGH'). Empty
+          reports every severity Trivy knows about.
+        required: false
+        type: string
+      FAIL_ON_ERROR:
+        description: Whether to fail the workflow when vulnerabilities are found
+        type: boolean
+        required: false
+        default: false
+      TIMEOUT:
+        description: >-
+          Trivy scan timeout as a Go duration (e.g. '15m'). Trivy defaults to 5m,
+          which a large image can exceed while analysing a single big statically
+          linked binary. That failure is total rather than partial - the scan
+          aborts with a context deadline error and writes no report at all - so
+          it reads as a broken scan rather than as a slow one.
+        required: false
+        type: string
       RUNS_ON:
         description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
         required: false
@@ -84,38 +120,100 @@ jobs:
         format: ${{ inputs.FORMAT }}
         vuln-type: "os,library"
         ignore-unfixed: true
+        # Falls back to trivy-action's own default rather than passing an empty
+        # string, so existing callers that never set SEVERITY are unaffected
+        severity: ${{ inputs.SEVERITY || 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL' }}
+        exit-code: ${{ inputs.FAIL_ON_ERROR && '1' || '0' }}
         output: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
+        trivyignores: ${{ inputs.TRIVYIGNORES }}
+        timeout: ${{ inputs.TIMEOUT }}
         github-pat: ${{ github.token }}
       env:
         TRIVY_USERNAME: ${{ startsWith(inputs.IMAGE, 'ghcr.io') && github.actor || secrets.REGISTRY_USERNAME }}
         TRIVY_PASSWORD: ${{ startsWith(inputs.IMAGE, 'ghcr.io') && github.token || secrets.REGISTRY_PASSWORD }}
+      # Constant, never an expression. `continue-on-error: ${{ !inputs.FAIL_ON_ERROR }}`
+      # silently resolved to true even with FAIL_ON_ERROR set, so the scan exited 1
+      # on real findings and the job still reported success - the gate was a no-op
+      # for every caller. The report and the upload have to run after a failed scan
+      # either way, so the step always continues and the gate is an explicit step
+      # below, the same shape scan-gitleaks.yml already uses.
       continue-on-error: true
 
     - name: Print Trivy scan results
-      # Guard on the scan outcome: a failed scan writes no report file, and a
-      # missing file would fail this step and skip the warning step below
-      if: ${{ inputs.FORMAT == 'table' && steps.scan.outcome == 'success' }}
+      id: report
+      # Runs even when the scan step failed: with FAIL_ON_ERROR the scan exits
+      # non-zero precisely when there is something worth reading, and the report
+      # is still written. A failed scan that produced no file is skipped rather
+      # than erroring, so the warning step below still gets a chance to run.
+      if: ${{ !cancelled() && inputs.FORMAT == 'table' && steps.scan.outcome != 'skipped' }}
+      env:
+        REPORT_FILE: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
       run: |
-        echo "## Trivy Scan Results for image '${SCAN_TARGET}'" >> $GITHUB_STEP_SUMMARY
-        echo '---' >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        cat ${{ format('trivy-results.{0}', inputs.FORMAT) }} >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
+        [ -f "$REPORT_FILE" ] || exit 0
+        # GITHUB_STEP_SUMMARY is capped at 1 MiB and a write over the cap is
+        # dropped whole, not trimmed - a broad scan of a large image would lose
+        # its entire summary rather than the tail of one table. The budget leaves
+        # room for the heading, the fences and the note below.
+        BUDGET=900000
+        {
+          echo "## Trivy Scan Results for image '${SCAN_TARGET}'"
+          echo '---'
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        if [ "$(wc -c < "$REPORT_FILE")" -gt "$BUDGET" ]; then
+          head -c "$BUDGET" "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo ''
+            echo '```'
+            echo '> [!NOTE]'
+            echo '> Truncated to fit the 1 MiB step summary limit - the complete'
+            echo '> report is attached to this run as an artifact.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "truncated=true" >> "$GITHUB_OUTPUT"
+        else
+          cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+        fi
+        # Artifact names reject the ':' and '/' a registry reference is full of
+        printf 'slug=%s\n' "$(printf '%s' "${SCAN_TARGET}" | tr -c 'A-Za-z0-9._-' '-')" >> "$GITHUB_OUTPUT"
+
+    - name: Upload the complete Trivy report
+      # Only when the summary could not hold it - otherwise the summary already
+      # is the report and an artifact is a second copy nobody opens
+      if: ${{ !cancelled() && steps.report.outputs.truncated == 'true' }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: trivy-report-${{ steps.report.outputs.slug }}
+        path: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
+        retention-days: 7
+      continue-on-error: true
 
     - name: Upload Trivy scan results to GitHub Security tab
       id: upload
       uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3  # v4.37.6
-      if: ${{ inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif' }}
+      if: ${{ !cancelled() && inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif' && steps.scan.outcome != 'skipped' }}
       with:
         sarif_file: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
+        category: ${{ inputs.CATEGORY }}
       continue-on-error: true
 
     - name: Warn about error
       # Every scan/upload step above is continue-on-error, so job.status stays
-      # 'success' and failure() never fires - key off the step outcomes instead
-      if: ${{ steps.scan.outcome == 'failure' || steps.upload.outcome == 'failure' }}
+      # 'success' and failure() never fires - key off the step outcomes instead.
+      # Under FAIL_ON_ERROR a failed scan usually means findings rather than a
+      # broken scan, and the gate below reports that - so this only speaks up
+      # about the scan when it is not gating.
+      if: ${{ (!inputs.FAIL_ON_ERROR && steps.scan.outcome == 'failure') || steps.upload.outcome == 'failure' }}
       run: |
         echo ":warning: The Trivy scan report for image \`${SCAN_TARGET}\` was not successfully completed and could not be uploaded to the GitHub Security Panel." >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Fail on detected vulnerabilities
+      # The scan only exits non-zero under FAIL_ON_ERROR (exit-code is 0 otherwise),
+      # so reporting-only callers never reach this
+      if: ${{ inputs.FAIL_ON_ERROR && steps.scan.outcome == 'failure' }}
+      run: |
+        echo "::error::Trivy found vulnerabilities in ${SCAN_TARGET}, or the scan did not complete."
+        exit 1
 
   config-scan:
     name: Scan config files vulnerabilities
@@ -137,35 +235,85 @@ jobs:
         format: ${{ inputs.FORMAT }}
         skip-dirs: "**/node_modules"
         ignore-unfixed: true
+        # Falls back to trivy-action's own default rather than passing an empty
+        # string, so existing callers that never set SEVERITY are unaffected
+        severity: ${{ inputs.SEVERITY || 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL' }}
+        exit-code: ${{ inputs.FAIL_ON_ERROR && '1' || '0' }}
         output: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
+        trivyignores: ${{ inputs.TRIVYIGNORES }}
+        timeout: ${{ inputs.TIMEOUT }}
         github-pat: ${{ github.token }}
+      # See the image scan above for why this is constant rather than an expression
       continue-on-error: true
 
     - name: Print Trivy scan results
-      # Guard on the scan outcome: a failed scan writes no report file, and a
-      # missing file would fail this step and skip the warning step below
-      if: ${{ inputs.FORMAT == 'table' && steps.scan.outcome == 'success' }}
+      id: report
+      # See the image scan above: runs even on a failed scan, since that is
+      # exactly when FAIL_ON_ERROR has something worth printing
+      if: ${{ !cancelled() && inputs.FORMAT == 'table' && steps.scan.outcome != 'skipped' }}
+      env:
+        REPORT_FILE: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
+        SCAN_PATH: ${{ inputs.PATH }}
       run: |
-        echo "## Trivy Scan Results for path '${{ inputs.PATH }}'" >> $GITHUB_STEP_SUMMARY
-        echo '---' >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        cat ${{ format('trivy-results.{0}', inputs.FORMAT) }} >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
+        [ -f "$REPORT_FILE" ] || exit 0
+        # See the image scan above for why this is truncated rather than cat'd
+        BUDGET=900000
+        {
+          echo "## Trivy Scan Results for path '${SCAN_PATH}'"
+          echo '---'
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        if [ "$(wc -c < "$REPORT_FILE")" -gt "$BUDGET" ]; then
+          head -c "$BUDGET" "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo ''
+            echo '```'
+            echo '> [!NOTE]'
+            echo '> Truncated to fit the 1 MiB step summary limit - the complete'
+            echo '> report is attached to this run as an artifact.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "truncated=true" >> "$GITHUB_OUTPUT"
+        else
+          cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+        fi
+        # Artifact names reject the ':' and '/' a registry reference is full of
+        printf 'slug=%s\n' "$(printf '%s' "${SCAN_PATH}" | tr -c 'A-Za-z0-9._-' '-')" >> "$GITHUB_OUTPUT"
+
+    - name: Upload the complete Trivy report
+      # See the image scan above
+      if: ${{ !cancelled() && steps.report.outputs.truncated == 'true' }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: trivy-report-${{ steps.report.outputs.slug }}
+        path: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
+        retention-days: 7
+      continue-on-error: true
 
     - name: Upload Trivy scan results to GitHub Security tab
       id: upload
       uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3  # v4.37.6
-      if: ${{ inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif' }}
+      if: ${{ !cancelled() && inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif' && steps.scan.outcome != 'skipped' }}
       with:
         sarif_file: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
+        category: ${{ inputs.CATEGORY }}
       continue-on-error: true
 
     - name: Warn about error
-      # Every scan/upload step above is continue-on-error, so job.status stays
-      # 'success' and failure() never fires - key off the step outcomes instead
-      if: ${{ steps.scan.outcome == 'failure' || steps.upload.outcome == 'failure' }}
+      # See the image scan above: only speaks up about the scan when not gating,
+      # since under FAIL_ON_ERROR the gate below reports it instead
+      if: ${{ (!inputs.FAIL_ON_ERROR && steps.scan.outcome == 'failure') || steps.upload.outcome == 'failure' }}
       run: |
         echo ":warning: The Trivy scan report for configuration was not successfully completed and could not be uploaded to the GitHub Security Panel." >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Fail on detected vulnerabilities
+      # See the image scan above
+      if: ${{ inputs.FAIL_ON_ERROR && steps.scan.outcome == 'failure' }}
+      env:
+        SCAN_PATH: ${{ inputs.PATH }}
+      run: |
+        echo "::error::Trivy found misconfigurations under ${SCAN_PATH}, or the scan did not complete."
+        exit 1
 
   scan-notif:
     name: Notify users
