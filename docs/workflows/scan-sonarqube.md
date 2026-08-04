@@ -37,7 +37,7 @@ Analyse de la qualité du code avec [SonarQube](https://www.sonarqube.org/), inc
 - Configure automatiquement les paramètres pour les pull requests (clé, branche, base).
 - Utilise `fetch-depth: 0` pour obtenir l'historique complet Git nécessaire à l'analyse.
 - Les arguments supplémentaires permettent de personnaliser l'analyse selon les besoins du projet.
-- **FAIL_ON_ERROR** : Par défaut à `true`, le workflow échoue si l'analyse SonarQube ou la Quality Gate détecte des problèmes. Mettre à `false` pour continuer malgré les erreurs.
+- **FAIL_ON_ERROR** : Par défaut à `true`, le workflow échoue si l'analyse SonarQube ou la Quality Gate détecte des problèmes. Mettre à `false` pour continuer malgré les erreurs. Le gate est appliqué par une étape explicite en fin de job plutôt que par `continue-on-error` (une expression sur ce champ y résout silencieusement à `true` même quand `FAIL_ON_ERROR` est actif, rendant le gate inopérant).
 
 ## Exemples
 

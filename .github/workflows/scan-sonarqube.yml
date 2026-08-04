@@ -86,6 +86,7 @@ jobs:
         } >> "$GITHUB_OUTPUT"
 
     - name: SonarQube Scan
+      id: sonarqube-scan
       uses: sonarsource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f  # v8.2.1
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -98,7 +99,10 @@ jobs:
           -Dsonar.sources=${{ inputs.SOURCES_PATH}}
           ${{ github.event_name == 'pull_request' && steps.sonar-args.outputs.SONAR_ARGS_PR || steps.sonar-args.outputs.SONAR_ARGS_BRANCH }}
           ${{ inputs.SONAR_EXTRA_ARGS != '' && inputs.SONAR_EXTRA_ARGS || '' }}
-      continue-on-error: ${{ inputs.FAIL_ON_ERROR == false }}
+      # Constant, never an expression. `continue-on-error: ${{ !inputs.FAIL_ON_ERROR }}`
+      # silently resolves to true even with FAIL_ON_ERROR set, so the gate never
+      # gated. The gating decision is an explicit step at the end of the job.
+      continue-on-error: true
 
     - name: SonarQube Quality Gate check
       id: sonarqube-quality-gate-check
@@ -107,4 +111,14 @@ jobs:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ inputs.SONAR_URL }}
       timeout-minutes: 5
-      continue-on-error: ${{ inputs.FAIL_ON_ERROR == false }}
+      # Constant, never an expression. `continue-on-error: ${{ !inputs.FAIL_ON_ERROR }}`
+      # silently resolves to true even with FAIL_ON_ERROR set, so the gate never
+      # gated. The gating decision is an explicit step at the end of the job.
+      continue-on-error: true
+
+    - name: Fail on scan errors
+      # Runs last so reports, artifacts and cleanup all happen first
+      if: ${{ !cancelled() && inputs.FAIL_ON_ERROR && (steps.sonarqube-scan.outcome == 'failure' || steps.sonarqube-quality-gate-check.outcome == 'failure') }}
+      run: |
+        echo "::error::SonarQube scan failed or the quality gate was not met."
+        exit 1
