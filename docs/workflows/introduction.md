@@ -27,6 +27,7 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 ### Tests
 
 - [**Test Helm**](./test-helm.md) - Test d'installation des charts Helm dans un cluster Kind
+- [**Test Docker**](./test-docker.md) - Exécution d'une commande dans une image Docker construite (registre ou tarball)
 
 ### Utilitaires
 
