@@ -1,0 +1,162 @@
+name: Docker test
+
+on:
+  workflow_call:
+    inputs:
+      IMAGE:
+        description: Image to run the test against (eg. 'ghcr.io/my-org/my-image:1.2.3')
+        required: false
+        type: string
+      IMAGE_ARTIFACT:
+        description: >-
+          Name of a workflow artifact holding an image tarball to load and test locally,
+          instead of pulling IMAGE from a registry (e.g. produced by 'build-docker.yml'
+          with PUSH set to false). Takes precedence over IMAGE when both are set.
+        required: false
+        type: string
+      IMAGE_ARTIFACT_FILE:
+        description: Name of the tarball file inside IMAGE_ARTIFACT
+        required: false
+        type: string
+        default: image.tar
+      COMMAND:
+        description: >-
+          Command to run inside the container, as it would be typed after the image
+          reference (eg. '/tests/smoke.sh' or 'node --version'). Word-split into argv.
+        required: true
+        type: string
+      ENTRYPOINT:
+        description: >-
+          Override the image entrypoint (eg. 'bash'). Needed whenever the image declares
+          one that would otherwise swallow COMMAND, such as a shell or a service script.
+        required: false
+        type: string
+      WORKSPACE_PATH:
+        description: >-
+          Repository path to mount read-only into the container, so test scripts kept in
+          the calling repository can be run against the image. Empty mounts nothing.
+        required: false
+        type: string
+      WORKSPACE_MOUNT:
+        description: Path the WORKSPACE_PATH directory is mounted at inside the container
+        required: false
+        type: string
+        default: /workspace
+      RUN_ARGS:
+        description: >-
+          Extra arguments passed to 'docker run' (eg. '--network host -e FOO=bar').
+          Escape hatch for cases the inputs above do not cover.
+        required: false
+        type: string
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
+    secrets:
+      REGISTRY_USERNAME:
+        description: Username used to login into registry
+        required: false
+      REGISTRY_PASSWORD:
+        description: Password used to login into registry
+        required: false
+
+jobs:
+  test:
+    name: Test image
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      contents: read
+      packages: read
+    env:
+      # Resolved here rather than inline on the login step: `secrets` is not an
+      # available context in a step-level `if`, only in job-level `env` (and in
+      # `with`/`run`). Referencing it there fails the whole workflow at parse
+      # time, before any job starts.
+      REGISTRY_LOGIN: ${{ inputs.IMAGE_ARTIFACT == '' && (startsWith(inputs.IMAGE, 'ghcr.io') || secrets.REGISTRY_USERNAME != '') }}
+    steps:
+    - name: Validate inputs
+      env:
+        IMAGE: ${{ inputs.IMAGE }}
+        IMAGE_ARTIFACT: ${{ inputs.IMAGE_ARTIFACT }}
+      run: |
+        if [ -z "$IMAGE" ] && [ -z "$IMAGE_ARTIFACT" ]; then
+          echo "::error::One of IMAGE or IMAGE_ARTIFACT must be set, otherwise there is nothing to test."
+          exit 1
+        fi
+
+    - name: Checks-out repository
+      if: ${{ inputs.WORKSPACE_PATH != '' }}
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+    - name: Download image artifact
+      if: ${{ inputs.IMAGE_ARTIFACT != '' }}
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        name: ${{ inputs.IMAGE_ARTIFACT }}
+        path: /tmp/test-image
+
+    - name: Login to registry
+      # Only needed to pull IMAGE. A loaded tarball is already local, and for
+      # ghcr.io the job token always resolves, so login there costs nothing.
+      if: ${{ env.REGISTRY_LOGIN == 'true' }}
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+      with:
+        registry: ${{ startsWith(inputs.IMAGE, 'ghcr.io') && 'ghcr.io' || '' }}
+        username: ${{ startsWith(inputs.IMAGE, 'ghcr.io') && github.actor || secrets.REGISTRY_USERNAME }}
+        password: ${{ startsWith(inputs.IMAGE, 'ghcr.io') && github.token || secrets.REGISTRY_PASSWORD }}
+        logout: true
+
+    - name: Resolve image reference
+      id: resolve
+      env:
+        IMAGE: ${{ inputs.IMAGE }}
+        IMAGE_ARTIFACT: ${{ inputs.IMAGE_ARTIFACT }}
+        IMAGE_ARTIFACT_FILE: ${{ inputs.IMAGE_ARTIFACT_FILE }}
+      run: |
+        set -euo pipefail
+
+        if [ -n "$IMAGE_ARTIFACT" ]; then
+          # 'docker load' reports the tag baked into the tarball, which is the
+          # only reliable way to address it - the artifact name says nothing
+          # about how the image inside is tagged.
+          LOADED=$(docker load -i "/tmp/test-image/${IMAGE_ARTIFACT_FILE}" | tee /dev/stderr | sed -n 's/^Loaded image: //p' | head -1)
+          if [ -z "$LOADED" ]; then
+            echo "::error::Could not determine the image reference loaded from ${IMAGE_ARTIFACT_FILE}."
+            exit 1
+          fi
+          echo "REF=$LOADED" >> $GITHUB_OUTPUT
+        else
+          echo "REF=$IMAGE" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Run test
+      env:
+        IMAGE_REF: ${{ steps.resolve.outputs.REF }}
+        COMMAND: ${{ inputs.COMMAND }}
+        ENTRYPOINT: ${{ inputs.ENTRYPOINT }}
+        WORKSPACE_PATH: ${{ inputs.WORKSPACE_PATH }}
+        WORKSPACE_MOUNT: ${{ inputs.WORKSPACE_MOUNT }}
+        RUN_ARGS: ${{ inputs.RUN_ARGS }}
+      run: |
+        set -euo pipefail
+
+        ARGS=(--rm)
+
+        if [ -n "$ENTRYPOINT" ]; then
+          ARGS+=(--entrypoint "$ENTRYPOINT")
+        fi
+
+        if [ -n "$WORKSPACE_PATH" ]; then
+          if [ ! -d "$WORKSPACE_PATH" ]; then
+            echo "::error::WORKSPACE_PATH '${WORKSPACE_PATH}' does not exist in the repository."
+            exit 1
+          fi
+          ARGS+=(-v "${PWD}/${WORKSPACE_PATH}:${WORKSPACE_MOUNT}:ro")
+        fi
+
+        # RUN_ARGS and COMMAND are intentionally unquoted: both are argv
+        # fragments supplied by the calling workflow and have to word-split.
+        # shellcheck disable=SC2086
+        set -x
+        docker run "${ARGS[@]}" $RUN_ARGS "$IMAGE_REF" $COMMAND
