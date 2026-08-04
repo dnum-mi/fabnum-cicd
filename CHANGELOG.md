@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.9.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.8.0...v0.9.0) (2026-08-04)
+
+
+### Features
+
+* **attest-docker:** attest SBOMs with cosign instead of actions/attest ([8680b8e](https://github.com/dnum-mi/fabnum-cicd/commit/8680b8ef51436fa3bd5f7936c652b6b3c4d52889))
+* **build-docker:** add CACHE_MODE and SIGN inputs ([1084a0d](https://github.com/dnum-mi/fabnum-cicd/commit/1084a0d9e74f92a6f3c5cff0566feeedb3b2bc14))
+* **scan-trivy:** add FAIL_ON_ERROR, SEVERITY, TIMEOUT, TRIVYIGNORES and CATEGORY inputs ([3ccc761](https://github.com/dnum-mi/fabnum-cicd/commit/3ccc7610dac2b30c5f8feb0d721b3c2de5a97175))
+* **test-docker:** introduce workflow to run a command inside a built image ([a688282](https://github.com/dnum-mi/fabnum-cicd/commit/a6882828dd58c7fa6d2eddc1e487a9906731b8a8))
+
+
+### Bug Fixes
+
+* **scan-sonarqube:** make FAIL_ON_ERROR actually gate the job ([6d00a48](https://github.com/dnum-mi/fabnum-cicd/commit/6d00a4804757996b004960c30064146a2e6a563f))
+
+
+### Dependencies
+
+* **deps:** update actions/attest to v4.2.2 ([4d8a27a](https://github.com/dnum-mi/fabnum-cicd/commit/4d8a27a38c6609c68f92340afc8709a1ee08be51))
+* **deps:** update github/codeql-action to v4.37.6 ([b7c721a](https://github.com/dnum-mi/fabnum-cicd/commit/b7c721a5a09f8cf58c586e70b71a44f98a387bf8))
+
 ## [0.8.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.7.0...v0.8.0) (2026-08-03)
 
 
