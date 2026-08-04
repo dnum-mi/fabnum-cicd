@@ -19,8 +19,10 @@ Build d'images Docker multi-architecture (amd64/arm64) avec Docker Buildx, et pu
 | USE_QEMU            | boolean | Utiliser l'émulateur QEMU pour arm64                                                                                                                                                                                                                | Non    | `false`            |
 | BUILD_ARGS          | string  | Liste de build args Docker séparés par des sauts de ligne (ex: `MY_ARG=value`)                                                                                                                                                                      | Non    | -                  |
 | CACHE               | boolean | Activer le cache de build Docker (utilise le backend de cache GitHub Actions)                                                                                                                                                                       | Non    | `false`            |
+| CACHE_MODE          | string  | Mode d'export du cache Buildx : `max` (toutes les couches intermédiaires) ou `min` (uniquement l'image finale)                                                                                                                                      | Non    | `max`              |
 | PROVENANCE          | boolean | Générer une attestation de provenance SLSA pour l'image (déclenche `attest-docker.yml`)                                                                                                                                                             | Non    | `false`            |
 | SBOM                | boolean | Générer une attestation SBOM pour l'image (déclenche `attest-docker.yml`)                                                                                                                                                                           | Non    | `false`            |
+| SIGN                | boolean | Signer le digest de l'image avec cosign en mode keyless (déclenche `attest-docker.yml`). Nécessite `id-token: write`.                                                                                                                               | Non    | `false`            |
 | RUNS_ON             | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                                                                                                                              | Non    | `["ubuntu-24.04"]` |
 
 ## Secrets
@@ -79,9 +81,9 @@ Par défaut, l'image est poussée vers le registre (par digest, puis assemblée 
 - **Connexion au registre** : ignorée quand `PUSH` est `false`, sauf si l'image cible `ghcr.io` (les credentials résolvent toujours depuis le token du job) ou si `REGISTRY_USERNAME` est fourni. Une image non-GHCR peut donc être construite sans aucun credential, tandis qu'une image de base privée peut toujours être pull en fournissant les secrets malgré tout.
 - L'appelant doit toujours accorder `packages: write`, `id-token: write` et `attestations: write` même avec `PUSH: false`, car GitHub valide statiquement les permissions de chaque job déclaré dans le workflow réutilisable - y compris ceux ignorés à l'exécution.
 
-### Attestations intégrées (`PROVENANCE` / `SBOM`)
+### Attestations et signature intégrées (`PROVENANCE` / `SBOM` / `SIGN`)
 
-Si `PROVENANCE: true` et/ou `SBOM: true`, un job `attest` supplémentaire est automatiquement déclenché en fin de workflow (il appelle [`attest-docker.yml`](./attest-docker.md) avec l'output `digest`/`image` du build). Il faut alors accorder les permissions `packages: write`, `id-token: write` et `attestations: write` au workflow appelant.
+Si `PROVENANCE: true`, `SBOM: true` et/ou `SIGN: true`, un job `attest` supplémentaire est automatiquement déclenché en fin de workflow (il appelle [`attest-docker.yml`](./attest-docker.md) avec l'output `digest`/`image` du build). Il faut alors accorder les permissions `packages: write`, `id-token: write` et `attestations: write` au workflow appelant.
 
 ### Autres comportements
 
@@ -94,7 +96,7 @@ Si `PROVENANCE: true` et/ou `SBOM: true`, un job `attest` supplémentaire est au
 - `TAG_MAJOR_AND_MINOR` crée des tags supplémentaires pour les releases stables (ex: `1.2.3` crée aussi `1.2` et `1`). S'applique uniquement aux versions non-prerelease.
 - `IMAGE_TARGET` permet de cibler une étape spécifique dans un Dockerfile multi-stage. Si non défini, la dernière étape est construite.
 - `BUILD_ARGS` permet de passer des arguments de build Docker, un par ligne (ex: `MY_ARG=value`).
-- **Cache de build** : Si `CACHE: true`, le cache Docker est activé via le backend GitHub Actions (`type=gha`), accélérant les builds subséquents.
+- **Cache de build** : Si `CACHE: true`, le cache Docker est activé via le backend GitHub Actions (`type=gha`), accélérant les builds subséquents. `CACHE_MODE` contrôle ce qui est exporté : `max` (défaut) exporte toutes les couches intermédiaires, `min` uniquement celles de l'image finale. Un dépôt dispose de 10 Go de cache Actions ; `max` sur plusieurs images multi-stage volumineuses peut dépasser ce budget, GitHub évince alors les entrées les moins récemment utilisées et les builds importent un cache manifest sans plus rien y trouver. Passer à `min` quand le budget est dépassé - un cache plus petit qui survit vaut mieux qu'un cache complet toujours évincé.
 - Logique de connexion au registre : utilise le token GitHub pour `ghcr.io`, sinon utilise les credentials fournis (`REGISTRY_USERNAME` / `REGISTRY_PASSWORD`).
 - `BUILD_SECRETS` permet de transmettre des secrets de build (un par ligne, `KEY=VALUE`) via les montages BuildKit (`RUN --mount=type=secret,id=KEY`), sans jamais les écrire dans les layers ou l'historique de l'image (contrairement à `BUILD_ARGS`).
 - Les versions prerelease (contenant `-alpha`, `-beta`, `-rc`, etc.) sont détectées et traitées en conséquence.
@@ -160,6 +162,35 @@ jobs:
 
 > [!TIP]
 > Pour attester une image déjà construite (sans repasser par un build), utiliser directement [`attest-docker.yml`](./attest-docker.md).
+
+### Build avec signature cosign
+
+```yaml
+jobs:
+  build:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    permissions:
+      packages: write
+      contents: read
+      id-token: write
+      attestations: write
+    with:
+      IMAGE_NAME: ghcr.io/my-org/my-app
+      IMAGE_TAG: 1.0.0
+      IMAGE_CONTEXT: ./
+      IMAGE_DOCKERFILE: ./Dockerfile
+      PROVENANCE: true
+      SBOM: true
+      SIGN: true
+```
+
+Vérifier une image signée :
+
+```sh
+cosign verify ghcr.io/my-org/my-app:1.0.0 \
+  --certificate-identity-regexp '^https://github.com/my-org/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
 
 ### Build multi-stage avec build args
 
