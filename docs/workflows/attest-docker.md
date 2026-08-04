@@ -34,12 +34,36 @@ Génère et attache des attestations de sécurité (provenance SLSA et/ou SBOM),
 
 - Ce workflow est conçu pour être appelé **après** `build-docker.yml`, en utilisant ses outputs `digest` et `image`.
 - Au moins un des inputs `PROVENANCE`, `SBOM`, `SIGN` ou le couple `PREDICATE`/`PREDICATE_TYPE` doit être renseigné pour que le job effectue une action utile.
-- **Provenance SLSA** : génère une attestation conforme à [SLSA niveau 3](https://slsa.dev/spec/v1.0/levels) attachée à l'image dans le registre.
-- **SBOM** : génère un fichier SBOM au format SPDX via Trivy, puis l'atteste et l'attache à l'image dans le registre.
+- **Provenance SLSA** : génère une attestation conforme à [SLSA niveau 3](https://slsa.dev/spec/v1.0/levels) attachée à l'image dans le registre. Non conditionnée par le succès des étapes SBOM : la provenance établit d'où et à partir de quoi l'image a été construite, un problème sur le SBOM ne doit jamais lui coûter sa provenance.
+- **SBOM** : génère un fichier SBOM au format SPDX via Trivy, puis l'atteste avec **cosign** plutôt qu'avec `actions/attest` (qui plafonne les SBOM à 16 Mio, une limite atteignable sur un contenu légitime - le graphe de dépendances transitives de quelques dizaines de binaires statiquement liés compte facilement des milliers de paquets). Voir « Vérification des attestations » ci-dessous - le SBOM se vérifie différemment de la provenance.
 - **Signature cosign** : si `SIGN: true`, signe le digest de l'image en mode keyless (sans gestion de clé) via [Sigstore](https://www.sigstore.dev/).
 - **Prédicat personnalisé** : `PREDICATE` et `PREDICATE_TYPE` doivent être fournis ensemble ; permet d'attacher une attestation in-toto arbitraire (ex: pour tracer la source/version amont d'une image miroir). Utiliser une URI que vous contrôlez, pas le type SLSA réservé `https://slsa.dev/provenance/v1`.
 - Le nom d'image est normalisé automatiquement (minuscules, `_` remplacés par `-`) pour être compatible avec les registres OCI.
 - Pour `ghcr.io`, l'authentification utilise automatiquement `github.token` ; pour les autres registres, fournir `REGISTRY_USERNAME` et `REGISTRY_PASSWORD` en tant que secrets.
+
+## Vérification des attestations
+
+Les deux attestations utilisent des mécanismes différents, donc des commandes de vérification différentes.
+
+**Provenance** — une attestation GitHub, visible aussi dans l'onglet Attestations du dépôt :
+
+```sh
+gh attestation verify oci://ghcr.io/my-org/my-app:1.2.3 --owner my-org
+```
+
+**SBOM** — une attestation cosign :
+
+```sh
+cosign verify-attestation --type spdxjson \
+  --certificate-identity-regexp '^https://github.com/dnum-mi/fabnum-cicd/.github/workflows/attest-docker.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/my-org/my-app@sha256:abc123...
+```
+
+> [!IMPORTANT]
+> L'identité du certificat est le **workflow réutilisable qui a signé** - toujours `dnum-mi/fabnum-cicd/.github/workflows/attest-docker.yml`, quel que soit le dépôt appelant - et non le dépôt qui publie l'image. La signature keyless enregistre le workflow appelé dans le certificat ; ancrer le pattern sur le dépôt qui publie l'image (`my-org` ci-dessus) ne correspondra donc jamais. Ne pas retirer la contrainte pour la faire passer : sans elle, la vérification accepte une signature de n'importe qui.
+
+Le SBOM n'apparaît pas dans l'onglet Attestations du dépôt et n'est pas retourné par `gh attestation verify` - seule la provenance l'est.
 
 ## Exemples
 
