@@ -65,6 +65,18 @@ on:
         required: false
         default: false
         type: boolean
+      CACHE_MODE:
+        description: >-
+          Buildx cache export mode - 'max' (default) exports every intermediate
+          layer, 'min' only the layers of the final image. A repository gets 10 GB
+          of Actions cache; 'max' across several large multi-stage images blows
+          through it, and once over budget GitHub evicts least-recently-used
+          entries, so builds import a cache manifest and then hit nothing. Use
+          'min' when the total exceeds the budget - a smaller cache that survives
+          beats a complete one that is always evicted.
+        required: false
+        default: max
+        type: string
       PROVENANCE:
         description: Generate SLSA provenance attestation for the image
         required: false
@@ -72,6 +84,13 @@ on:
         type: boolean
       SBOM:
         description: Generate SBOM attestation for the image
+        required: false
+        default: false
+        type: boolean
+      SIGN:
+        description: >-
+          Sign the image digest with cosign keyless signing. Requires the caller
+          to grant 'id-token: write'.
         required: false
         default: false
         type: boolean
@@ -215,7 +234,7 @@ jobs:
         platforms: ${{ (inputs.USE_QEMU && ((inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && 'linux/amd64,linux/arm64') || (inputs.BUILD_ARM64 && 'linux/arm64') || 'linux/amd64')) || (matrix.runners == 'ubuntu-24.04-arm' && 'linux/arm64') || 'linux/amd64' }}
         outputs: ${{ inputs.PUSH && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', needs.infos.outputs.normalized-image) || format('type=docker,name={0}:{1},dest=/tmp/image.tar', needs.infos.outputs.normalized-image, inputs.IMAGE_TAG) }}
         cache-from: ${{ inputs.CACHE && format('type=gha,scope={0}-{1}', needs.infos.outputs.lower-image, matrix.runners) || '' }}
-        cache-to: ${{ inputs.CACHE && format('type=gha,mode=max,scope={0}-{1}', needs.infos.outputs.lower-image, matrix.runners) || '' }}
+        cache-to: ${{ inputs.CACHE && format('type=gha,mode={0},scope={1}-{2}', inputs.CACHE_MODE, needs.infos.outputs.lower-image, matrix.runners) || '' }}
         build-args: |
           ${{ inputs.BUILD_ARGS }}
         secrets: ${{ secrets.BUILD_SECRETS }}
@@ -260,7 +279,10 @@ jobs:
     - name: Download artifact
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
       with:
-        pattern: digests-${{ needs.infos.outputs.lower-image }}-*
+        # Anchored to the suffixes produced by the upload above: a bare '-*'
+        # also matches images whose name extends this one ('dev' picking up
+        # 'dev-lite'), whose digests then get pushed under the wrong repository.
+        pattern: digests-${{ needs.infos.outputs.lower-image }}-@(amd64|arm64|multiarch)
         path: /tmp/digests/${{ needs.infos.outputs.lower-image }}
         merge-multiple: true
 
@@ -307,7 +329,7 @@ jobs:
         docker buildx imagetools inspect ${{ needs.infos.outputs.normalized-image }}:${{ steps.meta.outputs.version }}
 
   attest:
-    if: ${{ inputs.PUSH && (inputs.PROVENANCE || inputs.SBOM) }}
+    if: ${{ inputs.PUSH && (inputs.PROVENANCE || inputs.SBOM || inputs.SIGN) }}
     needs:
     - infos
     - merge
@@ -321,6 +343,7 @@ jobs:
       DIGEST: ${{ needs.merge.outputs.digest }}
       PROVENANCE: ${{ inputs.PROVENANCE }}
       SBOM: ${{ inputs.SBOM }}
+      SIGN: ${{ inputs.SIGN }}
       RUNS_ON: ${{ inputs.RUNS_ON }}
     secrets:
       REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
