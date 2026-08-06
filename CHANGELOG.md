@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.10.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.9.0...v0.10.0) (2026-08-06)
+
+
+### Features
+
+* **build-docker:** expose BUILD_SECRET_GITHUB_TOKEN and GitHub App credential for build secrets ([cb4d51b](https://github.com/dnum-mi/fabnum-cicd/commit/cb4d51bb11e4bed9866a8386bb92d9ee6d507fdb))
+* **release-app:** add AUTOMERGE_METHOD, RELEASE_PR_AUTHOR and GitHub App authentication ([9864acf](https://github.com/dnum-mi/fabnum-cicd/commit/9864acf47a1e848204d612eec948bb5d0b4e2895))
+* **release-helm:** support GitHub App authentication for chart-releaser ([fbdf7f1](https://github.com/dnum-mi/fabnum-cicd/commit/fbdf7f1dff2be232f5efebe8c99a88310f6d790f))
+* **scan-trivy:** support GitHub App authentication for database downloads ([6ee9d84](https://github.com/dnum-mi/fabnum-cicd/commit/6ee9d84356ca0639c0d25219ec80aec4ac5943dd))
+* **update-helm-chart:** add HELM_DOCS_VERSION, AUTOMERGE_METHOD and GitHub App authentication ([e8eb8ec](https://github.com/dnum-mi/fabnum-cicd/commit/e8eb8ec4655ef44de2908c22b150b5232479befe))
+
+
+### Bug Fixes
+
+* **lint-commits:** quote shell expansions and escape commit subjects against step-summary injection ([f4b0d5c](https://github.com/dnum-mi/fabnum-cicd/commit/f4b0d5c3f440e79395cec754cfe859adeea5d018))
+* **sync-cpin:** reference REPOSITORY_NAME as an input, not a nonexistent secret ([45869a4](https://github.com/dnum-mi/fabnum-cicd/commit/45869a431419cc76a79c5fe59aa7ed25378234b9))
+* **test-docker:** avoid a false shellcheck directive parse in a comment ([6e2b886](https://github.com/dnum-mi/fabnum-cicd/commit/6e2b88628e56f649425555e2aa34ffcee4bf7deb))
+* **workflows:** quote shell expansions for shellcheck compliance ([827ce6b](https://github.com/dnum-mi/fabnum-cicd/commit/827ce6b542486dbd8af1a61e829c54cac076428c))
+
+
+### Dependencies
+
+* **deps:** update dorny/paths-filter to v4.0.3 ([3ec04c6](https://github.com/dnum-mi/fabnum-cicd/commit/3ec04c68dcb80594abaa463afb7e8276f3b231a0))
+* **deps:** update sonarsource/sonarqube-quality-gate-action to v1.2.1 ([538cc59](https://github.com/dnum-mi/fabnum-cicd/commit/538cc5957809ba4d283d23f40fc09d61bf3f310b))
+
 ## [0.9.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.8.0...v0.9.0) (2026-08-04)
 
 
