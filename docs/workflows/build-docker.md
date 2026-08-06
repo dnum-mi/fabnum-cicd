@@ -47,10 +47,14 @@ Build d'images Docker multi-architecture (amd64/arm64) avec Docker Buildx, et pu
 
 ## Permissions
 
-| Scope    | Accès | Description                                                            |
-| -------- | ----- | ---------------------------------------------------------------------- |
-| packages | write | Push des images vers GHCR lorsque applicable                           |
-| contents | read  | Lecture du dépôt pour construire le contexte (jobs `infos` et `build`) |
+| Scope        | Accès | Description                                                            |
+| ------------ | ----- | ---------------------------------------------------------------------- |
+| packages     | write | Push des images vers GHCR lorsque applicable                           |
+| contents     | read  | Lecture du dépôt pour construire le contexte (jobs `infos` et `build`) |
+| id-token     | write | Requis pour signer les attestations via OIDC                           |
+| attestations | write | Requis pour créer des attestations GitHub                              |
+
+> GitHub valide les permissions de tout le graphe d'appel imbriqué de façon statique, y compris le job `attest`, même lorsqu'il est ignoré à l'exécution parce que `PROVENANCE`/`SBOM`/`SIGN` valent tous `false`. Le workflow appelant doit toujours accorder `id-token: write` et `attestations: write`, sous peine d'un échec au démarrage (`Error calling workflow ... is only allowed 'attestations: none, id-token: none'`) avant même qu'un job ne s'exécute.
 
 ## Notes
 
@@ -94,7 +98,9 @@ Par défaut, l'image est poussée vers le registre (par digest, puis assemblée 
 
 ### Attestations et signature intégrées (`PROVENANCE` / `SBOM` / `SIGN`)
 
-Si `PROVENANCE: true`, `SBOM: true` et/ou `SIGN: true`, un job `attest` supplémentaire est automatiquement déclenché en fin de workflow (il appelle [`attest-docker.yml`](./attest-docker.md) avec l'output `digest`/`image` du build). Il faut alors accorder les permissions `packages: write`, `id-token: write` et `attestations: write` au workflow appelant.
+Si `PROVENANCE: true`, `SBOM: true` et/ou `SIGN: true`, un job `attest` supplémentaire est automatiquement déclenché en fin de workflow (il appelle [`attest-docker.yml`](./attest-docker.md) avec l'output `digest`/`image` du build).
+
+Le workflow appelant doit accorder les permissions `packages: write`, `id-token: write` et `attestations: write` **même s'il laisse `PROVENANCE`/`SBOM`/`SIGN` à `false`** : GitHub valide les permissions de tout le graphe d'appel imbriqué de façon statique, indépendamment de la valeur du `if:` qui gate le job `attest`. Les omettre fait échouer le run entier au démarrage (`startup_failure`, zéro job créé) avant même que `attest` soit évalué.
 
 ### Autres comportements
 
@@ -122,6 +128,11 @@ Si `PROVENANCE: true`, `SBOM: true` et/ou `SIGN: true`, un job `attest` supplém
 jobs:
   build:
     uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    permissions:
+      packages: write
+      contents: read
+      id-token: write
+      attestations: write
     with:
       IMAGE_NAME: ghcr.io/my-org/my-image
       IMAGE_TAG: 1.2.3
@@ -139,6 +150,11 @@ jobs:
 jobs:
   build:
     uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    permissions:
+      packages: write
+      contents: read
+      id-token: write
+      attestations: write
     with:
       IMAGE_NAME: ghcr.io/my-org/my-app
       IMAGE_TAG: ${{ needs.release.outputs.version }}
@@ -209,6 +225,11 @@ cosign verify ghcr.io/my-org/my-app:1.0.0 \
 jobs:
   build:
     uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    permissions:
+      packages: write
+      contents: read
+      id-token: write
+      attestations: write
     with:
       IMAGE_NAME: ghcr.io/my-org/my-app
       IMAGE_TAG: 1.0.0
@@ -226,6 +247,11 @@ jobs:
 jobs:
   build:
     uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    permissions:
+      packages: write
+      contents: read
+      id-token: write
+      attestations: write
     with:
       IMAGE_NAME: docker.io/my-org/my-image
       IMAGE_TAG: 1.0.0
@@ -246,6 +272,11 @@ jobs:
 jobs:
   build:
     uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    permissions:
+      packages: write
+      contents: read
+      id-token: write
+      attestations: write
     with:
       IMAGE_NAME: ghcr.io/my-org/my-app
       IMAGE_TAG: 1.0.0
