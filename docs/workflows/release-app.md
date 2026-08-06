@@ -12,6 +12,8 @@ Gestion automatisée des releases d'application avec [release-please](https://gi
 | RELEASE_ARTIFACT_NAMES   | string  | Nom ou pattern glob d'artefacts (uploadés par des jobs précédents via `actions/upload-artifact`) à télécharger et attacher à la release (ex: `my-binaries` ou `my-app-*`) | Non    |                                    |
 | AUTOMERGE_PRERELEASE     | boolean | Fusionner automatiquement la PR de pré-release                                                                                                                            | Non    | `false`                            |
 | AUTOMERGE_RELEASE        | boolean | Fusionner automatiquement la PR de release                                                                                                                                | Non    | `false`                            |
+| AUTOMERGE_METHOD         | string  | Méthode de fusion de la PR de release quand l'automerge est activé : `auto` (met en file d'attente, GitHub fusionne une fois les checks requis passés, nécessite *Allow auto-merge*) ou `admin` (fusionne immédiatement en contournant la protection de branche) | Non    | `auto`                              |
+| RELEASE_PR_AUTHOR        | string  | Limiter l'action à la PR de release ouverte par ce login (tel que `gh` le rapporte, ex: `app/github-actions` pour un bot). Laisser vide pour dériver automatiquement l'auteur du credential utilisé. `*` désactive explicitement la vérification.        | Non    | `""`                                |
 | PRERELEASE_BRANCH        | string  | Branche sur laquelle créer les pré-releases                                                                                                                               | Non    | `develop`                          |
 | RELEASE_BRANCH           | string  | Branche sur laquelle créer les releases                                                                                                                                   | Non    | `main`                             |
 | REBASE_PRERELEASE_BRANCH | boolean | Rebaser la branche de pré-release après une release                                                                                                                       | Non    | `false`                            |
@@ -23,9 +25,11 @@ Gestion automatisée des releases d'application avec [release-please](https://gi
 
 ## Secrets
 
-| Secret | Description                                                | Requis |
-| ------ | ---------------------------------------------------------- | ------ |
-| GH_PAT | Personal Access Token GitHub (nécessaire pour l'automerge) | Non    |
+| Secret            | Description                                                                                                                                    | Requis |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| APP_CLIENT_ID      | Client ID d'une GitHub App (ex: `Iv23li...`, PAS l'App ID numérique). À fournir avec `APP_PRIVATE_KEY` pour authentifier comme une App — prend le pas sur `GH_PAT`. Contrairement à `GITHUB_TOKEN`, un token App permet à la PR de release de déclencher les workflows `pull_request`. Voir [`authentication.md`](./authentication.md). | Non    |
+| APP_PRIVATE_KEY    | Clé privée (PEM) de la GitHub App. Requis avec `APP_CLIENT_ID`.                                                                                    | Non    |
+| GH_PAT             | Personal Access Token GitHub. Alternative historique à `APP_CLIENT_ID`/`APP_PRIVATE_KEY`, toujours supportée mais l'authentification App est préférée. | Non    |
 
 ## Outputs
 
@@ -54,7 +58,9 @@ Gestion automatisée des releases d'application avec [release-please](https://gi
 - Si `TAG_MAJOR_AND_MINOR: true`, crée les tags `v<major>` et `v<major>.<minor>` après la création d'une release.
 - Si `RELEASE_ARTIFACT_NAMES` est défini, les artefacts correspondant au pattern (uploadés par des jobs précédents via `actions/upload-artifact`) sont automatiquement téléchargés et attachés à la release GitHub.
 - Si `RELEASE_ASSET_PATHS` est défini, les fichiers des chemins listés (séparés par des virgules) sont uploadés sur la release GitHub via `gh release upload` après sa création.
-- Si `AUTOMERGE_*` est activé et qu'un PAT est fourni, tente de fusionner automatiquement la PR de release.
+- Si `AUTOMERGE_*` est activé, un credential (App ou `GH_PAT`) est requis - sans credential, le job échoue plutôt que de silencieusement ne rien fusionner. `AUTOMERGE_METHOD` choisit `auto` (file d'attente, nécessite *Allow auto-merge*) ou `admin` (fusion immédiate en contournant la protection de branche). Voir [`authentication.md`](./authentication.md#automerge).
+- La PR de release est recherchée via l'API (`gh pr list`) plutôt que par nom de branche, ce qui fonctionne aussi pour les monorepos où release-please ouvre une PR par composant. `RELEASE_PR_AUTHOR` permet de restreindre cette recherche à un auteur précis ; laissé vide, l'auteur est dérivé automatiquement du credential utilisé (App, `github-actions[bot]`, ou désactivé sous PAT).
+- Fournir `APP_CLIENT_ID`/`APP_PRIVATE_KEY` (ou `GH_PAT`) permet à la PR de release de déclencher les workflows `pull_request`, ce que `GITHUB_TOKEN` ne peut jamais faire. Voir [`authentication.md`](./authentication.md).
 - Optionnellement, rebase `PRERELEASE_BRANCH` sur `RELEASE_BRANCH` après une release quand `REBASE_PRERELEASE_BRANCH: true` (seulement quand `ENABLE_PRERELEASE: true`).
 
 ## Configuration
@@ -219,6 +225,23 @@ jobs:
       REBASE_PRERELEASE_BRANCH: true
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
+```
+
+### Avec authentification GitHub App (PR de release avec CI)
+
+Nécessaire pour que la PR de release déclenche ses propres workflows `pull_request`. Voir [`authentication.md`](./authentication.md).
+
+```yaml
+jobs:
+  release:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
+    with:
+      TAG_MAJOR_AND_MINOR: true
+      AUTOMERGE_RELEASE: true
+      AUTOMERGE_METHOD: auto
+    secrets:
+      APP_CLIENT_ID: ${{ secrets.APP_CLIENT_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
 
 ### Workflow release uniquement (sans pré-release)

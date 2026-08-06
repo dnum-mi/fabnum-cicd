@@ -4,6 +4,10 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 
 ## Liste des workflows disponibles
 
+### Authentification
+
+- [**Authentification**](./authentication.md) - Choisir et configurer un credential GitHub (`GITHUB_TOKEN`, GitHub App ou PAT) pour les workflows qui en ont besoin
+
 ### Linting & Validation
 
 - [**Lint Commits**](./lint-commits.md) - Validation des messages de commit (Conventional Commits)
@@ -451,12 +455,14 @@ jobs:
 
 Certains workflows nécessitent des secrets GitHub. Voici un résumé :
 
-| Secret              | Workflows concernés            | Description                        |
-| ------------------- | ------------------------------ | ---------------------------------- |
-| `GH_PAT`            | release-app, update-helm-chart | GitHub Personal Access Token       |
-| `SONAR_TOKEN`       | scan-sonarqube                 | Token d'authentification SonarQube |
-| `SONAR_PROJECT_KEY` | scan-sonarqube                 | Clé du projet SonarQube            |
-| `GIT_MIRROR_TOKEN`  | sync-cpin                      | Token GitLab pour synchronisation  |
+| Secret              | Workflows concernés                                                    | Description                                                                  |
+| ------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `APP_CLIENT_ID`     | release-app, release-helm, update-helm-chart, build-docker, scan-trivy    | Client ID d'une GitHub App - voir [`authentication.md`](./authentication.md)    |
+| `APP_PRIVATE_KEY`   | release-app, release-helm, update-helm-chart, build-docker, scan-trivy    | Clé privée (PEM) de la GitHub App                                               |
+| `GH_PAT`            | release-app, release-helm, update-helm-chart, build-docker, scan-trivy    | GitHub Personal Access Token (alternative à la GitHub App)                     |
+| `SONAR_TOKEN`       | scan-sonarqube                                                              | Token d'authentification SonarQube                                              |
+| `SONAR_PROJECT_KEY` | scan-sonarqube                                                              | Clé du projet SonarQube                                                          |
+| `GIT_MIRROR_TOKEN`  | sync-cpin                                                                   | Token GitLab pour synchronisation                                               |
 
 ### Permissions requises
 
