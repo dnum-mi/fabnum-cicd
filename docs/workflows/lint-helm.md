@@ -7,6 +7,7 @@ Lint des charts Helm avec [chart-testing](https://github.com/helm/chart-testing)
 | Input             | Type    | Description                                                                            | Requis | Défaut             |
 | ----------------- | ------- | -------------------------------------------------------------------------------------- | ------ | ------------------ |
 | CT_CONF_PATH      | string  | Chemin vers le fichier de configuration chart-testing                                  | Oui    | -                  |
+| CHARTS_DIR        | string  | Répertoire scanné par helm-docs pour le job lint-docs (ex: `charts` pour un répertoire dédié, ou le répertoire du chart lui-même dans un monorepo avec un chart unique à sa racine). Doit correspondre au(x) `chart-dirs` configuré(s) dans CT_CONF_PATH, ou les contenir. | Non    | `charts`           |
 | HELM_DOCS_VERSION | string  | Version de helm-docs à utiliser                                                        | Non    | `1.14.2`           |
 | LINT_CHARTS       | boolean | Exécuter le lint des charts                                                            | Non    | `true`             |
 | LINT_DOCS         | boolean | Exécuter la validation de la documentation                                             | Non    | `true`             |
@@ -25,6 +26,7 @@ Lint des charts Helm avec [chart-testing](https://github.com/helm/chart-testing)
 - Utilise chart-testing pour détecter les changements et ne linter que les charts modifiés.
 - Compare avec la branche par défaut du dépôt pour identifier les charts à tester.
 - Les deux jobs (lint-charts et lint-docs) peuvent être activés/désactivés indépendamment.
+- **CHARTS_DIR** ne concerne que le job lint-docs (helm-docs) - le job lint-charts (chart-testing) déduit toujours l'emplacement des charts depuis `chart-dirs` dans CT_CONF_PATH. Dans un dépôt de charts dédié (`charts/<name>/Chart.yaml`), le défaut `charts` convient. Dans un monorepo avec un chart unique à la racine (`helm/Chart.yaml`), passer `CHARTS_DIR: helm`.
 
 ## Exemples
 
@@ -53,6 +55,17 @@ jobs:
       CT_CONF_PATH: ci/configs/ct.yaml
       LINT_CHARTS: true
       LINT_DOCS: false
+```
+
+### Monorepo avec un chart unique à la racine
+
+```yaml
+jobs:
+  lint-helm:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@v0
+    with:
+      CT_CONF_PATH: ci/configs/ct.yaml # chart-dirs: [.] dans ce fichier
+      CHARTS_DIR: helm
 ```
 
 ### Avec une version spécifique de helm-docs

@@ -12,6 +12,15 @@ on:
         description: Path to the chart-testing configuration file
         required: true
         type: string
+      CHARTS_DIR:
+        description: >-
+          Directory scanned by helm-docs for the lint-docs job (e.g. 'charts'
+          for a dedicated charts directory, or the chart's own directory for a
+          monorepo with a single chart at its root). Should match, or contain,
+          the chart-dirs configured in CT_CONF_PATH.
+        required: false
+        type: string
+        default: charts
       LINT_CHARTS:
         description: Whether to run the chart linting job
         required: false
@@ -67,13 +76,15 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
     - name: Run helm-docs
+      env:
+        CHARTS_DIR: ${{ inputs.CHARTS_DIR }}
       run: |
         set -euo pipefail
 
         echo "Validating helm chart docs"
         docker run \
           --rm \
-          --volume "$(pwd)/charts:/helm-docs:ro" \
+          --volume "$(pwd)/$CHARTS_DIR:/helm-docs:ro" \
           -u "$(id -u)" \
           docker.io/jnorwood/helm-docs:${{ inputs.HELM_DOCS_VERSION }}
         echo "Helm chart docs are valid"
