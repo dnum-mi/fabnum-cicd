@@ -60,6 +60,30 @@ on:
         description: Newline-separated list of Docker build args (e.g. 'MY_ARG=value')
         required: false
         type: string
+      BUILD_SECRET_GITHUB_TOKEN:
+        description: >-
+          Which credential to expose as a 'github_token=<token>' build secret,
+          readable in the Dockerfile at /run/secrets/github_token. Raises the
+          GitHub API rate limit for tools that resolve releases during the build
+          (mise, aqua, ubi).
+          Everything the Dockerfile executes can read this value - every install
+          script, package postinstall hook and prebuilt binary - so the
+          credential is named rather than resolved silently, and each name says
+          how wide it is:
+          'none' (default) injects nothing.
+          'app' uses a GitHub App token minted contents:read + metadata:read on
+          this repository, and fails if APP_CLIENT_ID/APP_PRIVATE_KEY are
+          absent. This is the only option this workflow can narrow itself.
+          'pat' uses the App token when available, otherwise GH_PAT, and fails
+          if neither is set. A PAT is injected exactly as you created it, so
+          scope it to Contents:read and never use a classic token.
+          'job-token' additionally falls back to this job's GITHUB_TOKEN, which
+          cannot be narrowed at all - it carries the whole 'permissions:' block
+          the caller granted, normally including packages:write. Opt in only
+          when you accept that the build can push to your registry.
+        required: false
+        default: none
+        type: string
       CACHE:
         description: Enable Docker build cache (uses GitHub Actions cache backend)
         required: false
@@ -121,9 +145,29 @@ on:
       BUILD_SECRETS:
         description: >-
           Newline-separated list of build secrets in KEY=VALUE form, exposed to
-          the Dockerfile via BuildKit secret mounts (e.g. RUN
-          --mount=type=secret,id=KEY). Unlike BUILD_ARGS, these are never written to
-          image layers/history.
+          the Dockerfile via BuildKit secret mounts (e.g. RUN --mount=type=secret,id=KEY).
+          Unlike BUILD_ARGS, these are never written to image layers/history.
+        required: false
+      APP_CLIENT_ID:
+        description: >-
+          GitHub App Client ID (e.g. Iv23li..., NOT the numeric App ID), used
+          only to mint the token injected by BUILD_SECRET_GITHUB_TOKEN. The
+          token is always narrowed to contents:read + metadata:read on this
+          repository, so the same App used for releases is safe to pass here.
+          See docs/workflows/authentication.md.
+        required: false
+      APP_PRIVATE_KEY:
+        description: GitHub App private key (PEM). Required alongside APP_CLIENT_ID.
+        required: false
+      GH_PAT:
+        description: >-
+          Personal access token, used only for BUILD_SECRET_GITHUB_TOKEN and
+          resolved after the App credentials. Unlike an App token this cannot be
+          narrowed at mint time, and the value is readable by everything the
+          Dockerfile executes - use a fine-grained token limited to
+          Contents: read on this repository, never a classic token. A correctly
+          scoped PAT is still tighter than the GITHUB_TOKEN fallback, which
+          carries this job's whole 'permissions:' block.
         required: false
 
 jobs:
@@ -173,19 +217,23 @@ jobs:
       run: |
         # Normalize image name: lowercase and replace _ with -
         NORMALIZED_IMAGE=$(echo "$INPUT_IMAGE_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')
-        echo "NORMALIZED_IMAGE=$NORMALIZED_IMAGE" >> $GITHUB_OUTPUT
-        echo "REGISTRY=$(echo "$INPUT_IMAGE_NAME" | cut -d "/" -f 1 | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
-        echo "LOWER_IMAGE=$(echo "$INPUT_IMAGE_NAME" | cut -d "/" -f 2- | sed 's/\//-/g' | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')" >> $GITHUB_OUTPUT
-        if [[ "$INPUT_IMAGE_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-          VERSION_TAG=$(echo "$INPUT_IMAGE_TAG" | sed 's/-.*$//')
-          echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_OUTPUT
-          echo "PRERELEASE_TAG=$(echo "$INPUT_IMAGE_TAG" | sed -n 's/^[0-9.]*-\(.*\)$/\1/p')" >> $GITHUB_OUTPUT
-          echo "MAJOR_TAG=$(echo $VERSION_TAG | cut -d "." -f 1)" >> $GITHUB_OUTPUT
-          echo "MINOR_TAG=$(echo $VERSION_TAG | cut -d "." -f 2)" >> $GITHUB_OUTPUT
-          echo "PATCH_TAG=$(echo $VERSION_TAG | cut -d "." -f 3)" >> $GITHUB_OUTPUT
-        fi
-        echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-        echo "LOWER_BRANCH=$(echo "$INPUT_HEAD_REF" | sed 's/\//-/g' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+        {
+          echo "NORMALIZED_IMAGE=$NORMALIZED_IMAGE"
+          echo "REGISTRY=$(echo "$INPUT_IMAGE_NAME" | cut -d "/" -f 1 | tr '[:upper:]' '[:lower:]')"
+          echo "LOWER_IMAGE=$(echo "$INPUT_IMAGE_NAME" | cut -d "/" -f 2- | sed 's/\//-/g' | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')"
+
+          if [[ "$INPUT_IMAGE_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            VERSION_TAG="${INPUT_IMAGE_TAG%%-*}"
+            echo "VERSION_TAG=$VERSION_TAG"
+            echo "PRERELEASE_TAG=$(echo "$INPUT_IMAGE_TAG" | sed -n 's/^[0-9.]*-\(.*\)$/\1/p')"
+            echo "MAJOR_TAG=$(echo "$VERSION_TAG" | cut -d "." -f 1)"
+            echo "MINOR_TAG=$(echo "$VERSION_TAG" | cut -d "." -f 2)"
+            echo "PATCH_TAG=$(echo "$VERSION_TAG" | cut -d "." -f 3)"
+          fi
+
+          echo "SHORT_SHA=$(git rev-parse --short HEAD)"
+          echo "LOWER_BRANCH=$(echo "$INPUT_HEAD_REF" | sed 's/\//-/g' | tr '[:upper:]' '[:lower:]')"
+        } >> "$GITHUB_OUTPUT"
 
   build:
     name: Build application
@@ -199,10 +247,52 @@ jobs:
       # Registry login is required to push, and also to pull private base images even when not pushing.
       # For ghcr.io the credentials always resolve from the job token, so login is free of charge there.
       REGISTRY_LOGIN: ${{ inputs.PUSH || startsWith(inputs.IMAGE_NAME, 'ghcr.io') || secrets.REGISTRY_USERNAME != '' }}
+      # `secrets` is not available in a step-level `if`, but it is here.
+      HAS_APP_AUTH: ${{ secrets.APP_CLIENT_ID != '' && secrets.APP_PRIVATE_KEY != '' }}
+      # Exactly one of the two set: a typo or a half-finished setup. Never a
+      # valid configuration, and silently falling back would downgrade auth.
+      HAS_PARTIAL_APP_AUTH: ${{ (secrets.APP_CLIENT_ID != '') != (secrets.APP_PRIVATE_KEY != '') }}
+      HAS_PAT: ${{ secrets.GH_PAT != '' }}
     strategy:
       matrix:
         runners: ${{ (inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && !inputs.USE_QEMU && fromJson('["ubuntu-24.04", "ubuntu-24.04-arm"]')) || (inputs.BUILD_ARM64 && !inputs.USE_QEMU && fromJson('["ubuntu-24.04-arm"]')) || fromJson('["ubuntu-24.04"]') }}
     steps:
+    # The build secret is resolved from an explicitly named source, so a caller
+    # can never end up mounting a wider credential than it asked for. Each mode
+    # fails here rather than quietly falling through to the next one.
+    - name: Validate credentials
+      env:
+        BUILD_SECRET_GITHUB_TOKEN: ${{ inputs.BUILD_SECRET_GITHUB_TOKEN }}
+      run: |
+        set -euo pipefail
+
+        if [ "$HAS_PARTIAL_APP_AUTH" = "true" ]; then
+          echo "::error::APP_CLIENT_ID and APP_PRIVATE_KEY must be supplied together, but only one was. Continuing would silently fall back to GH_PAT or GITHUB_TOKEN instead of authenticating as the App."
+          exit 1
+        fi
+
+        case "$BUILD_SECRET_GITHUB_TOKEN" in
+          none|app|pat|job-token) ;;
+          *)
+            echo "::error::BUILD_SECRET_GITHUB_TOKEN must be 'none', 'app', 'pat' or 'job-token', got '$BUILD_SECRET_GITHUB_TOKEN'"
+            exit 1
+            ;;
+        esac
+
+        if [ "$BUILD_SECRET_GITHUB_TOKEN" = "app" ] && [ "$HAS_APP_AUTH" != "true" ]; then
+          echo "::error::BUILD_SECRET_GITHUB_TOKEN=app requires APP_CLIENT_ID and APP_PRIVATE_KEY. Supply them, or choose 'pat' or 'job-token' if you accept a credential this workflow cannot narrow."
+          exit 1
+        fi
+
+        if [ "$BUILD_SECRET_GITHUB_TOKEN" = "pat" ] && [ "$HAS_APP_AUTH" != "true" ] && [ "$HAS_PAT" != "true" ]; then
+          echo "::error::BUILD_SECRET_GITHUB_TOKEN=pat requires APP_CLIENT_ID/APP_PRIVATE_KEY or GH_PAT. Supply one, or choose 'job-token' to mount this job's GITHUB_TOKEN instead - note it carries the whole 'permissions:' block, including packages:write."
+          exit 1
+        fi
+
+        if [ "$BUILD_SECRET_GITHUB_TOKEN" = "job-token" ] && [ "$HAS_APP_AUTH" != "true" ] && [ "$HAS_PAT" != "true" ]; then
+          echo "::warning::Mounting this job's GITHUB_TOKEN into the build (BUILD_SECRET_GITHUB_TOKEN=job-token with no App or PAT). It cannot be narrowed - it carries this job's full 'permissions:' block, which includes 'packages: write', and every install script, package postinstall hook and prebuilt binary the Dockerfile runs can read it. Supply APP_CLIENT_ID/APP_PRIVATE_KEY for a read-only token instead."
+        fi
+
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -222,6 +312,22 @@ jobs:
         password: ${{ startsWith(inputs.IMAGE_NAME, 'ghcr.io') && github.token || secrets.REGISTRY_PASSWORD }}
         logout: true
 
+    # The permission-* narrowing below is load-bearing, not decoration: a mint
+    # without it inherits EVERY permission the installation holds. This token is
+    # mounted into the build, where it is readable by every install script,
+    # package postinstall hook and prebuilt binary the Dockerfile executes, so a
+    # write-capable token here would turn an upstream compromise into a push.
+    # Keep it read-only and keep it scoped to this repository.
+    - name: Generate read-only GitHub App token
+      id: app-token
+      if: ${{ inputs.BUILD_SECRET_GITHUB_TOKEN != 'none' && env.HAS_APP_AUTH == 'true' }}
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+      with:
+        client-id: ${{ secrets.APP_CLIENT_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
+        permission-contents: read
+        permission-metadata: read
+
     - name: Build docker image
       id: build
       uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
@@ -237,7 +343,19 @@ jobs:
         cache-to: ${{ inputs.CACHE && format('type=gha,mode={0},scope={1}-{2}', inputs.CACHE_MODE, needs.infos.outputs.lower-image, matrix.runners) || '' }}
         build-args: |
           ${{ inputs.BUILD_ARGS }}
-        secrets: ${{ secrets.BUILD_SECRETS }}
+        # Composed inline rather than through GITHUB_ENV/GITHUB_OUTPUT so the
+        # token is never written to a file on the runner. When
+        # BUILD_SECRET_GITHUB_TOKEN is 'none' the second line renders empty;
+        # build-push-action parses this list with skipEmptyLines, so a blank
+        # line is ignored and the result is identical to passing BUILD_SECRETS
+        # alone.
+        #
+        # github.token is reachable only in 'job-token' mode: the validation
+        # step above fails 'app' and 'pat' when their credential is missing, so
+        # neither can fall through to it here.
+        secrets: |
+          ${{ secrets.BUILD_SECRETS }}
+          ${{ inputs.BUILD_SECRET_GITHUB_TOKEN != 'none' && format('github_token={0}', steps.app-token.outputs.token || secrets.GH_PAT || (inputs.BUILD_SECRET_GITHUB_TOKEN == 'job-token' && github.token) || '') || '' }}
 
     - name: Export digest
       if: ${{ inputs.PUSH }}
@@ -279,9 +397,9 @@ jobs:
     - name: Download artifact
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
       with:
-        # Anchored to the suffixes produced by the upload above: a bare '-*'
-        # also matches images whose name extends this one ('dev' picking up
-        # 'dev-lite'), whose digests then get pushed under the wrong repository.
+        # Anchored to the suffixes produced by the upload above: a bare `-*`
+        # also matches images whose name extends this one (`dev` picking up
+        # `dev-lite`), whose digests then get pushed under the wrong repository.
         pattern: digests-${{ needs.infos.outputs.lower-image }}-@(amd64|arm64|multiarch)
         path: /tmp/digests/${{ needs.infos.outputs.lower-image }}
         merge-multiple: true
@@ -312,21 +430,81 @@ jobs:
 
     - name: Create manifest list and push
       working-directory: /tmp/digests/${{ needs.infos.outputs.lower-image }}
+      env:
+        NORMALIZED_IMAGE: ${{ needs.infos.outputs.normalized-image }}
       run: |
-        docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-          $(printf '${{ needs.infos.outputs.normalized-image }}@sha256:%s ' *)
+        # Both lists have to reach imagetools as separate arguments: one
+        # `-t <tag>` pair per tag, then one reference per digest file in the
+        # working directory. Building them as arrays keeps that explicit
+        # instead of leaning on word-splitting.
+        mapfile -t TAG_ARGS < <(jq -r '.tags[] | "-t", .' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+
+        # One reference per digest file in this directory. Built with a loop
+        # rather than `printf` with two placeholders - printf reuses its format
+        # string until the arguments run out, so it would pair the image name
+        # with the first digest and then pair the remaining digests with each
+        # other.
+        #
+        # nullglob so an empty directory yields nothing rather than the literal
+        # `*`, which would otherwise be pushed as `<image>@sha256:*`. The upload
+        # step uses `if-no-files-found: error`, so this is a backstop.
+        shopt -s nullglob
+        DIGEST_REFS=()
+        for digest in *; do
+          DIGEST_REFS+=("$NORMALIZED_IMAGE@sha256:$digest")
+        done
+
+        if [ "${#DIGEST_REFS[@]}" -eq 0 ]; then
+          echo "::error::No digest files found in $PWD, nothing to assemble into a manifest list"
+          exit 1
+        fi
+
+        docker buildx imagetools create "${TAG_ARGS[@]}" "${DIGEST_REFS[@]}"
 
     - name: Get image digest
       id: digest
+      env:
+        NORMALIZED_IMAGE: ${{ needs.infos.outputs.normalized-image }}
+        IMAGE_VERSION: ${{ steps.meta.outputs.version }}
+        DIGESTS_DIR: /tmp/digests/${{ needs.infos.outputs.lower-image }}
       run: |
-        DIGEST=$(docker buildx imagetools inspect --raw \
-          "${{ needs.infos.outputs.normalized-image }}:${{ steps.meta.outputs.version }}" \
-          | sha256sum | cut -d' ' -f1)
-        echo "value=sha256:${DIGEST}" >> $GITHUB_OUTPUT
+        set -euo pipefail
+
+        # This digest is what the attest job cosign-signs and mints SLSA
+        # provenance for, under this repository's OIDC identity. It is resolved
+        # from a MUTABLE tag, which is a time-of-check/time-of-use gap: between
+        # the push above and this inspect, anyone able to write that tag - a
+        # second concurrent run of this workflow, or another repository in the
+        # org holding packages:write - can repoint it, and we would sign their
+        # image as ours.
+        #
+        # So the resolved manifest is checked against what this run actually
+        # pushed: its children must be exactly the per-platform digests in the
+        # digests directory. A repointed tag resolves to a different child set
+        # and fails here instead of being signed.
+        RAW=$(docker buildx imagetools inspect --raw "$NORMALIZED_IMAGE:$IMAGE_VERSION")
+        DIGEST=$(printf '%s' "$RAW" | sha256sum | cut -d' ' -f1)
+
+        mapfile -t EXPECTED < <(find "$DIGESTS_DIR" -maxdepth 1 -type f -printf '%f\n' | sort)
+        mapfile -t RESOLVED < <(
+          printf '%s' "$RAW" |
+            jq -r '(.manifests // [])[] | select((.annotations["vnd.docker.reference.type"] // "") == "") | .digest' |
+            sed 's/^sha256://' | sort
+        )
+
+        if [ "${EXPECTED[*]}" != "${RESOLVED[*]}" ]; then
+          echo "::error::'$NORMALIZED_IMAGE:$IMAGE_VERSION' does not resolve to the image this run pushed, so it will not be signed or attested. Expected children [${EXPECTED[*]}], resolved [${RESOLVED[*]}]. The tag was most likely rewritten by a concurrent run or another writer between the push and this check - add a 'concurrency:' group to the calling workflow if two runs can push the same tag."
+          exit 1
+        fi
+
+        echo "value=sha256:${DIGEST}" >> "$GITHUB_OUTPUT"
 
     - name: Inspect image
+      env:
+        NORMALIZED_IMAGE: ${{ needs.infos.outputs.normalized-image }}
+        IMAGE_VERSION: ${{ steps.meta.outputs.version }}
       run: |
-        docker buildx imagetools inspect ${{ needs.infos.outputs.normalized-image }}:${{ steps.meta.outputs.version }}
+        docker buildx imagetools inspect "$NORMALIZED_IMAGE:$IMAGE_VERSION"
 
   attest:
     if: ${{ inputs.PUSH && (inputs.PROVENANCE || inputs.SBOM || inputs.SIGN) }}
