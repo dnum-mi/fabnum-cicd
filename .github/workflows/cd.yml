@@ -46,3 +46,6 @@ jobs:
     with:
       TAG_MAJOR_AND_MINOR: true
       AUTOMERGE_RELEASE: false
+    secrets:
+      APP_CLIENT_ID: ${{ secrets.APP_CLIENT_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}

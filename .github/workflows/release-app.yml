@@ -31,6 +31,29 @@ on:
         type: boolean
         required: false
         default: false
+      AUTOMERGE_METHOD:
+        description: >-
+          How the release pull request is merged when automerge is enabled.
+          `auto` queues it and lets GitHub merge once required status checks
+          pass - this needs "Allow auto-merge" enabled on the repository.
+          `admin` merges immediately, bypassing branch protection and required
+          status checks. Prefer `auto`; use `admin` only deliberately.
+        type: string
+        required: false
+        default: auto
+      RELEASE_PR_AUTHOR:
+        description: >-
+          Only act on release pull requests opened by this login, as `gh`
+          reports it - bot authors appear as `app/<slug>`, e.g.
+          `app/github-actions`, not `github-actions[bot]`. Leave unset: the
+          workflow derives it from whichever credential opened the pull
+          request, which is correct for the App and GITHUB_TOKEN modes and is
+          the value you want in almost every case. Under a PAT the author is
+          the token owner and cannot be derived, so the check is skipped unless
+          you set this. `*` disables the check explicitly.
+        type: string
+        required: false
+        default: ''
       PRERELEASE_BRANCH:
         description: Branch to create the prerelease on
         type: string
@@ -72,12 +95,26 @@ on:
         type: string
         default: '["ubuntu-24.04"]'
     secrets:
+      APP_CLIENT_ID:
+        description: >-
+          GitHub App Client ID (e.g. Iv23li..., NOT the numeric App ID). Supply
+          with APP_PRIVATE_KEY to authenticate as a GitHub App.
+          Takes precedence over GH_PAT. Unlike GITHUB_TOKEN, an App token
+          lets the release pull request trigger `pull_request` workflows, so its
+          CI actually runs. See docs/workflows/authentication.md.
+        required: false
+      APP_PRIVATE_KEY:
+        description: GitHub App private key (PEM). Required alongside APP_CLIENT_ID.
+        required: false
       GH_PAT:
-        description: GitHub Personal Access Token (needed for automerge)
+        description: >-
+          GitHub Personal Access Token. Legacy alternative to
+          APP_CLIENT_ID/APP_PRIVATE_KEY; still supported, but App authentication is
+          preferred.
         required: false
     outputs:
       release-created:
-        description: Has the releease been created
+        description: Has the release been created
         value: ${{ jobs.release.outputs.release-created }}
       version:
         description: Full semver value
@@ -106,7 +143,59 @@ jobs:
       major-tag: ${{ steps.release.outputs.major }}
       minor-tag: ${{ steps.release.outputs.minor }}
       patch-tag: ${{ steps.release.outputs.patch }}
+    env:
+      # `secrets` is not available in a step-level `if`, but it is here - so the
+      # presence check is hoisted to the job and the step tests `env`.
+      HAS_APP_AUTH: ${{ secrets.APP_CLIENT_ID != '' && secrets.APP_PRIVATE_KEY != '' }}
+      # Exactly one of the two set: a typo or a half-finished setup. Never a
+      # valid configuration, and silently falling back would downgrade auth.
+      HAS_PARTIAL_APP_AUTH: ${{ (secrets.APP_CLIENT_ID != '') != (secrets.APP_PRIVATE_KEY != '') }}
     steps:
+    - name: Validate inputs
+      env:
+        AUTOMERGE_METHOD: ${{ inputs.AUTOMERGE_METHOD }}
+      run: |
+        set -euo pipefail
+
+        if [ "$HAS_PARTIAL_APP_AUTH" = "true" ]; then
+          echo "::error::APP_CLIENT_ID and APP_PRIVATE_KEY must be supplied together, but only one was. Continuing would silently fall back to GH_PAT or GITHUB_TOKEN instead of authenticating as the App."
+          exit 1
+        fi
+
+        case "$AUTOMERGE_METHOD" in
+          auto|admin) ;;
+          *)
+            echo "::error::AUTOMERGE_METHOD must be 'auto' or 'admin', got '$AUTOMERGE_METHOD'"
+            exit 1
+            ;;
+        esac
+
+    # Scoped to this repository only: passing `owner:` without `repositories:`
+    # would widen the token to every repo in the installation.
+    - name: Generate GitHub App token
+      id: app-token
+      if: ${{ env.HAS_APP_AUTH == 'true' }}
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+      with:
+        client-id: ${{ secrets.APP_CLIENT_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
+        permission-contents: write
+        permission-pull-requests: write
+        permission-issues: write
+
+    # Deliberately NOT given the App token. The `git push` steps below move tags,
+    # the prerelease branch and the release-please branch; under a credential
+    # that can trigger workflows those pushes would re-enter the caller's CD
+    # pipeline (e.g. a caller triggering on `push: branches: [develop]`).
+    # Keeping the default GITHUB_TOKEN here means those git pushes cannot
+    # trigger anything, while release-please still gets the App token below for
+    # the parts that need it. Do NOT add `token:` to this step.
+    #
+    # This bounds git pushes only. release-please creates the release tag and
+    # the GitHub Release through the API with its own token, so under App or PAT
+    # auth those DO fire `push: tags:` and `release:` triggers - which is often
+    # the point, but check the caller's triggers before switching. The
+    # major/minor tags pushed by git below stay inert either way.
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -114,7 +203,10 @@ jobs:
       uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5.0.0
       id: release
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+        # App token, then GH_PAT, then GITHUB_TOKEN. The first two can trigger
+        # workflows, so the release pull request opened here actually runs its
+        # `pull_request` CI; under GITHUB_TOKEN it never does.
+        token: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}
         target-branch: ${{ github.ref_name }}
         config-file: ${{ (github.ref_name == inputs.RELEASE_BRANCH && inputs.RELEASE_CONFIG_FILE) || (inputs.ENABLE_PRERELEASE && github.ref_name == inputs.PRERELEASE_BRANCH && inputs.PRERELEASE_CONFIG_FILE) || inputs.RELEASE_CONFIG_FILE }}
         manifest-file: ${{ (github.ref_name == inputs.RELEASE_BRANCH && inputs.RELEASE_MANIFEST_FILE) || (inputs.ENABLE_PRERELEASE && github.ref_name == inputs.PRERELEASE_BRANCH && inputs.PRERELEASE_MANIFEST_FILE) || inputs.RELEASE_MANIFEST_FILE }}
@@ -130,7 +222,7 @@ jobs:
     - name: Upload Additional Release Artifacts
       if: ${{ steps.release.outputs.release_created && (inputs.RELEASE_ASSET_PATHS != '' || inputs.RELEASE_ARTIFACT_NAMES != '') }}
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}
         TAG_NAME: ${{ steps.release.outputs.tag_name }}
         ARTIFACT_PATHS: ${{ inputs.RELEASE_ASSET_PATHS }}
       run: |
@@ -170,74 +262,262 @@ jobs:
 
     - name: Synchronize release-please-rc manifest
       if: ${{ inputs.ENABLE_PRERELEASE && github.ref_name == inputs.RELEASE_BRANCH && !steps.release.outputs.release_created }}
+      env:
+        # Listing pull requests is a read, so it uses the built-in token. Only
+        # the force-push below needs a credential that can trigger workflows.
+        GH_TOKEN: ${{ github.token }}
+        PUSH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_PAT }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
+        # Derived from whichever credential opened the pull request, so the
+        # author check is on by default instead of needing configuration:
+        # `app/<slug>` for a GitHub App (the action reports its own slug),
+        # `app/github-actions` for GITHUB_TOKEN. Under a PAT the author is the
+        # token owner, which cannot be derived here, so it resolves to `*` and
+        # the check is skipped - the fork and exact-branch guards still apply.
+        # An explicit input always wins. Note the `app/` form: that is how the
+        # API reports a bot author, not `<slug>[bot]`.
+        RELEASE_PR_AUTHOR: >-
+          ${{ inputs.RELEASE_PR_AUTHOR
+              || (steps.app-token.outputs.app-slug != '' && format('app/{0}', steps.app-token.outputs.app-slug))
+              || (secrets.GH_PAT != '' && '*')
+              || 'app/github-actions' }}
+        RELEASE_MANIFEST_FILE: ${{ inputs.RELEASE_MANIFEST_FILE }}
+        PRERELEASE_MANIFEST_FILE: ${{ inputs.PRERELEASE_MANIFEST_FILE }}
       run: |
+        set -euo pipefail
+
         git config user.name github-actions[bot]
         git config user.email github-actions[bot]@users.noreply.github.com
         git fetch --all --prune
 
-        pr_branch=$(git branch -r | grep "release-please--branches--${{ github.ref_name }}" | sed 's|origin/||' | xargs)
+        # Same discovery as the automerge step below. release-please opens one
+        # pull request per component when separate-pull-requests is enabled, so
+        # several branches share the prefix; the previous `git branch -r | grep
+        # | xargs` form collapsed them into one space-joined string that matched
+        # no branch at all, and monorepos silently never synchronized.
+        #
+        # Exported and read back with `env.`, so the branch name never becomes
+        # part of the jq program text.
+        export PR_BRANCH_PREFIX="release-please--branches--$GITHUB_REF_NAME"
 
-        if [ -n "$pr_branch" ]; then
-          echo "Synchronizing release-please-rc manifest for branch '$pr_branch'"
+        # Captured first, then split - NOT `mapfile < <(gh ...)`. A process
+        # substitution's exit status is invisible to both `set -e` and
+        # `pipefail`, so a failing `gh` would leave the array empty and this
+        # step would report "nothing to synchronize" and pass. A silent skip on
+        # a transient API error is exactly the failure this step exists to stop.
+        # `--limit` overrides gh's default of 30: the filtering below is
+        # client-side, so a busy repository could push the release pull requests
+        # off the first page.
+        # A head branch name is chosen by whoever opened the pull request - for a
+        # fork PR it is just a branch inside their own repository - so it is an
+        # identifier, never an authorization. Three filters, in order:
+        #
+        #   isCrossRepository  rejects fork pull requests outright. Without it
+        #                      any GitHub user can name a fork branch
+        #                      `release-please--branches--<base>` and have this
+        #                      workflow amend and force-push to it. Compared to
+        #                      `false` rather than written `| not`, so it fails
+        #                      CLOSED: `null | not` is true in jq, so a field
+        #                      dropped from `--json` would silently stop
+        #                      filtering anything.
+        #   exact-or-component matches only `<prefix>` itself or
+        #                      `<prefix>--components--<name>`, the two forms
+        #                      release-please actually produces. `startswith`
+        #                      alone also accepted `<prefix>-anything`.
+        #   RELEASE_PR_AUTHOR  optional pin to the identity that opened the PR.
+        #                      Empty by default because that identity depends on
+        #                      the credential (App bot, github-actions[bot], or a
+        #                      PAT owner), and defaulting to one would break the
+        #                      others.
+        #
+        # Compared as strings rather than a regex: a branch name may contain
+        # regex metacharacters, and `test()` would treat them as syntax.
+        pr_list=$(
+          gh pr list \
+            --state open \
+            --base "$GITHUB_REF_NAME" \
+            --limit 100 \
+            --json headRefName,isCrossRepository,author \
+            --jq '.[]
+                  | select(.isCrossRepository == false)
+                  | select(.headRefName == env.PR_BRANCH_PREFIX
+                           or (.headRefName | startswith(env.PR_BRANCH_PREFIX + "--components--")))
+                  | select((env.RELEASE_PR_AUTHOR // "*") == "*"
+                           or (env.RELEASE_PR_AUTHOR // "") == ""
+                           or .author.login == env.RELEASE_PR_AUTHOR)
+                  | .headRefName'
+        )
+        mapfile -t pr_branches < <(printf '%s' "$pr_list")
 
-          git fetch origin $pr_branch
-          git checkout $pr_branch
-
-          if ! git diff --no-index --quiet ${{ inputs.RELEASE_MANIFEST_FILE }} ${{ inputs.PRERELEASE_MANIFEST_FILE }}; then
-            echo "Files differ, updating release-please-rc manifest"
-
-            cat ${{ inputs.RELEASE_MANIFEST_FILE }} > ${{ inputs.PRERELEASE_MANIFEST_FILE }}
-
-            git add ${{ inputs.PRERELEASE_MANIFEST_FILE }}
-            git commit --amend --no-edit
-            git push --force-with-lease --force-if-includes
-          else
-            echo "No changes to release-please-rc manifest"
-          fi
-        else
-          echo "No release-please branch found for branch '${{ github.ref_name }}', skipping synchronization"
+        if [ "${#pr_branches[@]}" -eq 0 ]; then
+          echo "No open release-please pull request targeting '$GITHUB_REF_NAME', skipping synchronization"
+          exit 0
         fi
+
+        # This step amends the release commit, so the pull request's head SHA
+        # changes. A push authenticated with GITHUB_TOKEN cannot trigger
+        # workflows, which would leave the new commit with no `pull_request` run
+        # - and AUTOMERGE_METHOD=auto would then wait forever on required checks
+        # that never report. Pushing with the elevated credential fixes that and
+        # adds no new trigger surface: release-please already pushed this very
+        # branch with the same credential to open the pull request.
+        #
+        # actions/checkout stores its own credential as an http.extraheader, so
+        # overriding that header is what actually changes the push identity -
+        # a URL rewrite would be ignored in favour of the stored header.
+        auth_header_key="http.${GITHUB_SERVER_URL}/.extraheader"
+        previous_auth_header=$(git config --local --get "$auth_header_key" || true)
+
+        # Actions masks GITHUB_TOKEN itself, but not the base64 checkout stored
+        # it as, and this value is handled twice below.
+        if [ -n "$previous_auth_header" ]; then
+          echo "::add-mask::${previous_auth_header#AUTHORIZATION: basic }"
+        fi
+
+        restore_auth_header() {
+          if [ -n "$previous_auth_header" ]; then
+            git config --local "$auth_header_key" "$previous_auth_header"
+          else
+            git config --local --unset "$auth_header_key" || true
+          fi
+        }
+
+        if [ -n "$PUSH_TOKEN" ]; then
+          trap restore_auth_header EXIT
+          basic_auth=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 | tr -d '\n')
+          echo "::add-mask::$basic_auth"
+          git config --local "$auth_header_key" "AUTHORIZATION: basic $basic_auth"
+        else
+          echo "::warning::Amending the release pull request with GITHUB_TOKEN, which cannot trigger workflows, so its checks will not re-run against the amended commit. With AUTOMERGE_METHOD=auto the merge then waits on checks that never report - supply APP_CLIENT_ID/APP_PRIVATE_KEY or GH_PAT."
+        fi
+
+        for pr_branch in "${pr_branches[@]}"; do
+          echo "Synchronizing '$PRERELEASE_MANIFEST_FILE' on '$pr_branch'"
+
+          git fetch origin "$pr_branch"
+          git checkout -B "$pr_branch" "origin/$pr_branch"
+
+          # --no-index needs both paths to exist; a missing prerelease manifest
+          # counts as out of sync rather than as an error.
+          if [ -f "$PRERELEASE_MANIFEST_FILE" ] &&
+            git diff --no-index --quiet "$RELEASE_MANIFEST_FILE" "$PRERELEASE_MANIFEST_FILE"; then
+            echo "Already in sync, nothing to do for '$pr_branch'"
+            continue
+          fi
+
+          echo "Files differ, updating release-please-rc manifest on '$pr_branch'"
+
+          cat "$RELEASE_MANIFEST_FILE" >"$PRERELEASE_MANIFEST_FILE"
+          git add "$PRERELEASE_MANIFEST_FILE"
+          git commit --amend --no-edit
+          git push --force-with-lease --force-if-includes origin "$pr_branch"
+        done
 
     - name: Automerge release PR
       if: ${{ ((inputs.ENABLE_PRERELEASE && inputs.AUTOMERGE_PRERELEASE && github.ref_name == inputs.PRERELEASE_BRANCH) || (inputs.AUTOMERGE_RELEASE && github.ref_name == inputs.RELEASE_BRANCH)) && !steps.release.outputs.release_created }}
       env:
-        GH_TOKEN: ${{ secrets.GH_PAT }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_PAT }}
+        # Repository metadata is read with the built-in token, which always has
+        # access to its own repo - a narrowly scoped PAT or App token may not.
+        METADATA_TOKEN: ${{ github.token }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_REF_NAME: ${{ github.ref_name }}
+        # Derived from whichever credential opened the pull request, so the
+        # author check is on by default instead of needing configuration:
+        # `app/<slug>` for a GitHub App (the action reports its own slug),
+        # `app/github-actions` for GITHUB_TOKEN. Under a PAT the author is the
+        # token owner, which cannot be derived here, so it resolves to `*` and
+        # the check is skipped - the fork and exact-branch guards still apply.
+        # An explicit input always wins. Note the `app/` form: that is how the
+        # API reports a bot author, not `<slug>[bot]`.
+        RELEASE_PR_AUTHOR: >-
+          ${{ inputs.RELEASE_PR_AUTHOR
+              || (steps.app-token.outputs.app-slug != '' && format('app/{0}', steps.app-token.outputs.app-slug))
+              || (secrets.GH_PAT != '' && '*')
+              || 'app/github-actions' }}
+        # Already validated by the 'Validate inputs' step at the top of this job.
+        AUTOMERGE_METHOD: ${{ inputs.AUTOMERGE_METHOD }}
       run: |
-        if [ -n "$GH_TOKEN" ]; then
-          echo "Using provided GitHub PAT for automerge"
+        set -euo pipefail
 
-          AUTOMERGE_ALLOWED=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY" | jq '.allow_auto_merge')
-
-          if [ "$AUTOMERGE_ALLOWED" == "true" ]; then
-            echo "Auto-merge is enabled for repo '$GITHUB_REPOSITORY', setting up automerge gh flag"
-            GH_EXTRA_ARGS="--auto"
-          else
-            echo "Auto-merge is not enabled for repo '$GITHUB_REPOSITORY', setting up admin gh flag"
-            GH_EXTRA_ARGS="--admin"
-          fi
-
-          git config user.name github-actions[bot]
-          git config user.email github-actions[bot]@users.noreply.github.com
-          git fetch --all --prune
-
-          pr_branch=$(git branch -r | grep "release-please--branches--$GITHUB_REF_NAME" | sed 's|origin/||' | xargs)
-          if [ -n "$pr_branch" ]; then
-            pr_number=$(gh pr list --head $pr_branch --json number --jq '.[0].number')
-
-            echo "Merging PR #$pr_number ('$pr_branch' > '$GITHUB_REF_NAME')"
-
-            gh pr merge $pr_number --rebase $GH_EXTRA_ARGS
-          else
-            echo "No release-please branch found for branch '$GITHUB_REF_NAME', skipping automerge"
-          fi
-        else
-          echo "No GitHub PAT provided, skipping automerge"
+        # Automerge is gated on the AUTOMERGE_* inputs above, never on whether a
+        # credential happens to be present. Supplying APP_CLIENT_ID must not silently
+        # switch merging on, and a caller that asked to merge and silently did
+        # not has a broken release - so this fails loudly instead of skipping.
+        if [ -z "$GH_TOKEN" ]; then
+          echo "::error::Automerge is enabled but no credential was supplied. Pass APP_CLIENT_ID/APP_PRIVATE_KEY (preferred) or GH_PAT."
+          exit 1
         fi
+
+        # Asking the API for open pull requests rather than matching remote
+        # branch names: with `separate-pull-requests` release-please opens one
+        # pull request per component, so several branches share the
+        # `release-please--branches--<target>` prefix. Collapsing them into a
+        # single --head value matched nothing at all, and monorepos silently
+        # never automerged.
+        #
+        # Exported and read back with `env.`, so the branch name never becomes
+        # part of the jq program text.
+        export PR_BRANCH_PREFIX="release-please--branches--$GITHUB_REF_NAME"
+
+        # Captured first, then split - NOT `mapfile < <(gh ...)`. A process
+        # substitution's exit status is invisible to both `set -e` and
+        # `pipefail`, so a failing `gh` would leave the array empty and this
+        # step would report "nothing to merge" and pass, leaving the release
+        # unmerged with a green run. `--limit` overrides gh's default of 30:
+        # the filtering below is client-side, so a busy repository could push
+        # the release pull requests off the first page.
+        # Identical authorization to the manifest-sync step above, and for a
+        # sharper reason: these pull requests get merged. A head branch name is
+        # chosen by whoever opened the pull request, so on its own it authorizes
+        # nothing - under `admin` a fork PR named `release-please--branches--main`
+        # would be force-merged past branch protection, and under `auto` it lands
+        # as soon as required checks pass. See the comment above for each filter.
+        pr_list=$(
+          gh pr list \
+            --state open \
+            --base "$GITHUB_REF_NAME" \
+            --limit 100 \
+            --json number,headRefName,isCrossRepository,author \
+            --jq '.[]
+                  | select(.isCrossRepository == false)
+                  | select(.headRefName == env.PR_BRANCH_PREFIX
+                           or (.headRefName | startswith(env.PR_BRANCH_PREFIX + "--components--")))
+                  | select((env.RELEASE_PR_AUTHOR // "*") == "*"
+                           or (env.RELEASE_PR_AUTHOR // "") == ""
+                           or .author.login == env.RELEASE_PR_AUTHOR)
+                  | .number'
+        )
+        mapfile -t pr_numbers < <(printf '%s' "$pr_list")
+
+        if [ "${#pr_numbers[@]}" -eq 0 ]; then
+          echo "No open release-please pull request targeting '$GITHUB_REF_NAME', skipping automerge"
+          exit 0
+        fi
+
+        echo "Found ${#pr_numbers[@]} release pull request(s) targeting '$GITHUB_REF_NAME': ${pr_numbers[*]}"
+
+        if [ "$AUTOMERGE_METHOD" = "admin" ]; then
+          for pr_number in "${pr_numbers[@]}"; do
+            echo "::warning::Force-merging PR #$pr_number, bypassing branch protection and required status checks (AUTOMERGE_METHOD=admin)"
+            gh pr merge "$pr_number" --rebase --admin
+          done
+          exit 0
+        fi
+
+        # `--auto` needs "Allow auto-merge" on the repository. Fail with a
+        # pointed message rather than silently falling back to --admin, which
+        # would merge past the very checks the App token now makes run.
+        automerge_allowed=$(GH_TOKEN="$METADATA_TOKEN" gh api "repos/$GITHUB_REPOSITORY" --jq '.allow_auto_merge')
+        if [ "$automerge_allowed" != "true" ]; then
+          echo "::error::AUTOMERGE_METHOD=auto requires 'Allow auto-merge' in Settings > General on '$GITHUB_REPOSITORY'. Enable it, or set AUTOMERGE_METHOD=admin to force-merge past branch protection."
+          exit 1
+        fi
+
+        for pr_number in "${pr_numbers[@]}"; do
+          echo "Queuing PR #$pr_number for auto-merge into '$GITHUB_REF_NAME'"
+          gh pr merge "$pr_number" --rebase --auto
+        done
 
     - name: Ensure ${{ inputs.PRERELEASE_BRANCH }} is up to date with ${{ inputs.RELEASE_BRANCH }}
       if: ${{ inputs.ENABLE_PRERELEASE && inputs.REBASE_PRERELEASE_BRANCH && github.ref_name == inputs.RELEASE_BRANCH && steps.release.outputs.release_created }}
