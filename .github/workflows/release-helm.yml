@@ -93,6 +93,24 @@ on:
       REGISTRY_PASSWORD:
         description: Password for OCI registry authentication
         required: false
+      APP_CLIENT_ID:
+        description: >-
+          GitHub App Client ID (e.g. Iv23li..., NOT the numeric App ID). Supply
+          with APP_PRIVATE_KEY to have chart-releaser authenticate as a GitHub
+          App. Unlike GITHUB_TOKEN, the releases it creates can then fire
+          'release:' triggers. Ignored in 'local' mode.
+          See docs/workflows/authentication.md.
+        required: false
+      APP_PRIVATE_KEY:
+        description: GitHub App private key (PEM). Required alongside APP_CLIENT_ID.
+        required: false
+      GH_PAT:
+        description: >-
+          Personal access token, used for the same purpose as the App
+          credentials above and resolved after them. Like an App token it can
+          trigger workflows, so the same caveat applies to the PAGES_BRANCH
+          push. Ignored in 'local' mode.
+        required: false
 
 jobs:
   release:
@@ -102,7 +120,37 @@ jobs:
     permissions:
       contents: write
       packages: write
+    env:
+      # `secrets` is not available in a step-level `if`, but it is here.
+      HAS_APP_AUTH: ${{ secrets.APP_CLIENT_ID != '' && secrets.APP_PRIVATE_KEY != '' }}
+      # Exactly one of the two set: a typo or a half-finished setup. Never a
+      # valid configuration, and silently falling back would downgrade auth.
+      HAS_PARTIAL_APP_AUTH: ${{ (secrets.APP_CLIENT_ID != '') != (secrets.APP_PRIVATE_KEY != '') }}
     steps:
+    - name: Validate credentials
+      run: |
+        set -euo pipefail
+
+        if [ "$HAS_PARTIAL_APP_AUTH" = "true" ]; then
+          echo "::error::APP_CLIENT_ID and APP_PRIVATE_KEY must be supplied together, but only one was. Continuing would silently fall back to GH_PAT or GITHUB_TOKEN instead of authenticating as the App."
+          exit 1
+        fi
+
+    # Only minted when chart-releaser actually creates GitHub Releases and
+    # pushes the pages branch. With CREATE_GITHUB_RELEASE false, `cr` only
+    # packages charts (skip_upload) and CR_TOKEN is never used for a write, so
+    # there is nothing for a contents:write token to do.
+    # Scoped to this repository only: passing `owner:` without `repositories:`
+    # would widen the token to every repo in the installation.
+    - name: Generate GitHub App token
+      id: app-token
+      if: ${{ env.HAS_APP_AUTH == 'true' && inputs.CREATE_GITHUB_RELEASE }}
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+      with:
+        client-id: ${{ secrets.APP_CLIENT_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
+        permission-contents: write
+
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
@@ -139,7 +187,16 @@ jobs:
         skip_upload: ${{ !inputs.CREATE_GITHUB_RELEASE }}
         pages_branch: ${{ inputs.PAGES_BRANCH }}
       env:
-        CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+        # `cr index --push` authenticates the PAGES_BRANCH push with this same
+        # token, so under an App token that push can trigger workflows too - not
+        # only the release creation this is added for. Safe as long as no caller
+        # triggers on the pages branch; check before pointing one at it.
+        #
+        # GH_PAT is gated on CREATE_GITHUB_RELEASE for the same reason the App
+        # token is not minted without it: with skip_upload, `cr` only packages
+        # charts and never writes through this token, so both elevated
+        # credentials resolve to GITHUB_TOKEN and neither adds trigger surface.
+        CR_TOKEN: "${{ steps.app-token.outputs.token || (inputs.CREATE_GITHUB_RELEASE && secrets.GH_PAT) || secrets.GITHUB_TOKEN }}"
 
     - name: Login to OCI Registry
       if: steps.chart-releaser.outputs.changed_charts != ''
@@ -176,7 +233,7 @@ jobs:
 
           # Push to OCI registry
           echo "Publishing ${chart_file} to OCI registry..."
-          helm push "$chart_package" oci://$REGISTRY/${OCI_REPO}
+          helm push "$chart_package" "oci://$REGISTRY/$OCI_REPO"
         done
 
   release-local:
