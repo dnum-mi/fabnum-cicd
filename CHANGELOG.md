@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.10.0...v0.10.1) (2026-08-06)
+
+
+### Bug Fixes
+
+* **lint-helm:** stop hardcoding 'charts' as the helm-docs scan directory ([82e5ec0](https://github.com/dnum-mi/fabnum-cicd/commit/82e5ec0fa378f02c2ecdbb73717ab9207704ddd1))
+
 ## [0.10.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.9.0...v0.10.0) (2026-08-06)
 
 
