@@ -86,9 +86,11 @@ jobs:
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
           HEAD_SHA="${{ github.event.pull_request.head.sha }}"
 
-          echo "base-sha=${BASE_SHA}" >> $GITHUB_OUTPUT
-          echo "head-sha=${HEAD_SHA}" >> $GITHUB_OUTPUT
-          echo "commit-range=${BASE_SHA}..${HEAD_SHA}" >> $GITHUB_OUTPUT
+          {
+            echo "base-sha=${BASE_SHA}"
+            echo "head-sha=${HEAD_SHA}"
+            echo "commit-range=${BASE_SHA}..${HEAD_SHA}"
+          } >> "$GITHUB_OUTPUT"
         else
           echo "Linting commits from push event"
 
@@ -100,9 +102,11 @@ jobs:
           fi
           HEAD_SHA="${{ github.sha }}"
 
-          echo "base-sha=${BASE_SHA}" >> $GITHUB_OUTPUT
-          echo "head-sha=${HEAD_SHA}" >> $GITHUB_OUTPUT
-          echo "commit-range=${BASE_SHA}..${HEAD_SHA}" >> $GITHUB_OUTPUT
+          {
+            echo "base-sha=${BASE_SHA}"
+            echo "head-sha=${HEAD_SHA}"
+            echo "commit-range=${BASE_SHA}..${HEAD_SHA}"
+          } >> "$GITHUB_OUTPUT"
         fi
 
     - name: Lint commits
@@ -110,20 +114,20 @@ jobs:
       run: |
         set -euo pipefail
 
-        CONFIG_FLAG=""
+        CONFIG_FLAG=()
         if [ -n "${{ inputs.CONFIG_FILE }}" ] && [ -f "${{ inputs.CONFIG_FILE }}" ]; then
-          CONFIG_FLAG="--config ${{ inputs.CONFIG_FILE }}"
+          CONFIG_FLAG=(--config "${{ inputs.CONFIG_FILE }}")
         fi
 
-        echo "## Conventional Commits Check" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## Conventional Commits Check" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
 
         EXIT_CODE=0
         COMMITS=$(git log --pretty=format:"%H" ${{ steps.get-commits.outputs.commit-range }} 2>/dev/null || echo "")
 
         if [ -z "$COMMITS" ]; then
           echo "No commits found in range ${{ steps.get-commits.outputs.commit-range }}"
-          echo "✅ No commits to lint" >> $GITHUB_STEP_SUMMARY
+          echo "✅ No commits to lint" >> "$GITHUB_STEP_SUMMARY"
           exit 0
         fi
 
@@ -131,45 +135,62 @@ jobs:
         FAILED_COMMITS=0
         PASSED_COMMITS=0
 
-        echo "| Status | Commit | Message |" >> $GITHUB_STEP_SUMMARY
-        echo "| ------ | ------ | ------- |" >> $GITHUB_STEP_SUMMARY
+        echo "| Status | Commit | Message |" >> "$GITHUB_STEP_SUMMARY"
+        echo "| ------ | ------ | ------- |" >> "$GITHUB_STEP_SUMMARY"
 
         for COMMIT in $COMMITS; do
-          MESSAGE=$(git log --format=%s -n 1 $COMMIT)
-          SHORT_SHA=$(echo $COMMIT | cut -c1-7)
+          MESSAGE=$(git log --format=%s -n 1 "$COMMIT")
+          SHORT_SHA=$(echo "$COMMIT" | cut -c1-7)
 
-          if echo "$MESSAGE" | bunx commitlint $CONFIG_FLAG; then
-            echo "| ✅ | \`$SHORT_SHA\` | $MESSAGE |" >> $GITHUB_STEP_SUMMARY
+          # The subject is written by whoever authored the commit, and the step
+          # summary renders Markdown. Unescaped, a '|' closes the table cell and
+          # the rest of the subject becomes new cells - enough to forge a passing
+          # row next to a failing one - and '![](https://...)' renders a remote
+          # image that reports every reviewer who opens the run. Escape the
+          # table and Markdown metacharacters, then wrap the result in inline
+          # code so what is left renders literally.
+          SAFE_MESSAGE=${MESSAGE//\\/\\\\}
+          SAFE_MESSAGE=${SAFE_MESSAGE//|/\\|}
+          SAFE_MESSAGE=${SAFE_MESSAGE//\`/\\\`}
+          # Collapse anything that is not printable ASCII or ordinary
+          # punctuation - a CR or an escape sequence in a subject rewrites what
+          # a terminal shows when the summary is read back.
+          SAFE_MESSAGE=$(printf '%s' "$SAFE_MESSAGE" | tr -d '\000-\037')
+
+          if echo "$MESSAGE" | bunx commitlint "${CONFIG_FLAG[@]}"; then
+            echo "| ✅ | \`$SHORT_SHA\` | \`$SAFE_MESSAGE\` |" >> "$GITHUB_STEP_SUMMARY"
             PASSED_COMMITS=$((PASSED_COMMITS + 1))
           else
-            echo "| ❌ | \`$SHORT_SHA\` | $MESSAGE |" >> $GITHUB_STEP_SUMMARY
+            echo "| ❌ | \`$SHORT_SHA\` | \`$SAFE_MESSAGE\` |" >> "$GITHUB_STEP_SUMMARY"
             FAILED_COMMITS=$((FAILED_COMMITS + 1))
             EXIT_CODE=1
           fi
         done
 
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Summary:** $PASSED_COMMITS/$TOTAL_COMMITS commits passed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "**Summary:** $PASSED_COMMITS/$TOTAL_COMMITS commits passed" >> "$GITHUB_STEP_SUMMARY"
 
         if [ $EXIT_CODE -ne 0 ]; then
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Expected format" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "<type>(<scope>): <subject>" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Types: ${{ inputs.ALLOWED_TYPES }}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          {
+            echo ""
+            echo "### Expected format"
+            echo ""
+            echo '```'
+            echo "<type>(<scope>): <subject>"
+            echo ""
+            echo "Types: ${{ inputs.ALLOWED_TYPES }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${{ inputs.FAIL_ON_ERROR }}" = "true" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "❌ **Workflow failed due to non-conventional commits**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "❌ **Workflow failed due to non-conventional commits**" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           else
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "⚠️ **Non-conventional commits detected but FAIL_ON_ERROR is false**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "⚠️ **Non-conventional commits detected but FAIL_ON_ERROR is false**" >> "$GITHUB_STEP_SUMMARY"
           fi
         else
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **All commits follow conventional commits format**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ **All commits follow conventional commits format**" >> "$GITHUB_STEP_SUMMARY"
         fi
