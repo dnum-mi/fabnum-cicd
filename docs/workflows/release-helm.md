@@ -31,10 +31,12 @@ Publication des charts Helm sur un registre OCI, en mode `chart-releaser` (dép�
 
 ## Permissions
 
-| Scope    | Accès | Description                                                                          |
-| -------- | ----- | ------------------------------------------------------------------------------------ |
-| contents | write | Créer des releases GitHub (mode `chart-releaser` avec `CREATE_GITHUB_RELEASE: true`) |
-| packages | write | Pousser les charts vers le registre OCI                                              |
+| Scope    | Accès | Description                               |
+| -------- | ----- | ------------------------------------------ |
+| contents | write | Toujours - voir la note ci-dessous          |
+| packages | write | Toujours - pousser les charts vers le registre OCI |
+
+> Le workflow appelé déclare un job par mode (`release` pour `chart-releaser`, `release-local` pour `local`) ; seul celui correspondant à `MODE` s'exécute réellement. GitHub valide néanmoins les permissions des deux jobs de façon statique, quel que soit `MODE` - accorder uniquement `contents: read` fait échouer le run au démarrage même en mode `local`, où `write` ne sert pourtant à rien à l'exécution. Accordez toujours `contents: write`.
 
 ## Notes
 
@@ -117,6 +119,10 @@ on:
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
 
@@ -124,6 +130,9 @@ jobs:
     needs: release
     if: ${{ needs.release.outputs.release-created }}
     uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
+    permissions:
+      contents: write
+      pull-requests: write
     with:
       RUN_MODE: local
       CHART_NAME: my-app
@@ -134,6 +143,7 @@ jobs:
     needs: update-chart
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
     permissions:
+      contents: write
       packages: write
     with:
       MODE: local
