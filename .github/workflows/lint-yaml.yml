@@ -38,17 +38,21 @@ jobs:
       run: pip install yamllint
 
     - name: Run yamllint
+      env:
+        CONFIG_FILE: ${{ inputs.CONFIG_FILE }}
+        STRICT: ${{ inputs.STRICT }}
+        SCAN_PATH: ${{ inputs.SCAN_PATH }}
       run: |
         set -euo pipefail
 
-        ARGS=""
+        ARGS=()
 
-        if [ -n "${{ inputs.CONFIG_FILE }}" ] && [ -f "${{ inputs.CONFIG_FILE }}" ]; then
-          ARGS="--config-file ${{ inputs.CONFIG_FILE }}"
+        if [ -n "$CONFIG_FILE" ] && [ -f "$CONFIG_FILE" ]; then
+          ARGS+=(--config-file "$CONFIG_FILE")
         fi
 
-        if [ "${{ inputs.STRICT }}" = "true" ]; then
-          ARGS="$ARGS --strict"
+        if [ "$STRICT" = "true" ]; then
+          ARGS+=(--strict)
         fi
 
-        yamllint $ARGS ${{ inputs.SCAN_PATH }}
+        yamllint "${ARGS[@]}" "$SCAN_PATH"

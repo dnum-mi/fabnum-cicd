@@ -71,8 +71,8 @@ jobs:
         INPUT_IMAGE_NAME: ${{ inputs.IMAGE_NAME }}
       run: |
         NORMALIZED_IMAGE=$(echo "$INPUT_IMAGE_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')
-        echo "NORMALIZED_IMAGE=$NORMALIZED_IMAGE" >> $GITHUB_OUTPUT
-        echo "REGISTRY=$(echo "$INPUT_IMAGE_NAME" | cut -d "/" -f 1 | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+        echo "NORMALIZED_IMAGE=$NORMALIZED_IMAGE" >> "$GITHUB_OUTPUT"
+        echo "REGISTRY=$(echo "$INPUT_IMAGE_NAME" | cut -d "/" -f 1 | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
     - name: Login to registry
       uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0

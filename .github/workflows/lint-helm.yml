@@ -74,6 +74,6 @@ jobs:
         docker run \
           --rm \
           --volume "$(pwd)/charts:/helm-docs:ro" \
-          -u $(id -u) \
+          -u "$(id -u)" \
           docker.io/jnorwood/helm-docs:${{ inputs.HELM_DOCS_VERSION }}
         echo "Helm chart docs are valid"
