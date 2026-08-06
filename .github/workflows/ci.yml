@@ -13,6 +13,7 @@ jobs:
       pull-requests: read
     outputs:
       workflows: ${{ steps.filter.outputs.workflows }}
+      tests: ${{ steps.filter.outputs.tests }}
     steps:
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -24,6 +25,8 @@ jobs:
         filters: |
           workflows:
             - '.github/workflows/**'
+          tests:
+            - 'ci/tests/**'
 
   lint-commits:
     uses: ./.github/workflows/lint-commits.yml
@@ -41,3 +44,30 @@ jobs:
     with:
       CONFIG_FILE: ci/configs/yamllint.yaml
       SCAN_PATH: ./.github/workflows
+
+  test-workflows:
+    name: Test workflows
+    runs-on: ubuntu-24.04
+    if: ${{ needs.path-filter.outputs.workflows == 'true' || needs.path-filter.outputs.tests == 'true' }}
+    needs:
+    - path-filter
+    permissions:
+      contents: read
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+    # Schema, context availability and expression validation, plus shellcheck
+    # over every `run:` block.
+    - name: Lint workflows
+      uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667  # 1.7.12
+      with:
+        args: -color
+
+    - name: Lint test scripts
+      run: shellcheck ci/tests/*.sh
+
+    # Executes the shell logic straight out of the workflow YAML against stubbed
+    # credentials and a stubbed `gh`. See ci/tests/lib.sh.
+    - name: Run workflow tests
+      run: ./ci/tests/run.sh
