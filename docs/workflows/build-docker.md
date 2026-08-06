@@ -18,6 +18,7 @@ Build d'images Docker multi-architecture (amd64/arm64) avec Docker Buildx, et pu
 | BUILD_ARM64         | boolean | Build pour l'architecture arm64                                                                                                                                                                                                                     | Non    | `true`             |
 | USE_QEMU            | boolean | Utiliser l'émulateur QEMU pour arm64                                                                                                                                                                                                                | Non    | `false`            |
 | BUILD_ARGS          | string  | Liste de build args Docker séparés par des sauts de ligne (ex: `MY_ARG=value`)                                                                                                                                                                      | Non    | -                  |
+| BUILD_SECRET_GITHUB_TOKEN | string | Credential à exposer comme secret de build `github_token=<token>` (lisible dans le Dockerfile à `/run/secrets/github_token`), pour relever la limite d'API GitHub des outils qui résolvent des releases pendant le build (mise, aqua, ubi). `none` (défaut) n'injecte rien. `app` mint un token App réduit à `contents:read` + `metadata:read` sur ce dépôt, échoue si absent. `pat` utilise le token App si disponible sinon `GH_PAT`, échoue si aucun des deux. `job-token` retombe en plus sur le `GITHUB_TOKEN` du job, qui ne peut pas être réduit et porte tout le bloc `permissions:` de l'appelant. Voir [`authentication.md`](./authentication.md#ce-que-build-docker-injecte-réellement). | Non    | `none`             |
 | CACHE               | boolean | Activer le cache de build Docker (utilise le backend de cache GitHub Actions)                                                                                                                                                                       | Non    | `false`            |
 | CACHE_MODE          | string  | Mode d'export du cache Buildx : `max` (toutes les couches intermédiaires) ou `min` (uniquement l'image finale)                                                                                                                                      | Non    | `max`              |
 | PROVENANCE          | boolean | Générer une attestation de provenance SLSA pour l'image (déclenche `attest-docker.yml`)                                                                                                                                                             | Non    | `false`            |
@@ -32,6 +33,9 @@ Build d'images Docker multi-architecture (amd64/arm64) avec Docker Buildx, et pu
 | REGISTRY_USERNAME | Nom d'utilisateur pour le registre                                                                                         | Non    |
 | REGISTRY_PASSWORD | Mot de passe pour le registre                                                                                              | Non    |
 | BUILD_SECRETS     | Liste de secrets de build au format `KEY=VALUE` (un par ligne), exposés au Dockerfile via `RUN --mount=type=secret,id=KEY` | Non    |
+| APP_CLIENT_ID     | Client ID d'une GitHub App, utilisé uniquement pour minter le token injecté par `BUILD_SECRET_GITHUB_TOKEN`. Toujours réduit à `contents:read` + `metadata:read` sur ce dépôt. Voir [`authentication.md`](./authentication.md). | Non    |
+| APP_PRIVATE_KEY   | Clé privée (PEM) de la GitHub App. Requis avec `APP_CLIENT_ID`.                                                            | Non    |
+| GH_PAT            | Personal Access Token, utilisé uniquement pour `BUILD_SECRET_GITHUB_TOKEN` et résolu après les credentials App. Scoper à `Contents: read` uniquement, jamais un token classic.                                          | Non    |
 
 ## Outputs
 
@@ -80,6 +84,13 @@ Par défaut, l'image est poussée vers le registre (par digest, puis assemblée 
 - **Combinaison non supportée** : `PUSH: false` + `USE_QEMU: true` + `BUILD_AMD64` et `BUILD_ARM64` tous les deux à `true`. L'exporteur `docker` ne peut pas écrire une manifest list multi-plateforme dans un tarball, le workflow échoue donc rapidement dans le job `infos` avec une erreur explicite. Utiliser des runners natifs (`USE_QEMU: false`) ou construire une seule architecture à la fois.
 - **Connexion au registre** : ignorée quand `PUSH` est `false`, sauf si l'image cible `ghcr.io` (les credentials résolvent toujours depuis le token du job) ou si `REGISTRY_USERNAME` est fourni. Une image non-GHCR peut donc être construite sans aucun credential, tandis qu'une image de base privée peut toujours être pull en fournissant les secrets malgré tout.
 - L'appelant doit toujours accorder `packages: write`, `id-token: write` et `attestations: write` même avec `PUSH: false`, car GitHub valide statiquement les permissions de chaque job déclaré dans le workflow réutilisable - y compris ceux ignorés à l'exécution.
+
+### Credential GitHub dans le build (`BUILD_SECRET_GITHUB_TOKEN`)
+
+- Le credential est résolu depuis une source explicitement nommée : `none` (défaut) n'injecte rien, `app` mint un token App en lecture seule dédié, `pat` accepte aussi `GH_PAT`, `job-token` accepte en plus le `GITHUB_TOKEN` du job (non réduit, porte tout le bloc `permissions:` de l'appelant - un job appelant ce workflow accorde généralement `packages: write`).
+- Injecté via un montage BuildKit (`/run/secrets/github_token`), jamais écrit dans un fichier sur le runner ni dans les layers de l'image.
+- `app`/`pat` échouent explicitement si le credential demandé est absent, plutôt que de retomber silencieusement sur un mode plus large. `job-token` émet un `::warning::` s'il retombe effectivement sur le `GITHUB_TOKEN` du job.
+- Voir [`authentication.md`](./authentication.md#ce-que-build-docker-injecte-réellement) pour le détail des quatre modes et un exemple câblé.
 
 ### Attestations et signature intégrées (`PROVENANCE` / `SBOM` / `SIGN`)
 

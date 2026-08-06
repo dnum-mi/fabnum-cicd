@@ -26,6 +26,9 @@ Analyse de vulnérabilités avec [Trivy](https://github.com/aquasecurity/trivy) 
 | ----------------- | ----------------------------------------------- | ------ |
 | REGISTRY_USERNAME | Nom d'utilisateur pour se connecter au registre | Non    |
 | REGISTRY_PASSWORD | Mot de passe pour se connecter au registre      | Non    |
+| APP_CLIENT_ID     | Client ID d'une GitHub App, utilisé uniquement pour relever le budget d'API que Trivy utilise pour télécharger sa base de vulnérabilités (de 1000 à 5000 requêtes/heure). Le token minté est en lecture seule. Voir [`authentication.md`](./authentication.md). | Non    |
+| APP_PRIVATE_KEY   | Clé privée (PEM) de la GitHub App. Requis avec `APP_CLIENT_ID`.                                                                                                                                                                                                    | Non    |
+| GH_PAT            | Personal Access Token, utilisé pour le même usage que les credentials App ci-dessus et résolu après eux.                                                                                                                                                          | Non    |
 
 ## Permissions
 
@@ -54,6 +57,7 @@ Analyse de vulnérabilités avec [Trivy](https://github.com/aquasecurity/trivy) 
 - **SEVERITY** s'associe naturellement à `FAIL_ON_ERROR` : gater sur un périmètre restreint (`CRITICAL`) et rapporter sur un périmètre plus large depuis un run planifié.
 - Avec `FAIL_ON_ERROR: true`, le rapport est toujours écrit dans le résumé du workflow avant que le job échoue - un exit code non nul signifie précisément qu'il y a quelque chose à lire.
 - Avec `FORMAT: table`, le rapport va dans le résumé du workflow, plafonné par GitHub à **1 Mio** et supprimé *entièrement* plutôt que tronqué en cas de dépassement - un scan large d'une grosse image perdrait sinon tout son résumé. Le rapport est tronqué pour tenir dans la limite, avec une note, et le fichier complet est joint au run en tant qu'artefact `trivy-report-<cible>` (rétention 7 jours). Rien n'est uploadé quand le rapport tient dans la limite.
+- **APP_CLIENT_ID/APP_PRIVATE_KEY ou GH_PAT** relèvent le budget d'API GitHub utilisé pour télécharger la base de vulnérabilités Trivy, utile sur des matrices de scan importantes qui épuisent la limite de 1000 requêtes/heure de `GITHUB_TOKEN`. Le token minté depuis l'App est toujours en lecture seule. Voir [`authentication.md`](./authentication.md).
 - **TIMEOUT** vaut la peine d'être défini pour les grosses images : le défaut Trivy de 5 min est par scan (pas par fichier), et un seul gros binaire statiquement lié peut l'épuiser - le scan échoue alors avec un timeout de contexte et n'écrit **aucun rapport**, la cible semble alors non scannée silencieusement.
 - Le scan couvre `os,library`, et `library` inclut des binaires que l'image n'a pas construits elle-même. Sur une image pleine de binaires tiers précompilés, `ignore-unfixed` filtre moins qu'il n'y paraît : une CVE de la stdlib Go compte comme corrigée dès que Go publie le correctif, même si le binaire vulnérable est un artefact tiers que seule une nouvelle release amont peut changer. Gater en conséquence, sous peine d'échouer sur des constats qu'aucun changement de votre dépôt ne peut résoudre.
 - Continue même en cas d'erreur pour permettre la revue des résultats.

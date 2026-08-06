@@ -25,6 +25,9 @@ Publication des charts Helm sur un registre OCI, en mode `chart-releaser` (dép�
 | ----------------- | --------------------------------------------------------- | ------ |
 | REGISTRY_USERNAME | Nom d'utilisateur pour l'authentification au registre OCI | Non    |
 | REGISTRY_PASSWORD | Mot de passe pour l'authentification au registre OCI      | Non    |
+| APP_CLIENT_ID     | Client ID d'une GitHub App. À fournir avec `APP_PRIVATE_KEY` pour que chart-releaser authentifie comme une App - contrairement à `GITHUB_TOKEN`, les releases créées peuvent alors déclencher des triggers `release:`. Ignoré en mode `local`. Voir [`authentication.md`](./authentication.md). | Non    |
+| APP_PRIVATE_KEY   | Clé privée (PEM) de la GitHub App. Requis avec `APP_CLIENT_ID`.                                                        | Non    |
+| GH_PAT            | Personal Access Token, utilisé pour le même usage que les credentials App ci-dessus et résolu après eux. Comme un token App, il peut déclencher des workflows - la même précaution s'applique au push sur `PAGES_BRANCH`. Ignoré en mode `local`. | Non    |
 
 ## Permissions
 
@@ -57,6 +60,7 @@ Publication des charts Helm sur un registre OCI, en mode `chart-releaser` (dép�
 - Pour les autres registres, fournissez `REGISTRY_USERNAME` et `REGISTRY_PASSWORD` en tant que secrets.
 - Les dépôts Helm peuvent être ajoutés pour résoudre les dépendances des charts (uniquement lorsque le chart déclare des `dependencies` dans `Chart.yaml`, en mode `local`).
 - Configure Git avec le bot GitHub Actions pour les commits automatiques (mode `chart-releaser`).
+- **`CREATE_GITHUB_RELEASE: true`** : fournir `APP_CLIENT_ID`/`APP_PRIVATE_KEY` (ou `GH_PAT`) permet aux releases GitHub créées de déclencher des triggers `release:`, ce que `GITHUB_TOKEN` ne peut jamais faire. Le push sur `PAGES_BRANCH` utilise le même token, donc le même credential peut aussi déclencher des workflows sur cette branche - à vérifier avant d'activer. Voir [`authentication.md`](./authentication.md).
 
 ## Exemples
 
