@@ -52,7 +52,7 @@ jobs:
           -fsSL
           -F "token=${{ secrets.GIT_MIRROR_TOKEN }}"
           -F "ref=main"
-          -F "variables[PROJECT_NAME]=${{ secrets.REPOSITORY_NAME || inputs.REPOSITORY_NAME }}"
+          -F "variables[PROJECT_NAME]=${{ inputs.REPOSITORY_NAME }}"
           -F "variables[GITHUB_COMMIT_SHA]=${{ github.sha }}"
         )
 
