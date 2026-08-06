@@ -48,24 +48,24 @@ jobs:
           exit 1
         fi
 
-        FILES=""
+        FILES=()
 
         IFS=',' read -ra ITEMS <<< "${{ inputs.VALUES_FILES }}"
         for file in "${ITEMS[@]}"; do
           file=$(echo "$file" | xargs)
           if [ -n "$file" ] && [ -f "$file" ]; then
-            FILES="$FILES $file"
+            FILES+=("$file")
           elif [ -n "$file" ]; then
             echo "::warning::Values file '$file' not found, skipping"
           fi
         done
 
-        if [ -z "$FILES" ]; then
+        if [ "${#FILES[@]}" -eq 0 ]; then
           echo "::error::No values files found to validate"
           exit 1
         fi
 
         echo "Validating files against schema '$SCHEMA_FILE':"
-        echo "$FILES" | tr ' ' '\n' | grep -v '^$' | sed 's/^/  - /'
+        printf '  - %s\n' "${FILES[@]}"
 
-        check-jsonschema --schemafile "$SCHEMA_FILE" $FILES
+        check-jsonschema --schemafile "$SCHEMA_FILE" "${FILES[@]}"

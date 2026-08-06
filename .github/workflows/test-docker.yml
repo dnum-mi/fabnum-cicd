@@ -125,9 +125,9 @@ jobs:
             echo "::error::Could not determine the image reference loaded from ${IMAGE_ARTIFACT_FILE}."
             exit 1
           fi
-          echo "REF=$LOADED" >> $GITHUB_OUTPUT
+          echo "REF=$LOADED" >> "$GITHUB_OUTPUT"
         else
-          echo "REF=$IMAGE" >> $GITHUB_OUTPUT
+          echo "REF=$IMAGE" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Run test
@@ -155,8 +155,13 @@ jobs:
           ARGS+=(-v "${PWD}/${WORKSPACE_PATH}:${WORKSPACE_MOUNT}:ro")
         fi
 
-        # RUN_ARGS and COMMAND are intentionally unquoted: both are argv
-        # fragments supplied by the calling workflow and have to word-split.
-        # shellcheck disable=SC2086
+        # RUN_ARGS and COMMAND are argv fragments supplied by the calling
+        # workflow, so they have to be split into separate arguments. Splitting
+        # once here beats relying on word-splitting at the call site, where a
+        # shellcheck disable would also have to sit on the command itself -
+        # the previous directive landed on set -x and silenced nothing.
+        read -ra RUN_ARG_LIST <<< "$RUN_ARGS"
+        read -ra COMMAND_LIST <<< "$COMMAND"
+
         set -x
-        docker run "${ARGS[@]}" $RUN_ARGS "$IMAGE_REF" $COMMAND
+        docker run "${ARGS[@]}" "${RUN_ARG_LIST[@]}" "$IMAGE_REF" "${COMMAND_LIST[@]}"
