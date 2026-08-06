@@ -19,7 +19,6 @@ on:
         required: false
         type: string
         default: image.tar
-
       PATH:
         description: Path used to perform scan
         required: false
@@ -86,6 +85,22 @@ on:
       REGISTRY_PASSWORD:
         description: Password used to login into registry
         required: false
+      APP_CLIENT_ID:
+        description: >-
+          GitHub App Client ID (e.g. Iv23li..., NOT the numeric App ID). Supply
+          with APP_PRIVATE_KEY to raise the API budget Trivy uses to fetch its
+          vulnerability database from 1,000 to 5,000 requests/hour. The token is
+          minted read-only. See docs/workflows/authentication.md.
+        required: false
+      APP_PRIVATE_KEY:
+        description: GitHub App private key (PEM). Required alongside APP_CLIENT_ID.
+        required: false
+      GH_PAT:
+        description: >-
+          Personal access token, used for the same purpose as the App
+          credentials above and resolved after them. Read-only access is
+          sufficient - a fine-grained token with Contents: read is enough.
+        required: false
 
 jobs:
   images-scan:
@@ -100,7 +115,34 @@ jobs:
       # Label used in the summary/warning messages, since the scan target can be
       # either a registry reference or a locally downloaded tarball
       SCAN_TARGET: ${{ inputs.IMAGE_ARTIFACT != '' && format('artifact {0}', inputs.IMAGE_ARTIFACT) || inputs.IMAGE }}
+      # `secrets` is not available in a step-level `if`, but it is here.
+      HAS_APP_AUTH: ${{ secrets.APP_CLIENT_ID != '' && secrets.APP_PRIVATE_KEY != '' }}
+      # Exactly one of the two set: a typo or a half-finished setup. Never a
+      # valid configuration, and silently falling back would downgrade auth.
+      HAS_PARTIAL_APP_AUTH: ${{ (secrets.APP_CLIENT_ID != '') != (secrets.APP_PRIVATE_KEY != '') }}
     steps:
+    - name: Validate credentials
+      run: |
+        set -euo pipefail
+
+        if [ "$HAS_PARTIAL_APP_AUTH" = "true" ]; then
+          echo "::error::APP_CLIENT_ID and APP_PRIVATE_KEY must be supplied together, but only one was. Continuing would silently fall back to GH_PAT or GITHUB_TOKEN instead of authenticating as the App."
+          exit 1
+        fi
+
+    # Read-only: this token only raises the API budget for Trivy's database
+    # download. The permission-* narrowing is load-bearing - a mint without it
+    # inherits every permission the installation holds.
+    - name: Generate read-only GitHub App token
+      id: app-token
+      if: ${{ env.HAS_APP_AUTH == 'true' }}
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+      with:
+        client-id: ${{ secrets.APP_CLIENT_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
+        permission-contents: read
+        permission-metadata: read
+
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -127,7 +169,7 @@ jobs:
         output: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
         trivyignores: ${{ inputs.TRIVYIGNORES }}
         timeout: ${{ inputs.TIMEOUT }}
-        github-pat: ${{ github.token }}
+        github-pat: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}
       env:
         TRIVY_USERNAME: ${{ startsWith(inputs.IMAGE, 'ghcr.io') && github.actor || secrets.REGISTRY_USERNAME }}
         TRIVY_PASSWORD: ${{ startsWith(inputs.IMAGE, 'ghcr.io') && github.token || secrets.REGISTRY_PASSWORD }}
@@ -222,7 +264,35 @@ jobs:
     permissions:
       contents: read
       security-events: write
+    env:
+      # `secrets` is not available in a step-level `if`, but it is here.
+      HAS_APP_AUTH: ${{ secrets.APP_CLIENT_ID != '' && secrets.APP_PRIVATE_KEY != '' }}
+      # Exactly one of the two set: a typo or a half-finished setup. Never a
+      # valid configuration, and silently falling back would downgrade auth.
+      HAS_PARTIAL_APP_AUTH: ${{ (secrets.APP_CLIENT_ID != '') != (secrets.APP_PRIVATE_KEY != '') }}
     steps:
+    - name: Validate credentials
+      run: |
+        set -euo pipefail
+
+        if [ "$HAS_PARTIAL_APP_AUTH" = "true" ]; then
+          echo "::error::APP_CLIENT_ID and APP_PRIVATE_KEY must be supplied together, but only one was. Continuing would silently fall back to GH_PAT or GITHUB_TOKEN instead of authenticating as the App."
+          exit 1
+        fi
+
+    # Read-only: this token only raises the API budget for Trivy's database
+    # download. The permission-* narrowing is load-bearing - a mint without it
+    # inherits every permission the installation holds.
+    - name: Generate read-only GitHub App token
+      id: app-token
+      if: ${{ env.HAS_APP_AUTH == 'true' }}
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+      with:
+        client-id: ${{ secrets.APP_CLIENT_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
+        permission-contents: read
+        permission-metadata: read
+
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -242,7 +312,7 @@ jobs:
         output: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
         trivyignores: ${{ inputs.TRIVYIGNORES }}
         timeout: ${{ inputs.TIMEOUT }}
-        github-pat: ${{ github.token }}
+        github-pat: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}
       # See the image scan above for why this is constant rather than an expression
       continue-on-error: true
 
