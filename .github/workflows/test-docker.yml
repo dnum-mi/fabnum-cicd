@@ -158,7 +158,7 @@ jobs:
         # RUN_ARGS and COMMAND are argv fragments supplied by the calling
         # workflow, so they have to be split into separate arguments. Splitting
         # once here beats relying on word-splitting at the call site, where a
-        # shellcheck disable would also have to sit on the command itself -
+        # 'shellcheck disable' would also have to sit on the command itself -
         # the previous directive landed on set -x and silenced nothing.
         read -ra RUN_ARG_LIST <<< "$RUN_ARGS"
         read -ra COMMAND_LIST <<< "$COMMAND"
