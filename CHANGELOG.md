@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.11.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.10.1...v0.11.0) (2026-08-07)
+
+
+### Features
+
+* **scan-gitleaks:** add gitleaks secret scanning workflow ([6529a5a](https://github.com/dnum-mi/fabnum-cicd/commit/6529a5a4d4880b20361002547afad2072cae72d9))
+
+
+### Code Refactoring
+
+* **build-docker:** drop built-in attestation, compose explicitly ([6435b61](https://github.com/dnum-mi/fabnum-cicd/commit/6435b6159f1ce8a0e103acf05444169282ce23a7))
+* **release-helm:** split local-mode release into a dedicated workflow ([d1ebf88](https://github.com/dnum-mi/fabnum-cicd/commit/d1ebf8879305581e8f986bb1a0f6050a4bc73c87))
+
+
+### Dependencies
+
+* **deps:** update actions/attest-build-provenance to v4.2.2 ([a23fc31](https://github.com/dnum-mi/fabnum-cicd/commit/a23fc31c6bb9aca38aa56f930b0d79e1fc6bb847))
+
 ## [0.10.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.10.0...v0.10.1) (2026-08-06)
 
 
