@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.11.0...v0.11.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **update-helm-chart:** pass --ref explicitly in caller-mode dispatch ([76804ec](https://github.com/dnum-mi/fabnum-cicd/commit/76804ec42e2abd99f8aafc24de568028f3b0ced9))
+
 ## [0.11.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.10.1...v0.11.0) (2026-08-07)
 
 
