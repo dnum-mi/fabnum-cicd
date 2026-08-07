@@ -1,0 +1,139 @@
+name: Gitleaks scan
+
+on:
+  workflow_call:
+    inputs:
+      GITLEAKS_VERSION:
+        description: Gitleaks version used to perform the scan
+        required: false
+        type: string
+        # renovate: datasource=github-releases depName=gitleaks/gitleaks
+        default: 8.30.1
+      FORMAT:
+        description: Format of the report (sarif, json, csv, junit)
+        required: false
+        type: string
+        default: sarif
+      FAIL_ON_LEAKS:
+        description: Whether to fail the workflow when leaks are detected
+        required: false
+        type: boolean
+        default: true
+      PR_NUMBER:
+        description: Number of the pull request to post the scan summary comment on
+        required: false
+        type: string
+      GITHUB_SECURITY_TAB:
+        description: Whether to link to GitHub Security Tab in the PR comment
+        required: false
+        default: false
+        type: boolean
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
+
+jobs:
+  secrets-scan:
+    name: Scan git history for leaked secrets
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      contents: read
+      security-events: write
+    outputs:
+      leaks: ${{ steps.scan.outputs.leaks }}
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        # Full history so gitleaks can scan every commit, not just the current tree
+        fetch-depth: 0
+
+    - name: Install gitleaks
+      env:
+        GITLEAKS_VERSION: ${{ inputs.GITLEAKS_VERSION }}
+      # The gitleaks CLI is MIT licensed - unlike the official gitleaks-action
+      # which requires a GITLEAKS_LICENSE key for organization repositories
+      run: |
+        case "$(uname -m)" in
+          x86_64) ARCH="x64" ;;
+          aarch64 | arm64) ARCH="arm64" ;;
+          *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+        esac
+        TMP_DIR="$(mktemp -d)"
+        cd "${TMP_DIR}"
+        curl -fsSLO "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_${ARCH}.tar.gz"
+        curl -fsSLO "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+        sha256sum --check --ignore-missing "gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+        tar -xzf "gitleaks_${GITLEAKS_VERSION}_linux_${ARCH}.tar.gz" gitleaks
+        mkdir -p "${HOME}/.local/bin"
+        install -m 0755 gitleaks "${HOME}/.local/bin/gitleaks"
+        echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
+        "${HOME}/.local/bin/gitleaks" version
+
+    - name: Run gitleaks scan on git history
+      id: scan
+      env:
+        FORMAT: ${{ inputs.FORMAT }}
+      # Exit code 1 means leaks were found, anything else above 0 is a scan error.
+      # Leaks are reported but only fail the workflow in the last step, so the
+      # report upload and the PR comment always run first.
+      run: |
+        EXIT_CODE=0
+        gitleaks git . \
+          --report-format "${FORMAT}" \
+          --report-path "gitleaks-results.${FORMAT}" \
+          --redact \
+          --no-banner \
+          --verbose || EXIT_CODE=$?
+        if [ "${EXIT_CODE}" -eq 0 ]; then
+          echo "leaks=false" >> "$GITHUB_OUTPUT"
+          echo ":white_check_mark: Gitleaks found no leaked secrets in the git history." >> "$GITHUB_STEP_SUMMARY"
+        elif [ "${EXIT_CODE}" -eq 1 ]; then
+          echo "leaks=true" >> "$GITHUB_OUTPUT"
+          echo ":rotating_light: Gitleaks detected potential leaked secrets in the git history, see the scan report for details." >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo ":warning: The gitleaks scan did not complete successfully (exit code ${EXIT_CODE})." >> "$GITHUB_STEP_SUMMARY"
+          exit "${EXIT_CODE}"
+        fi
+
+    - name: Upload gitleaks scan results to GitHub Security tab
+      id: upload
+      uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3  # v4.37.6
+      if: ${{ inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif' }}
+      with:
+        sarif_file: ${{ format('gitleaks-results.{0}', inputs.FORMAT) }}
+      continue-on-error: true
+
+    - name: Warn about error
+      if: ${{ steps.upload.outcome == 'failure' }}
+      run: |
+        echo ":warning: The gitleaks scan report was not successfully uploaded to the Github Security Panel." >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Fail on detected leaks
+      if: ${{ inputs.FAIL_ON_LEAKS && steps.scan.outputs.leaks == 'true' }}
+      run: |
+        echo "::error::Gitleaks detected potential leaked secrets in the git history."
+        exit 1
+
+  scan-notif:
+    name: Notify users
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      pull-requests: write
+    # The leaks output is only set when the scan completed (with or without
+    # findings) - skip the comment when the scan itself errored
+    if: ${{ always() && inputs.PR_NUMBER != '' && needs.secrets-scan.outputs.leaks != '' }}
+    needs:
+    - secrets-scan
+    steps:
+    - name: Comment PR
+      uses: thollander/actions-comment-pull-request@24bffb9b452ba05a4f3f77933840a6a841d1b32b  # v3.0.1
+      with:
+        message: |
+          🤖 Hey !
+
+          ${{ needs.secrets-scan.outputs.leaks == 'true' && '🚨 Gitleaks detected potential leaked secrets in the git history.' || '✅ Gitleaks found no leaked secrets in the git history.' }} The secret scan report for the current pull request is available in ${{ (inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif') && format('[the GitHub Security Tab](https://github.com/{0}/security/code-scanning?query=is%3Aopen+branch%3A{1}+pr%3A{2})', github.repository, github.ref_name, (github.event.pull_request.number || github.event.number)) || format('[the GitHub Workflow Summary](https://github.com/{0}/actions/runs/{1})', github.repository, github.run_id) }}.
+        comment-tag: secret-scan
+        pr-number: ${{ inputs.PR_NUMBER }}
