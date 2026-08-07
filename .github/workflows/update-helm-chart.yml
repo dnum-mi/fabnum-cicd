@@ -352,9 +352,10 @@ jobs:
 
     # Deliberately NOT given the App token. The 'local'/'called' push below
     # targets the branch the caller's CD pipeline triggers on; a credential that
-    # can trigger workflows would re-enter that pipeline. The commit also
-    # carries [skip ci] as the primary, token-independent guard - see the push
-    # step. Do NOT add `token:` to this step.
+    # can trigger workflows would re-enter that pipeline. Staying on
+    # GITHUB_TOKEN is what actually prevents that - see the push step for why
+    # [skip ci] is not used for the same purpose. Do NOT add `token:` to this
+    # step.
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -502,17 +503,23 @@ jobs:
         git config user.email 'github-actions[bot]@users.noreply.github.com'
 
         git add "$CHART_DIR/$CHART_NAME"
-        # [skip ci] is the primary loop guard, and the only one that does not
-        # depend on which credential ends up pushing: GitHub skips push- and
-        # pull_request-triggered runs when the head commit message contains it.
-        # This push targets the branch the caller's CD pipeline triggers on, so
-        # without it an App-authenticated push would re-enter CD, which would
-        # release again, which would bump the chart again - and because each
-        # cycle produces a fresh commit, nothing converges. Releasing the chart
-        # in the same run using this workflow's outputs is the intended flow.
-        # The `chore(chart):` prefix is a third guard: release-please does not
-        # cut a release from it. Keep all three.
-        git commit -m "chore(chart): release $CHART_NAME $NEXT_VERSION [skip ci]"
+        # No [skip ci] here on purpose. This push already cannot trigger a new
+        # workflow run - on push OR pull_request - because it goes out on the
+        # checkout's own GITHUB_TOKEN (see "Deliberately NOT given the App
+        # token" above): GitHub never lets GITHUB_TOKEN-authenticated activity
+        # create a new run, which is what actually prevents the CD loop.
+        # [skip ci] would add nothing to that here, while silently breaking
+        # something else: it is matched on the commit MESSAGE alone,
+        # regardless of which credential wrote it, so it would also suppress
+        # pull_request checks for any pull request a human later opens FROM
+        # this branch (e.g. a manual develop -> main promotion) - the tip is
+        # exactly this commit until the next one lands. That pull request
+        # opening is a human action authenticated with the human's own
+        # credentials, not GITHUB_TOKEN, so nothing else would stop it from
+        # getting real checks - don't reintroduce [skip ci] here.
+        # The `chore(chart):` prefix is the other guard: release-please does
+        # not cut a release from it.
+        git commit -m "chore(chart): release $CHART_NAME $NEXT_VERSION"
 
         # Tolerate concurrent pushes from other jobs of the same pipeline
         git pull --rebase origin "$GITHUB_REF_NAME"
