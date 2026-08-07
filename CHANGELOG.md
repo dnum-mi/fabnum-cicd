@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/dnum-mi/fabnum-cicd/compare/v0.11.1...v0.11.2) (2026-08-07)
+
+
+### Bug Fixes
+
+* **update-helm-chart:** drop the skip-ci marker from the local-mode chart-bump commit ([78da9c5](https://github.com/dnum-mi/fabnum-cicd/commit/78da9c5dce028ff14956e57df70da0bb77503e82))
+
 ## [0.11.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.11.0...v0.11.1) (2026-08-07)
 
 
