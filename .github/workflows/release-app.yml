@@ -545,6 +545,19 @@ jobs:
         PRERELEASE_BRANCH: ${{ inputs.PRERELEASE_BRANCH }}
       run: |
         set -euo pipefail
+
+        # actions/checkout's default fetch-depth (1) leaves this clone
+        # shallow, with no history shared between $RELEASE_BRANCH and
+        # $PRERELEASE_BRANCH for git to compute a real merge-base from. The
+        # rebase below would then treat every commit on $PRERELEASE_BRANCH as
+        # unrelated to $RELEASE_BRANCH, replaying the whole branch from
+        # scratch and conflicting on every file it touches - even when the
+        # actual divergence is trivial. Guarded because --unshallow errors
+        # outright on a repository that is already complete.
+        if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+          git fetch --unshallow origin "$RELEASE_BRANCH" "$PRERELEASE_BRANCH"
+        fi
+
         git fetch origin "$RELEASE_BRANCH" "$PRERELEASE_BRANCH" || true
 
         if git ls-remote --exit-code --heads origin "$PRERELEASE_BRANCH" >/dev/null 2>&1; then
