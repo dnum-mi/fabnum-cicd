@@ -129,8 +129,6 @@ jobs:
     permissions:
       packages: write
       contents: read
-      id-token: write
-      attestations: write
     with:
       IMAGE_NAME: ghcr.io/my-org/my-image
       IMAGE_TAG: ${{ github.sha }}

@@ -87,8 +87,6 @@ jobs:
     permissions:
       packages: write
       contents: read
-      id-token: write
-      attestations: write
     with:
       IMAGE_NAME: ghcr.io/my-org/my-image
       IMAGE_TAG: pr-${{ github.event.pull_request.number }}
