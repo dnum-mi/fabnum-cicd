@@ -3,18 +3,6 @@ name: Release
 on:
   workflow_call:
     inputs:
-      MODE:
-        description: >-
-          Release strategy. 'chart-releaser' (default) auto-detects charts whose
-          version changed since the last git tag - best for a dedicated charts
-          repository. 'local' packages a specific chart from this repo at an
-          explicit version and pushes it to the OCI registry - best for a
-          monorepo where the chart lives alongside application code and the
-          shared tag namespace makes chart-releaser's change detection
-          unreliable.
-        type: string
-        required: false
-        default: chart-releaser
       CHARTS_DIR:
         description: Directory containing the Helm charts
         type: string
@@ -34,40 +22,9 @@ on:
         description: >-
           Branch that receives the Helm repo index.yaml and release artifacts
           when CREATE_GITHUB_RELEASE is true. Must already exist in the repo.
-          (chart-releaser mode only.)
         type: string
         required: false
         default: gh-pages
-      CHART_NAME:
-        description: >-
-          Local mode only. Chart directory under CHARTS_DIR to package and push
-          (e.g. 'my-app' for CHARTS_DIR/my-app). Leave empty to package every
-          chart found directly under CHARTS_DIR.
-        type: string
-        required: false
-      CHART_VERSION:
-        description: >-
-          Local mode only. Chart version to stamp when packaging
-          (helm package --version). Defaults to the version already set in
-          Chart.yaml. Applies to every chart packaged in this run.
-        type: string
-        required: false
-      APP_VERSION:
-        description: >-
-          Local mode only. Application version to stamp when packaging
-          (helm package --app-version). Defaults to the appVersion already set
-          in Chart.yaml. Applies to every chart packaged in this run.
-        type: string
-        required: false
-      CHECKOUT_REF:
-        description: >-
-          Local mode only. Git ref (branch or SHA) to check out before
-          packaging. Use it to pick up a chart bump commit pushed earlier in
-          the same pipeline (e.g. the 'commit-sha' output of
-          update-helm-chart.yml in local mode). Defaults to the commit that
-          triggered the workflow.
-        type: string
-        required: false
       HELM_REPOS:
         description: Helm repositories to add (name=url, comma-separated)
         type: string
@@ -98,7 +55,7 @@ on:
           GitHub App Client ID (e.g. Iv23li..., NOT the numeric App ID). Supply
           with APP_PRIVATE_KEY to have chart-releaser authenticate as a GitHub
           App. Unlike GITHUB_TOKEN, the releases it creates can then fire
-          'release:' triggers. Ignored in 'local' mode.
+          'release:' triggers.
           See docs/workflows/authentication.md.
         required: false
       APP_PRIVATE_KEY:
@@ -109,14 +66,13 @@ on:
           Personal access token, used for the same purpose as the App
           credentials above and resolved after them. Like an App token it can
           trigger workflows, so the same caveat applies to the PAGES_BRANCH
-          push. Ignored in 'local' mode.
+          push.
         required: false
 
 jobs:
   release:
     name: Release charts (chart-releaser)
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
-    if: ${{ inputs.MODE != 'local' }}
     permissions:
       contents: write
       packages: write
@@ -234,102 +190,4 @@ jobs:
           # Push to OCI registry
           echo "Publishing ${chart_file} to OCI registry..."
           helm push "$chart_package" "oci://$REGISTRY/$OCI_REPO"
-        done
-
-  release-local:
-    name: Release chart (local)
-    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
-    if: ${{ inputs.MODE == 'local' }}
-    permissions:
-      contents: read
-      packages: write
-    steps:
-    - name: Checks-out repository
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      with:
-        # Empty ref = default checkout (the commit that triggered the run)
-        ref: ${{ inputs.CHECKOUT_REF }}
-
-    - name: Install Helm
-      uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5.0.1
-
-    - name: Add Helm repos
-      if: ${{ inputs.HELM_REPOS != '' }}
-      env:
-        HELM_REPOS: ${{ inputs.HELM_REPOS }}
-      run: |
-        for repo in $(echo "$HELM_REPOS" | tr ',' '\n'); do
-          NAME="${repo%%=*}"
-          URL="${repo#*=}"
-          helm repo add "$NAME" "$URL"
-        done
-        helm repo update
-
-    - name: Login to OCI Registry
-      env:
-        REGISTRY: ${{ inputs.REGISTRY }}
-        USERNAME: ${{ inputs.REGISTRY == 'ghcr.io' && github.actor || secrets.REGISTRY_USERNAME }}
-        PASSWORD: ${{ inputs.REGISTRY == 'ghcr.io' && secrets.GITHUB_TOKEN || secrets.REGISTRY_PASSWORD }}
-      run: |
-        echo "$PASSWORD" | helm registry login "$REGISTRY" -u "$USERNAME" --password-stdin
-
-    - name: Package and push chart(s)
-      env:
-        CHARTS_DIR: ${{ inputs.CHARTS_DIR }}
-        CHART_NAME: ${{ inputs.CHART_NAME }}
-        CHART_VERSION: ${{ inputs.CHART_VERSION }}
-        APP_VERSION: ${{ inputs.APP_VERSION }}
-        REGISTRY: ${{ inputs.REGISTRY }}
-        OCI_REPOSITORY: ${{ inputs.REPOSITORY }}
-      run: |
-        set -euo pipefail
-
-        # Normalize inputs
-        CHARTS_DIR="${CHARTS_DIR%/}"
-        OCI_REPO="${OCI_REPOSITORY:-$GITHUB_REPOSITORY}"
-        OCI_REPO=$(echo "$OCI_REPO" | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')
-
-        # Resolve which chart(s) to package: a single CHART_NAME, or every
-        # immediate subdirectory of CHARTS_DIR that holds a Chart.yaml
-        CHART_PATHS=()
-        if [ -n "$CHART_NAME" ]; then
-          CHART_PATHS+=("$CHARTS_DIR/$CHART_NAME")
-        else
-          while IFS= read -r dir; do
-            CHART_PATHS+=("$dir")
-          done < <(find "$CHARTS_DIR" -mindepth 1 -maxdepth 1 -type d | sort)
-        fi
-
-        mkdir -p .cr-release-packages
-        PACKAGED=0
-        for chart in "${CHART_PATHS[@]}"; do
-          if [ ! -f "$chart/Chart.yaml" ]; then
-            echo "Skipping '$chart' (no Chart.yaml)"
-            continue
-          fi
-
-          # Pull dependencies only when the chart declares any
-          if grep -q '^dependencies:' "$chart/Chart.yaml"; then
-            echo "Updating dependencies for '$chart'"
-            helm dependency update "$chart"
-          fi
-
-          PKG_ARGS=(--destination .cr-release-packages)
-          [ -n "$CHART_VERSION" ] && PKG_ARGS+=(--version "$CHART_VERSION")
-          [ -n "$APP_VERSION" ] && PKG_ARGS+=(--app-version "$APP_VERSION")
-
-          echo "Packaging '$chart'"
-          helm package "$chart" "${PKG_ARGS[@]}"
-          PACKAGED=$((PACKAGED + 1))
-        done
-
-        if [ "$PACKAGED" -eq 0 ]; then
-          echo "No chart with a Chart.yaml was found to package under '$CHARTS_DIR'"
-          exit 1
-        fi
-
-        for chart_package in .cr-release-packages/*.tgz; do
-          chart_file=$(basename "$chart_package")
-          echo "Publishing ${chart_file} to oci://$REGISTRY/${OCI_REPO}"
-          helm push "$chart_package" "oci://$REGISTRY/${OCI_REPO}"
         done
