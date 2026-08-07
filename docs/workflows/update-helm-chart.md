@@ -203,9 +203,9 @@ jobs:
       GH_PAT: ${{ secrets.GH_PAT }}
 ```
 
-### Mode local — chart dans un monorepo, enchaîné avec release-helm.yml
+### Mode local — chart dans un monorepo, enchaîné avec release-helm-local.yml
 
-Utiliser `local` quand le chart Helm est dans le même dépôt que l'application. Le workflow commit et pousse directement la mise à jour du chart sur la branche courante, puis expose `chart-version` et `commit-sha` pour les jobs suivants (par exemple pour packager et publier le chart via [`release-helm.yml`](./release-helm.md) en mode `local`).
+Utiliser `local` quand le chart Helm est dans le même dépôt que l'application. Le workflow commit et pousse directement la mise à jour du chart sur la branche courante, puis expose `chart-version` et `commit-sha` pour les jobs suivants (par exemple pour packager et publier le chart via [`release-helm-local.yml`](./release-helm-local.md)).
 
 ```yaml
 name: Update Helm Chart on Release
@@ -237,11 +237,11 @@ jobs:
     needs:
     - release
     - update-chart
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm-local.yml@v0
     permissions:
+      contents: read
       packages: write
     with:
-      MODE: local
       CHART_NAME: my-app
       CHART_VERSION: ${{ needs.update-chart.outputs.chart-version }}
       APP_VERSION: ${{ needs.release.outputs.version }}

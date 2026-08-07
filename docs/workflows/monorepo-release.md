@@ -7,7 +7,7 @@ Ce document explique comment publier **plusieurs applications** (ex: une API et 
 - Construire et pousser chaque image Docker en parallèle.
 - Générer la provenance et le SBOM pour chaque image via [`attest-docker.yml`](./attest-docker.md).
 - Créer **une seule** version / PR release-please pour tout le dépôt, afin que le chart et les images partagent la même version.
-- Publier le chart Helm en mode `local` (le partage de l'espace de tags entre les applications et le chart rend la détection automatique de chart-releaser peu fiable dans un monorepo) - voir [`release-helm.yml`](./release-helm.md) et [`update-helm-chart.yml`](./update-helm-chart.md).
+- Publier le chart Helm via [`release-helm-local.yml`](./release-helm-local.md) (le partage de l'espace de tags entre les applications et le chart rend la détection automatique de chart-releaser peu fiable dans un monorepo) - voir aussi [`update-helm-chart.yml`](./update-helm-chart.md).
 
 ## Workflow orchestrateur (`.github/workflows/cd.yml`)
 
@@ -35,26 +35,66 @@ jobs:
       GH_PAT: ${{ secrets.GH_PAT }}
 
   # -------------------------------------------------
-  # 2. Build des deux images Docker (matrice)
+  # 2. Build + attestation de chaque image
   # -------------------------------------------------
-  build:
+  # Une matrice ne convient pas ici : `needs.<job>.outputs.<name>` s'effondre
+  # en une seule valeur à travers toutes les combinaisons d'une matrice
+  # (comportement documenté de GitHub), donc un job `attest` matricé de la
+  # même façon attesterait silencieusement la mauvaise image pour tous les
+  # composants sauf le dernier. Une paire build/attest explicite par
+  # composant est plus verbeuse mais indépendamment correcte - voir
+  # build-docker.yml > Builds en matrice.
+  build-api:
     needs: release
     if: ${{ needs.release.outputs.release-created }}
-    strategy:
-      matrix:
-        component: [api, front]
     uses: ./.github/workflows/build-docker.yml
     permissions:
       packages: write
       contents: read
+    with:
+      IMAGE_NAME: ghcr.io/${{ github.repository }}/api
+      IMAGE_TAG: ${{ needs.release.outputs.version }}
+      LATEST_TAG: true
+      IMAGE_DOCKERFILE: apps/api/Dockerfile
+      IMAGE_CONTEXT: apps/api
+
+  attest-api:
+    needs: build-api
+    uses: ./.github/workflows/attest-docker.yml
+    permissions:
+      packages: write
       id-token: write
       attestations: write
     with:
-      IMAGE_NAME: ghcr.io/${{ github.repository }}/${{ matrix.component }}
+      IMAGE_NAME: ${{ needs.build-api.outputs.image }}
+      DIGEST: ${{ needs.build-api.outputs.digest }}
+      PROVENANCE: true
+      SBOM: true
+
+  build-front:
+    needs: release
+    if: ${{ needs.release.outputs.release-created }}
+    uses: ./.github/workflows/build-docker.yml
+    permissions:
+      packages: write
+      contents: read
+    with:
+      IMAGE_NAME: ghcr.io/${{ github.repository }}/front
       IMAGE_TAG: ${{ needs.release.outputs.version }}
       LATEST_TAG: true
-      IMAGE_DOCKERFILE: apps/${{ matrix.component }}/Dockerfile
-      IMAGE_CONTEXT: apps/${{ matrix.component }}
+      IMAGE_DOCKERFILE: apps/front/Dockerfile
+      IMAGE_CONTEXT: apps/front
+
+  attest-front:
+    needs: build-front
+    uses: ./.github/workflows/attest-docker.yml
+    permissions:
+      packages: write
+      id-token: write
+      attestations: write
+    with:
+      IMAGE_NAME: ${{ needs.build-front.outputs.image }}
+      DIGEST: ${{ needs.build-front.outputs.digest }}
       PROVENANCE: true
       SBOM: true
 
@@ -64,7 +104,8 @@ jobs:
   update-chart:
     needs:
     - release
-    - build
+    - build-api
+    - build-front
     uses: ./.github/workflows/update-helm-chart.yml
     permissions:
       contents: write
@@ -75,33 +116,31 @@ jobs:
       UPGRADE_TYPE: minor
 
   # -------------------------------------------------
-  # 4. Publication du chart (mode local)
+  # 4. Publication du chart
   # -------------------------------------------------
   release-chart:
     needs:
-    - release
     - update-chart
-    uses: ./.github/workflows/release-helm.yml
+    uses: ./.github/workflows/release-helm-local.yml
     permissions:
+      contents: read
       packages: write
     with:
-      MODE: local
       CHART_NAME: my-app
-      CHART_VERSION: ${{ needs.update-chart.outputs.chart-version }}
-      APP_VERSION: ${{ needs.release.outputs.version }}
+      # Package exactement le commit de bump poussé par update-helm-chart
       CHECKOUT_REF: ${{ needs.update-chart.outputs.commit-sha }}
 ```
 
 ### Fonctionnement
 
 1. **Release-please** – [`release-app.yml`](./release-app.md) crée une unique version/tag/PR pour tout le dépôt, garantissant que le chart Helm et les images applicatives partagent la même version.
-2. **Build** – [`build-docker.yml`](./build-docker.md) construit et pousse les images `api` et `front` en parallèle (matrice), avec attestation SLSA + SBOM intégrée (`PROVENANCE`/`SBOM`).
+2. **Build + attest** – [`build-docker.yml`](./build-docker.md) construit et pousse chaque image, puis [`attest-docker.yml`](./attest-docker.md) génère la provenance SLSA et le SBOM pour cette image précise - une paire de jobs par composant, pas une matrice (voir l'encart dans le YAML ci-dessus).
 3. **Update chart** – [`update-helm-chart.yml`](./update-helm-chart.md) en mode `local` incrémente la version du chart, met à jour `appVersion`, régénère la doc, puis commit et pousse directement sur la branche courante (aucune PR). Expose `chart-version` et `commit-sha`.
-4. **Release chart** – [`release-helm.yml`](./release-helm.md) en mode `local` package le chart au commit produit à l'étape précédente (`CHECKOUT_REF`) et le pousse sur le registre OCI.
+4. **Release chart** – [`release-helm-local.yml`](./release-helm-local.md) package le chart au commit produit à l'étape précédente (`CHECKOUT_REF`) et le pousse sur le registre OCI.
 
 ### Avantages
 
 - **Releases atomiques** – Les applications et le chart sont publiés ensemble, sans dérive de version.
 - **Réutilisation des workflows existants** – Aucune logique dupliquée, uniquement de l'orchestration.
-- **Adapté au monorepo** – Les modes `local` de `update-helm-chart.yml` et `release-helm.yml` s'affranchissent des tags git partagés entre applications et chart, contrairement à `chart-releaser`.
-- **Extensible** – Ajouter un nouveau composant revient à étendre la liste `matrix.component`.
+- **Adapté au monorepo** – Le mode `local` de `update-helm-chart.yml` et [`release-helm-local.yml`](./release-helm-local.md) s'affranchissent des tags git partagés entre applications et chart, contrairement à `chart-releaser`.
+- **Extensible** – Ajouter un nouveau composant revient à ajouter sa paire de jobs `build-<composant>`/`attest-<composant>` (copier-coller, pas une ligne de matrice, mais chaque paire reste indépendamment correcte).
