@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.4](https://github.com/dnum-mi/fabnum-cicd/compare/v0.11.3...v0.11.4) (2026-08-07)
+
+
+### Bug Fixes
+
+* **release-app:** unshallow before rebasing the prerelease branch onto the release branch ([12ee8c7](https://github.com/dnum-mi/fabnum-cicd/commit/12ee8c740d6aefa2b2668234ece1761ebfe0406d))
+
 ## [0.11.3](https://github.com/dnum-mi/fabnum-cicd/compare/v0.11.2...v0.11.3) (2026-08-07)
 
 
