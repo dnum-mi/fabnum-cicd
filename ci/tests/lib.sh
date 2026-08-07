@@ -64,8 +64,10 @@ sandbox_setup() {
 # Records every git invocation. `config --local --get-regexp` answers from
 # STUB_GIT_INCLUDEIF_LIST - one "key value" pair per line, simulating the
 # includeIf.gitdir: entries actions/checkout wires a credential in through -
-# and `diff --no-index` reports files as differing unless STUB_GIT_FILES_MATCH
-# is set.
+# `rev-parse --is-shallow-repository` answers from STUB_GIT_IS_SHALLOW
+# (defaulting to a shallow clone, matching actions/checkout's own default),
+# and `diff --no-index` reports files as differing unless
+# STUB_GIT_FILES_MATCH is set.
 install_git_stub() {
   cat >"$SANDBOX/bin/git" <<'STUB'
 #!/usr/bin/env bash
@@ -80,6 +82,9 @@ fi
 case "$args" in
   "config --local --get-regexp "*)
     printf '%s' "${STUB_GIT_INCLUDEIF_LIST:-}"
+    ;;
+  "rev-parse --is-shallow-repository")
+    printf '%s\n' "${STUB_GIT_IS_SHALLOW:-true}"
     ;;
   "diff --no-index --quiet"*)
     [ "${STUB_GIT_FILES_MATCH:-false}" = "true" ] || exit 1
@@ -194,6 +199,25 @@ assert_not_called() {
   if grep -qF -- "$1" "$CALL_LOG"; then
     printf 'FAIL: expected no call matching %q\n---- calls ----\n%s\n---------------\n' \
       "$1" "$(cat "$CALL_LOG")" >&2
+    exit 1
+  fi
+}
+
+# Order matters for setup/cleanup pairs (a credential swap before the push it
+# protects, an unshallow before the fetch it unblocks) where assert_called on
+# each side alone would still pass if a regression swapped their order.
+assert_called_before() {
+  local first="$1" second="$2" first_line second_line
+  first_line=$(grep -nF -- "$first" "$CALL_LOG" | head -1 | cut -d: -f1)
+  second_line=$(grep -nF -- "$second" "$CALL_LOG" | head -1 | cut -d: -f1)
+  if [ -z "$first_line" ] || [ -z "$second_line" ]; then
+    printf 'FAIL: expected both %q and %q to appear in the call log\n---- calls ----\n%s\n---------------\n' \
+      "$first" "$second" "$(cat "$CALL_LOG")" >&2
+    exit 1
+  fi
+  if [ "$first_line" -ge "$second_line" ]; then
+    printf 'FAIL: expected %q to be called before %q\n---- calls ----\n%s\n---------------\n' \
+      "$first" "$second" "$(cat "$CALL_LOG")" >&2
     exit 1
   fi
 }
