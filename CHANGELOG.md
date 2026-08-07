@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.3](https://github.com/dnum-mi/fabnum-cicd/compare/v0.11.2...v0.11.3) (2026-08-07)
+
+
+### Bug Fixes
+
+* **release-app:** neutralize checkout's credential before the manifest-sync push ([79d7010](https://github.com/dnum-mi/fabnum-cicd/commit/79d7010dc8bcbac92c4a43aa6c89932987a30bd8))
+
 ## [0.11.2](https://github.com/dnum-mi/fabnum-cicd/compare/v0.11.1...v0.11.2) (2026-08-07)
 
 
