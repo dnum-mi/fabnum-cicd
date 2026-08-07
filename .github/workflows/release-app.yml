@@ -361,29 +361,48 @@ jobs:
         # that never report. Pushing with the elevated credential fixes that and
         # adds no new trigger surface: release-please already pushed this very
         # branch with the same credential to open the pull request.
-        #
-        # actions/checkout stores its own credential as an http.extraheader, so
-        # overriding that header is what actually changes the push identity -
-        # a URL rewrite would be ignored in favour of the stored header.
-        auth_header_key="http.${GITHUB_SERVER_URL}/.extraheader"
-        previous_auth_header=$(git config --local --get "$auth_header_key" || true)
-
-        # Actions masks GITHUB_TOKEN itself, but not the base64 checkout stored
-        # it as, and this value is handled twice below.
-        if [ -n "$previous_auth_header" ]; then
-          echo "::add-mask::${previous_auth_header#AUTHORIZATION: basic }"
-        fi
-
-        restore_auth_header() {
-          if [ -n "$previous_auth_header" ]; then
-            git config --local "$auth_header_key" "$previous_auth_header"
-          else
-            git config --local --unset "$auth_header_key" || true
-          fi
-        }
-
         if [ -n "$PUSH_TOKEN" ]; then
-          trap restore_auth_header EXIT
+          # actions/checkout wires its own credential in through
+          # `includeIf.gitdir:` entries pointing at a side config file, not as
+          # a plain local value - so setting the header key below only adds a
+          # second http.extraheader alongside checkout's rather than replacing
+          # it, and git sends every configured instance as its own
+          # `Authorization` header. GitHub's remote rejects that outright
+          # ("Duplicate header: Authorization"). Temporarily unsetting the
+          # `includeIf.gitdir:` entries removes checkout's credential from the
+          # merged config, so the override below is the only one left.
+          #
+          # The trap is registered before anything is mutated and undoes both
+          # halves - the override this sets below, and the includeIf entries
+          # this restores - so a failure partway through (e.g. an unrelated
+          # `git config` error) can't leave the job's credential state stuck
+          # either way, and later steps (e.g. the develop rebase) keep using
+          # checkout's own credential as normal regardless of how this step
+          # exits.
+          #
+          # A single `--get-regexp` call, not `--name-only` followed by a
+          # `--get` per key: `--get` fails outright on a key with more than
+          # one value, which `--name-only --get-regexp` would list once per
+          # value - `--get-regexp` alone already pairs each value with its
+          # key, one per line, so there is nothing left to look up.
+          auth_header_key="http.${GITHUB_SERVER_URL}/.extraheader"
+          includeif_list=$(git config --local --get-regexp '^includeIf\.gitdir:' || true)
+
+          restore_git_auth() {
+            git config --local --unset-all "$auth_header_key" || true
+            [ -n "$includeif_list" ] || return 0
+            while IFS=' ' read -r key value; do
+              [ -n "$key" ] && git config --local --add "$key" "$value"
+            done <<<"$includeif_list"
+          }
+          trap restore_git_auth EXIT
+
+          if [ -n "$includeif_list" ]; then
+            while IFS=' ' read -r key _; do
+              [ -n "$key" ] && git config --local --unset-all "$key"
+            done <<<"$includeif_list"
+          fi
+
           basic_auth=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 | tr -d '\n')
           echo "::add-mask::$basic_auth"
           git config --local "$auth_header_key" "AUTHORIZATION: basic $basic_auth"

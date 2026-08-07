@@ -108,35 +108,84 @@ test_treats_a_missing_prerelease_manifest_as_out_of_sync() {
 
 test_pushes_as_the_app_so_the_amended_commit_re_runs_ci() {
   sync_env
+  export STUB_GIT_INCLUDEIF_LIST="includeIf.gitdir:/workspace/.git.path /tmp/git-credentials-abc.config"
 
   run_block "$BLOCK"
 
   assert_status 0
-  # actions/checkout stores its credential as an http.extraheader, so the push
-  # identity only changes if that header is overridden. Without this the
-  # amended commit gets no pull_request run and AUTOMERGE_METHOD=auto stalls.
+  # actions/checkout wires its credential in through an includeIf.gitdir:
+  # entry, not a plain local http.extraheader - so it must be neutralized
+  # first, or setting the header below adds a second Authorization header
+  # alongside checkout's instead of replacing it, and the remote 400s
+  # ("Duplicate header: Authorization") rather than re-running CI.
+  assert_called "git|config --local --unset-all includeIf.gitdir:/workspace/.git.path"
   assert_called "git|config --local http.https://github.com/.extraheader AUTHORIZATION: basic"
   assert_output_contains "::add-mask::"
 }
 
-test_restores_the_checkout_credential_afterwards() {
+test_restores_checkouts_credential_afterwards() {
   sync_env
-  export STUB_GIT_EXISTING_HEADER="AUTHORIZATION: basic Y2hlY2tvdXQ="
+  export STUB_GIT_INCLUDEIF_LIST="includeIf.gitdir:/workspace/.git.path /tmp/git-credentials-abc.config"
 
   run_block "$BLOCK"
 
   assert_status 0
-  # Later steps in the job must not inherit the elevated credential.
-  assert_called "git|config --local http.https://github.com/.extraheader AUTHORIZATION: basic Y2hlY2tvdXQ="
+  # Later steps in the job (e.g. the develop rebase) must keep using
+  # checkout's own credential, unaffected by the temporary override above.
+  assert_called "git|config --local --add includeIf.gitdir:/workspace/.git.path /tmp/git-credentials-abc.config"
+  # And the override itself must not outlive this step, or the next git push
+  # anywhere in the job reproduces the exact duplicate-header bug this fixes.
+  assert_called "git|config --local --unset-all http.https://github.com/.extraheader"
 }
 
-test_unsets_the_header_when_there_was_none_to_restore() {
+test_restores_every_includeif_entry_when_checkout_wired_up_several() {
   sync_env
+  # actions/checkout registers one includeIf.gitdir: entry for the worktree
+  # and one for its .git/worktrees glob, each with its own value - both must
+  # be neutralized and both restored with the *right* value, not just the
+  # first, and not the same value twice by coincidence.
+  export STUB_GIT_INCLUDEIF_LIST="includeIf.gitdir:/workspace/.git.path /tmp/git-credentials-abc.config
+includeIf.gitdir:/workspace/.git/worktrees/*.path /tmp/git-credentials-xyz.config"
 
   run_block "$BLOCK"
 
   assert_status 0
-  assert_called "git|config --local --unset http.https://github.com/.extraheader"
+  assert_called "git|config --local --unset-all includeIf.gitdir:/workspace/.git.path"
+  assert_called "git|config --local --unset-all includeIf.gitdir:/workspace/.git/worktrees/*.path"
+  assert_called "git|config --local --add includeIf.gitdir:/workspace/.git.path /tmp/git-credentials-abc.config"
+  assert_called "git|config --local --add includeIf.gitdir:/workspace/.git/worktrees/*.path /tmp/git-credentials-xyz.config"
+}
+
+test_proceeds_cleanly_when_checkout_left_no_includeif_entry() {
+  sync_env
+  # No includeIf.gitdir: entries to neutralize or restore - the override
+  # below is already the only extraheader in play.
+
+  run_block "$BLOCK"
+
+  assert_status 0
+  assert_not_called "unset-all includeIf"
+  assert_not_called "config --local --add includeIf"
+  assert_called "git|config --local http.https://github.com/.extraheader AUTHORIZATION: basic"
+  # Still cleaned up on the way out, same as when there was something to
+  # restore - the unset in the trap isn't conditional on that.
+  assert_called "git|config --local --unset-all http.https://github.com/.extraheader"
+}
+
+test_restores_credentials_even_when_the_push_fails() {
+  sync_env
+  export STUB_GIT_INCLUDEIF_LIST="includeIf.gitdir:/workspace/.git.path /tmp/git-credentials-abc.config"
+  export STUB_GIT_FAIL_ON="push"
+  export STUB_GIT_FAIL_MESSAGE="stale info; force-with-lease rejected"
+
+  run_block "$BLOCK"
+
+  assert_status 1 "a rejected force-push must still fail the job"
+  # The trap is registered before any credential is touched, specifically so
+  # a failure anywhere after that - not just a clean run - still restores
+  # checkout's credential and drops the override for whatever step is next.
+  assert_called "git|config --local --add includeIf.gitdir:/workspace/.git.path /tmp/git-credentials-abc.config"
+  assert_called "git|config --local --unset-all http.https://github.com/.extraheader"
 }
 
 test_warns_when_only_github_token_is_available() {
@@ -149,8 +198,9 @@ test_warns_when_only_github_token_is_available() {
   assert_output_contains "::warning::"
   assert_output_contains "will not re-run against the amended commit"
   assert_called "git|push --force-with-lease --force-if-includes origin release-please--branches--main"
-  # No credential to install, so nothing to override or restore.
+  # No credential to install, so nothing to override, neutralize or restore.
   assert_not_called "extraheader AUTHORIZATION"
+  assert_not_called "unset-all includeIf"
 }
 
 test_propagates_a_failed_push() {
