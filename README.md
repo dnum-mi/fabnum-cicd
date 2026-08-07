@@ -30,10 +30,11 @@ jobs:
 
 | Workflow                                                           | Description                                                                                               | Docs                                          |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| [build-docker.yml](./.github/workflows/build-docker.yml)           | Build et push (optionnel) d'images Docker multi-architecture (`amd64`/`arm64`) avec support d'attestation | [docs](./docs/workflows/build-docker.md)      |
+| [build-docker.yml](./.github/workflows/build-docker.yml)           | Build et push (optionnel) d'images Docker multi-architecture (`amd64`/`arm64`)                            | [docs](./docs/workflows/build-docker.md)      |
 | [attest-docker.yml](./.github/workflows/attest-docker.yml)         | Génération d'attestations de sécurité (provenance SLSA, SBOM, signature cosign)                           | [docs](./docs/workflows/attest-docker.md)     |
 | [release-app.yml](./.github/workflows/release-app.yml)             | Gestion automatisée des releases avec `release-please` (tags, changelogs, pré-releases)                   | [docs](./docs/workflows/release-app.md)       |
-| [release-helm.yml](./.github/workflows/release-helm.yml)           | Publication de charts Helm sur registres OCI (`chart-releaser` ou `local` pour monorepo)                  | [docs](./docs/workflows/release-helm.md)      |
+| [release-helm.yml](./.github/workflows/release-helm.yml)           | Publication de charts Helm sur registres OCI via `chart-releaser` (dépôt de charts dédié)                 | [docs](./docs/workflows/release-helm.md)      |
+| [release-helm-local.yml](./.github/workflows/release-helm-local.yml) | Publication d'un chart Helm hébergé dans un monorepo applicatif, sans `chart-releaser`                  | [docs](./docs/workflows/release-helm-local.md) |
 | [update-helm-chart.yml](./.github/workflows/update-helm-chart.yml) | Mise à jour automatique des versions de charts Helm                                                       | [docs](./docs/workflows/update-helm-chart.md) |
 
 ### Sécurité & Qualité
@@ -42,6 +43,7 @@ jobs:
 | ------------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------ |
 | [scan-sonarqube.yml](./.github/workflows/scan-sonarqube.yml) | Analyse qualité du code avec SonarQube                            | [docs](./docs/workflows/scan-sonarqube.md) |
 | [scan-trivy.yml](./.github/workflows/scan-trivy.yml)         | Analyse de vulnérabilités (images, config, filesystem) avec Trivy | [docs](./docs/workflows/scan-trivy.md)     |
+| [scan-gitleaks.yml](./.github/workflows/scan-gitleaks.yml)   | Analyse de l'historique git complet à la recherche de secrets divulgués | [docs](./docs/workflows/scan-gitleaks.md) |
 
 ### Tests
 

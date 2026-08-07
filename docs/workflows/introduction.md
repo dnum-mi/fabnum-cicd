@@ -20,13 +20,15 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 - [**Build Docker**](./build-docker.md) - Build et push (optionnel) d'images Docker multi-architecture
 - [**Attest Docker**](./attest-docker.md) - Génération d'attestations de sécurité (provenance SLSA, SBOM, signature cosign) pour une image construite
 - [**Release App**](./release-app.md) - Gestion automatisée des releases d'application avec release-please
-- [**Release Helm**](./release-helm.md) - Publication de charts Helm sur registres OCI
+- [**Release Helm**](./release-helm.md) - Publication de charts Helm sur registres OCI via chart-releaser (dépôt de charts dédié)
+- [**Release Helm (local)**](./release-helm-local.md) - Publication d'un chart Helm hébergé dans un monorepo applicatif
 - [**Update Helm Chart**](./update-helm-chart.md) - Mise à jour automatique des versions de charts Helm
 
 ### Sécurité & Qualité
 
 - [**Scan SonarQube**](./scan-sonarqube.md) - Analyse de qualité du code avec SonarQube
 - [**Scan Trivy**](./scan-trivy.md) - Analyse de vulnérabilités avec Trivy
+- [**Scan Gitleaks**](./scan-gitleaks.md) - Analyse de l'historique git complet à la recherche de secrets divulgués
 
 ### Tests
 
