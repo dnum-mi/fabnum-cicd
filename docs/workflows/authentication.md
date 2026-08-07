@@ -296,6 +296,9 @@ trigger-chart-update:
 | Secrets stockés dans | le dépôt qui exécute ce job, pas le dépôt chart                 |
 | Portée du token      | `CHART_REPO` uniquement — jamais le dépôt courant                |
 | Forme de `CHART_REPO`| `owner/repository` — un nom seul échoue à la validation         |
+| Branche ciblée       | `BASE_BRANCH` (défaut `main`), passée à `gh workflow run --ref`  |
+
+Le dispatch passe toujours `--ref "$BASE_BRANCH"` explicitement plutôt que de laisser `gh workflow run` résoudre la branche par défaut de `CHART_REPO` lui-même : avec ce token scopé à `actions: write`, cette résolution automatique passe par une requête GraphQL `defaultBranchRef` qui échoue (`unable to determine default branch for <repo>: GraphQL: Resource not accessible by integration (repository.defaultBranchRef)`). Si `CHART_REPO` n'a pas `main` pour branche par défaut, `BASE_BRANCH` doit être renseigné explicitement, quel que soit le credential utilisé (App ou `GH_PAT`).
 
 `AUTOMERGE_METHOD` est transmis avec le dispatch pour que le choix reste celui de l'appelant. Cela suppose que le workflow d'entrée du dépôt chart **déclare un input `AUTOMERGE_METHOD`** ; sinon GitHub rejette tout le dispatch (`422 Unexpected inputs provided`). Le dispatch réessaie alors automatiquement sans cet input et avertit :
 

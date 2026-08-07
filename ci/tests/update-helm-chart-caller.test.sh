@@ -13,6 +13,7 @@ validate_env() {
   export HAS_PARTIAL_APP_AUTH="false"
   export CHART_REPO="my-org/helm-charts"
   export AUTOMERGE_METHOD="auto"
+  export BASE_BRANCH="main"
 }
 
 dispatch_env() {
@@ -27,6 +28,7 @@ dispatch_env() {
   export AUTOMERGE_PRERELEASE="false"
   export AUTOMERGE_RELEASE="true"
   export AUTOMERGE_METHOD="auto"
+  export BASE_BRANCH="main"
 }
 
 test_validate_accepts_a_well_formed_configuration() {
@@ -102,6 +104,18 @@ test_validate_rejects_unknown_automerge_method() {
   assert_output_contains "must be 'auto' or 'admin'"
 }
 
+test_validate_rejects_base_branch_with_whitespace() {
+  validate_env
+  # BASE_BRANCH becomes `gh workflow run --ref`'s value verbatim; a value with
+  # embedded whitespace is always a caller mistake.
+  export BASE_BRANCH="main evil"
+
+  run_block "$VALIDATE"
+
+  assert_status 1 "a BASE_BRANCH with embedded whitespace must fail closed"
+  assert_output_contains "BASE_BRANCH must be"
+}
+
 test_resolve_splits_owner_and_repository() {
   export CHART_REPO="my-org/helm-charts"
 
@@ -147,6 +161,19 @@ test_dispatch_forwards_automerge_method() {
   assert_output_contains "Dispatched with AUTOMERGE_METHOD=admin"
 }
 
+test_dispatch_targets_base_branch() {
+  dispatch_env
+  export BASE_BRANCH="develop"
+
+  run_block "$DISPATCH"
+
+  assert_status 0
+  # Without --ref, `gh workflow run` would try to resolve CHART_REPO's default
+  # branch itself via a GraphQL query this token's `actions: write` scope
+  # cannot satisfy - see the comment above this dispatch in the workflow.
+  assert_called "--ref develop"
+}
+
 test_dispatch_strips_trailing_slashes_from_chart_dir() {
   dispatch_env
   export CHART_DIR="./charts///"
@@ -171,9 +198,11 @@ test_dispatch_retries_without_automerge_method_on_older_chart_repos() {
   assert_output_contains "::warning::"
   assert_output_contains "does not declare an AUTOMERGE_METHOD input"
   assert_call_count "workflow " 2
-  # The retry must carry everything except the rejected input.
+  # The retry must carry everything except the rejected input - including
+  # --ref, on its own separate `gh workflow run` invocation.
   assert_called "CHART_NAME=my-app"
   assert_called "RUN_MODE=called"
+  assert_call_count "--ref main" 2
 }
 
 test_dispatch_does_not_retry_on_unrelated_failures() {
