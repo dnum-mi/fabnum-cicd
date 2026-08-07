@@ -101,23 +101,6 @@ on:
         required: false
         default: max
         type: string
-      PROVENANCE:
-        description: Generate SLSA provenance attestation for the image
-        required: false
-        default: false
-        type: boolean
-      SBOM:
-        description: Generate SBOM attestation for the image
-        required: false
-        default: false
-        type: boolean
-      SIGN:
-        description: >-
-          Sign the image digest with cosign keyless signing. Requires the caller
-          to grant 'id-token: write'.
-        required: false
-        default: false
-        type: boolean
       RUNS_ON:
         description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
         required: false
@@ -470,9 +453,9 @@ jobs:
       run: |
         set -euo pipefail
 
-        # This digest is what the attest job cosign-signs and mints SLSA
-        # provenance for, under this repository's OIDC identity. It is resolved
-        # from a MUTABLE tag, which is a time-of-check/time-of-use gap: between
+        # This digest is what a downstream attest-docker.yml call would sign
+        # and mint SLSA provenance for. It is resolved from a MUTABLE tag,
+        # which is a time-of-check/time-of-use gap: between
         # the push above and this inspect, anyone able to write that tag - a
         # second concurrent run of this workflow, or another repository in the
         # org holding packages:write - can repoint it, and we would sign their
@@ -493,7 +476,7 @@ jobs:
         )
 
         if [ "${EXPECTED[*]}" != "${RESOLVED[*]}" ]; then
-          echo "::error::'$NORMALIZED_IMAGE:$IMAGE_VERSION' does not resolve to the image this run pushed, so it will not be signed or attested. Expected children [${EXPECTED[*]}], resolved [${RESOLVED[*]}]. The tag was most likely rewritten by a concurrent run or another writer between the push and this check - add a 'concurrency:' group to the calling workflow if two runs can push the same tag."
+          echo "::error::'$NORMALIZED_IMAGE:$IMAGE_VERSION' does not resolve to the image this run pushed, so the 'digest' output would point a downstream attest-docker.yml call at the wrong image. Expected children [${EXPECTED[*]}], resolved [${RESOLVED[*]}]. The tag was most likely rewritten by a concurrent run or another writer between the push and this check - add a 'concurrency:' group to the calling workflow if two runs can push the same tag."
           exit 1
         fi
 
@@ -505,24 +488,3 @@ jobs:
         IMAGE_VERSION: ${{ steps.meta.outputs.version }}
       run: |
         docker buildx imagetools inspect "$NORMALIZED_IMAGE:$IMAGE_VERSION"
-
-  attest:
-    if: ${{ inputs.PUSH && (inputs.PROVENANCE || inputs.SBOM || inputs.SIGN) }}
-    needs:
-    - infos
-    - merge
-    uses: dnum-mi/fabnum-cicd/.github/workflows/attest-docker.yml@v0
-    permissions:
-      packages: write
-      id-token: write
-      attestations: write
-    with:
-      IMAGE_NAME: ${{ needs.infos.outputs.normalized-image }}
-      DIGEST: ${{ needs.merge.outputs.digest }}
-      PROVENANCE: ${{ inputs.PROVENANCE }}
-      SBOM: ${{ inputs.SBOM }}
-      SIGN: ${{ inputs.SIGN }}
-      RUNS_ON: ${{ inputs.RUNS_ON }}
-    secrets:
-      REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
-      REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
