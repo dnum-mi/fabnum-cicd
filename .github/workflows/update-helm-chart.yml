@@ -132,6 +132,7 @@ jobs:
       env:
         CHART_REPO: ${{ inputs.CHART_REPO }}
         AUTOMERGE_METHOD: ${{ inputs.AUTOMERGE_METHOD }}
+        BASE_BRANCH: ${{ inputs.BASE_BRANCH }}
       run: |
         set -euo pipefail
 
@@ -163,6 +164,16 @@ jobs:
             exit 1
             ;;
         esac
+
+        # BASE_BRANCH becomes `gh workflow run --ref`'s value verbatim. Not an
+        # injection risk (it lands in its own argv element, never a larger shell
+        # string), but a value with embedded whitespace/newlines is always a
+        # caller mistake and better rejected here than surfaced as an opaque
+        # `gh`/API error from inside the dispatch step.
+        if [[ ! "$BASE_BRANCH" =~ ^[^[:space:]]+$ ]]; then
+          echo "::error::BASE_BRANCH must be a single branch name with no whitespace, got '$BASE_BRANCH'"
+          exit 1
+        fi
 
     # CHART_REPO is "owner/repo", validated above. The owner is taken from it
     # rather than from github.repository_owner so the chart repo may live under
@@ -204,6 +215,7 @@ jobs:
         AUTOMERGE_PRERELEASE: ${{ inputs.AUTOMERGE_PRERELEASE }}
         AUTOMERGE_RELEASE: ${{ inputs.AUTOMERGE_RELEASE }}
         AUTOMERGE_METHOD: ${{ inputs.AUTOMERGE_METHOD }}
+        BASE_BRANCH: ${{ inputs.BASE_BRANCH }}
       run: |
         set -euo pipefail
 
@@ -228,6 +240,14 @@ jobs:
           -f RUN_MODE=called
         )
 
+        # --ref is required here: without it, `gh workflow run` looks up
+        # CHART_REPO's default branch itself via a GraphQL `defaultBranchRef`
+        # query, which needs more than this token's `actions: write` scope and
+        # fails with "unable to determine default branch for <repo>: GraphQL:
+        # Resource not accessible by integration (repository.defaultBranchRef)".
+        # Passing BASE_BRANCH sidesteps that lookup instead of widening the
+        # token to work around it.
+        #
         # AUTOMERGE_METHOD is newer than this dispatch contract. A chart
         # repository whose entry-point workflow predates it does not declare the
         # input, and `gh workflow run` rejects the whole dispatch with 422
@@ -235,7 +255,7 @@ jobs:
         # sending it unconditionally would break every existing chart repo.
         # Try with it, fall back without it, and say which happened. The first
         # attempt dispatches nothing when it fails, so the retry is safe.
-        if dispatch_output=$(gh workflow --repo "$CHART_REPO" run "$WORKFLOW_NAME" \
+        if dispatch_output=$(gh workflow --repo "$CHART_REPO" run "$WORKFLOW_NAME" --ref "$BASE_BRANCH" \
           "${DISPATCH_ARGS[@]}" -f "AUTOMERGE_METHOD=$AUTOMERGE_METHOD" 2>&1); then
           printf '%s\n' "$dispatch_output"
           echo "Dispatched with AUTOMERGE_METHOD=$AUTOMERGE_METHOD"
@@ -245,7 +265,7 @@ jobs:
         case "$dispatch_output" in
           *"Unexpected inputs provided"*)
             echo "::warning::'$WORKFLOW_NAME' in '$CHART_REPO' does not declare an AUTOMERGE_METHOD input, so the chart repository's own default applies instead of '$AUTOMERGE_METHOD'. Add the input to that workflow to control the merge method from here - see docs/workflows/update-helm-chart.md."
-            gh workflow --repo "$CHART_REPO" run "$WORKFLOW_NAME" "${DISPATCH_ARGS[@]}"
+            gh workflow --repo "$CHART_REPO" run "$WORKFLOW_NAME" --ref "$BASE_BRANCH" "${DISPATCH_ARGS[@]}"
             ;;
           *)
             printf '%s\n' "$dispatch_output" >&2

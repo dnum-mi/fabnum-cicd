@@ -25,6 +25,7 @@ guard_env() {
   export HAS_PAT="false"
   export CHART_REPO="my-org/helm-charts"
   export AUTOMERGE_METHOD="auto"
+  export BASE_BRANCH="main"
   export BUILD_SECRET_GITHUB_TOKEN="none"
   # Values match the workflow defaults, so this table stays a stand-in for a
   # default invocation rather than a hand-tuned one: APP_VERSION is optional

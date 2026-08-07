@@ -18,7 +18,7 @@ Mise à jour automatique de la version d'un chart Helm et de l'`appVersion` dans
 | AUTOMERGE_PRERELEASE  | bool   | Fusionner automatiquement la PR créée quand `UPGRADE_TYPE` est `prerelease` (nécessite `APP_CLIENT_ID`/`APP_PRIVATE_KEY` ou `GH_PAT`)                                                                                                                                                                                | Non    | `false`                  |
 | AUTOMERGE_RELEASE     | bool   | Fusionner automatiquement la PR créée quand `UPGRADE_TYPE` n'est pas `prerelease` (nécessite `APP_CLIENT_ID`/`APP_PRIVATE_KEY` ou `GH_PAT`)                                                                                                                                                                          | Non    | `false`                  |
 | AUTOMERGE_METHOD      | string | Méthode de fusion de la PR de mise à jour du chart quand l'automerge est activé : `auto` (file d'attente, nécessite *Allow auto-merge*) ou `admin` (fusion immédiate en contournant la protection de branche)                                                                                                        | Non    | `auto`                   |
-| BASE_BRANCH           | string | Branche de base contre laquelle ouvrir la Pull Request de mise à jour du chart (mode `called`)                                                                                                                                                                                                                       | Non    | `main`                   |
+| BASE_BRANCH           | string | Branche de base : contre laquelle ouvrir la Pull Request de mise à jour du chart (mode `called`), ou celle ciblée par le `workflow_dispatch` dans `CHART_REPO` (mode `caller`)                                                                                                                                      | Non    | `main`                   |
 | RUNS_ON               | string | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                                                                                                                                                                                               | Non    | `["ubuntu-24.04"]`       |
 
 ## Secrets
@@ -50,7 +50,7 @@ Mise à jour automatique de la version d'un chart Helm et de l'`appVersion` dans
 
 | Mode     | Utilisation                                                                                 | Comportement                                                                                                                                           |
 | -------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `caller` | Le dépôt applicatif veut mettre à jour un chart dans un **dépôt chart séparé**              | Déclenche le workflow `WORKFLOW_NAME` dans `CHART_REPO` via `workflow_dispatch`. Nécessite `APP_CLIENT_ID`/`APP_PRIVATE_KEY` ou `GH_PAT` - `GITHUB_TOKEN` ne peut pas dispatcher un workflow dans un autre dépôt. En mode App, le token est réduit au dépôt `CHART_REPO` uniquement (l'App doit y être installée). |
+| `caller` | Le dépôt applicatif veut mettre à jour un chart dans un **dépôt chart séparé**              | Déclenche le workflow `WORKFLOW_NAME` dans `CHART_REPO`, sur la branche `BASE_BRANCH`, via `workflow_dispatch`. Nécessite `APP_CLIENT_ID`/`APP_PRIVATE_KEY` ou `GH_PAT` - `GITHUB_TOKEN` ne peut pas dispatcher un workflow dans un autre dépôt. En mode App, le token est réduit au dépôt `CHART_REPO` uniquement (l'App doit y être installée). |
 | `called` | Le dépôt chart reçoit l'appel de `caller` et effectue la mise à jour                        | Met à jour `Chart.yaml` et le README, puis crée une Pull Request contre `BASE_BRANCH`. Supporte l'automerge.                                           |
 | `local`  | Le chart est dans le **même dépôt** que l'application (monorepo), pipeline CI/CD applicatif | Met à jour `Chart.yaml` et le README, commit et pousse directement sur la branche courante (`git push origin HEAD:$GITHUB_REF_NAME`). Aucune PR créée. |
 
@@ -117,6 +117,8 @@ jobs:
 ```
 
 > En mode `caller`, l'App doit être installée sur le dépôt `CHART_REPO`, pas sur le dépôt qui exécute ce job. Voir [`authentication.md`](./authentication.md#dispatch-cross-repository-update-helm-chart-mode-caller).
+
+> Le dispatch cible toujours `BASE_BRANCH` explicitement (`--ref`) et ne laisse plus `gh workflow run` résoudre lui-même la branche par défaut de `CHART_REPO` : avec un token App réduit à `actions: write`, cette résolution automatique passait par une requête GraphQL `defaultBranchRef` qui échoue (`unable to determine default branch for <repo>: GraphQL: Resource not accessible by integration (repository.defaultBranchRef)`). Si la branche par défaut de `CHART_REPO` n'est pas `main`, `BASE_BRANCH` doit être renseigné explicitement, quel que soit le credential utilisé (App ou `GH_PAT`).
 
 ### Mode called - Mise à jour dans le même dépôt via Pull Request
 
