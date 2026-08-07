@@ -152,8 +152,6 @@ jobs:
     permissions:
       packages: write
       contents: read
-      id-token: write
-      attestations: write
     with:
       IMAGE_NAME: ghcr.io/my-org/my-app
       IMAGE_TAG: ${{ needs.release.outputs.version }}
@@ -317,7 +315,7 @@ AUTOMERGE_METHOD input, so the chart repository's own default applies
 | `pat`         | token App, sinon `GH_PAT` ; **échoue** si aucun des deux | ce qui a été accordé au PAT                                    | vous                                |
 | `job-token`   | token App, sinon `GH_PAT`, sinon `GITHUB_TOKEN`      | **rien** — tout le bloc `permissions:` du job appelant           | personne ; ne peut pas être réduit |
 
-Un job appelant `build-docker.yml` accorde généralement `packages: write`, `id-token: write` et `attestations: write`, donc `job-token` peut donner un credential de push registre à tout le build. Le workflow émet un `::warning::` chaque fois que ce mode retombe réellement sur le token du job.
+Un job appelant `build-docker.yml` accorde généralement `packages: write`, donc `job-token` peut donner un credential de push registre à tout le build. Le workflow émet un `::warning::` chaque fois que ce mode retombe réellement sur le token du job.
 
 Ordre de préférence : **`app` → `pat` (lecture seule) → `none`.** Ne recourir à `job-token` que délibérément.
 
