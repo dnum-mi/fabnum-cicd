@@ -61,9 +61,11 @@ sandbox_setup() {
   export PATH="$SANDBOX/bin:$PATH"
 }
 
-# Records every git invocation. `config --get` answers from STUB_GIT_CONFIG_<key>
-# so a step can read back what it set, and `diff --no-index` reports files as
-# differing unless STUB_GIT_FILES_MATCH is set.
+# Records every git invocation. `config --local --get-regexp` answers from
+# STUB_GIT_INCLUDEIF_LIST - one "key value" pair per line, simulating the
+# includeIf.gitdir: entries actions/checkout wires a credential in through -
+# and `diff --no-index` reports files as differing unless STUB_GIT_FILES_MATCH
+# is set.
 install_git_stub() {
   cat >"$SANDBOX/bin/git" <<'STUB'
 #!/usr/bin/env bash
@@ -76,10 +78,8 @@ if [ -n "${STUB_GIT_FAIL_ON:-}" ] && [[ "$args" == *"$STUB_GIT_FAIL_ON"* ]]; the
 fi
 
 case "$args" in
-  "config --local --get "*)
-    # Nothing pre-existing unless the test says otherwise.
-    [ -n "${STUB_GIT_EXISTING_HEADER:-}" ] && printf '%s\n' "$STUB_GIT_EXISTING_HEADER"
-    [ -n "${STUB_GIT_EXISTING_HEADER:-}" ] || exit 1
+  "config --local --get-regexp "*)
+    printf '%s' "${STUB_GIT_INCLUDEIF_LIST:-}"
     ;;
   "diff --no-index --quiet"*)
     [ "${STUB_GIT_FILES_MATCH:-false}" = "true" ] || exit 1
