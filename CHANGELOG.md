@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.5](https://github.com/dnum-mi/fabnum-cicd/compare/v0.11.4...v0.11.5) (2026-08-08)
+
+
+### Code Refactoring
+
+* **clean-cache:** move container image cleanup to clean-images.yml ([1134d51](https://github.com/dnum-mi/fabnum-cicd/commit/1134d51a9e5f709c8fc76864a6522550c897cd73))
+* **update-helm-chart:** move cross-repository dispatch to its own workflow ([850e018](https://github.com/dnum-mi/fabnum-cicd/commit/850e018f8b4e33b29006ad5e0facd03666fdcd02))
+
 ## [0.11.4](https://github.com/dnum-mi/fabnum-cicd/compare/v0.11.3...v0.11.4) (2026-08-07)
 
 
