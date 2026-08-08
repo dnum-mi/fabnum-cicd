@@ -1,0 +1,254 @@
+name: Dispatch chart update
+
+on:
+  workflow_call:
+    inputs:
+      WORKFLOW_NAME:
+        description: Name of the workflow to trigger in the chart repository (eg. 'update-chart.yml')
+        required: false
+        type: string
+        default: update-app-version.yml
+      CHART_REPO:
+        description: Name of the chart repository (eg. 'this-is-tobi/helm-charts')
+        required: true
+        type: string
+      CHART_DIR:
+        description: Name of the folder containing the chart (in CHART_REPO)
+        required: false
+        type: string
+        default: charts
+      CHART_NAME:
+        description: Name of the chart to update (in CHART_DIR)
+        required: true
+        type: string
+      APP_VERSION:
+        description: >-
+          The app version to inject in Chart.yaml (appVersion). Leave empty to
+          keep the current appVersion - a chart-only release where the chart
+          version bumps on its own lifecycle without any app change.
+        required: false
+        type: string
+        default: ""
+      UPGRADE_TYPE:
+        description: Should update 'major', 'minor', 'patch' or 'prerelease'
+        required: false
+        type: string
+        default: patch
+      PRERELEASE_IDENTIFIER:
+        description: Prerelease identifier (only used if UPGRADE_TYPE is 'prerelease')
+        required: false
+        type: string
+        default: rc
+      AUTOMERGE_PRERELEASE:
+        description: Ask the chart repository to merge its update PR when UPGRADE_TYPE is 'prerelease'
+        required: false
+        type: boolean
+        default: false
+      AUTOMERGE_RELEASE:
+        description: Ask the chart repository to merge its update PR when UPGRADE_TYPE is not 'prerelease'
+        required: false
+        type: boolean
+        default: false
+      AUTOMERGE_METHOD:
+        description: >-
+          How the chart repository should merge its update pull request.
+          `auto` queues it and lets GitHub merge once required status checks
+          pass - this needs "Allow auto-merge" enabled on the chart repository.
+          `admin` merges immediately, bypassing branch protection and required
+          status checks. Prefer `auto`; use `admin` only deliberately.
+        required: false
+        type: string
+        default: auto
+      BASE_BRANCH:
+        description: >-
+          Branch of CHART_REPO the workflow is dispatched on, and the base the
+          chart repository opens its update pull request against.
+        required: false
+        type: string
+        default: main
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
+    secrets:
+      APP_CLIENT_ID:
+        description: >-
+          GitHub App Client ID (e.g. Iv23li..., NOT the numeric App ID). Supply
+          with APP_PRIVATE_KEY to authenticate as a GitHub App.
+          Takes precedence over GH_PAT. Required (with APP_PRIVATE_KEY) or
+          GH_PAT - GITHUB_TOKEN cannot reach another repository.
+          See docs/workflows/authentication.md.
+        required: false
+      APP_PRIVATE_KEY:
+        description: GitHub App private key (PEM). Required alongside APP_CLIENT_ID.
+        required: false
+      GH_PAT:
+        description: >-
+          GitHub Personal Access Token. Legacy alternative to
+          APP_CLIENT_ID/APP_PRIVATE_KEY; still supported, but App authentication is
+          preferred.
+        required: false
+
+jobs:
+  dispatch:
+    name: Dispatch chart update
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    # Deliberately empty, and the reason dispatching is its own workflow:
+    # everything below authenticates against CHART_REPO with the App token (or
+    # GH_PAT) and nothing touches the calling repository. Callers mirror this
+    # with `permissions: {}` on their job.
+    permissions: {}
+    env:
+      # `secrets` is not available in a step-level `if`, but it is here.
+      HAS_APP_AUTH: ${{ secrets.APP_CLIENT_ID != '' && secrets.APP_PRIVATE_KEY != '' }}
+      # Exactly one of the two set: a typo or a half-finished setup. Never a
+      # valid configuration, and silently falling back would downgrade auth.
+      HAS_PARTIAL_APP_AUTH: ${{ (secrets.APP_CLIENT_ID != '') != (secrets.APP_PRIVATE_KEY != '') }}
+    steps:
+    - name: Validate inputs
+      env:
+        CHART_REPO: ${{ inputs.CHART_REPO }}
+        AUTOMERGE_METHOD: ${{ inputs.AUTOMERGE_METHOD }}
+        BASE_BRANCH: ${{ inputs.BASE_BRANCH }}
+      run: |
+        set -euo pipefail
+
+        if [ "$HAS_PARTIAL_APP_AUTH" = "true" ]; then
+          echo "::error::APP_CLIENT_ID and APP_PRIVATE_KEY must be supplied together, but only one was. Continuing would silently fall back to GH_PAT or GITHUB_TOKEN instead of authenticating as the App."
+          exit 1
+        fi
+
+        # `required: true` only rejects a missing input, never an empty one - a
+        # caller wiring CHART_REPO to an unset repository variable satisfies it
+        # and arrives here blank. Validated at this point rather than at the
+        # dispatch, so a malformed value fails before a token is minted for it.
+        if [ -z "$CHART_REPO" ]; then
+          echo "::error::CHART_REPO is required"
+          exit 1
+        fi
+
+        # bash `=~` rather than `grep -Eq`: grep applies the pattern per line, so
+        # `owner/repo` followed by a newline and anything at all would have
+        # passed. bash anchors to the whole string and no character class here
+        # contains a newline.
+        if [[ ! "$CHART_REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+          echo "::error::CHART_REPO must be a single-line 'owner/repository', got '$CHART_REPO'. A value without a slash would mint a token for an owner named after the repository."
+          exit 1
+        fi
+
+        case "$AUTOMERGE_METHOD" in
+          auto|admin) ;;
+          *)
+            echo "::error::AUTOMERGE_METHOD must be 'auto' or 'admin', got '$AUTOMERGE_METHOD'"
+            exit 1
+            ;;
+        esac
+
+        # BASE_BRANCH becomes `gh workflow run --ref`'s value verbatim. Not an
+        # injection risk (it lands in its own argv element, never a larger shell
+        # string), but a value with embedded whitespace/newlines is always a
+        # caller mistake and better rejected here than surfaced as an opaque
+        # `gh`/API error from inside the dispatch step.
+        if [[ ! "$BASE_BRANCH" =~ ^[^[:space:]]+$ ]]; then
+          echo "::error::BASE_BRANCH must be a single branch name with no whitespace, got '$BASE_BRANCH'"
+          exit 1
+        fi
+
+    # CHART_REPO is "owner/repo", validated above. The owner is taken from it
+    # rather than from github.repository_owner so the chart repo may live under
+    # another account. Neither value is a secret, so GITHUB_OUTPUT is fine here
+    # - the token itself must never go there.
+    - name: Resolve chart repository coordinates
+      id: chart-repo
+      if: ${{ env.HAS_APP_AUTH == 'true' }}
+      env:
+        CHART_REPO: ${{ inputs.CHART_REPO }}
+      run: |
+        set -euo pipefail
+        echo "owner=${CHART_REPO%%/*}" >> "$GITHUB_OUTPUT"
+        echo "name=${CHART_REPO##*/}" >> "$GITHUB_OUTPUT"
+
+    # Scoped to the chart repository and to `actions: write` only - this token
+    # dispatches a workflow and does nothing else.
+    - name: Generate GitHub App token
+      id: app-token
+      if: ${{ env.HAS_APP_AUTH == 'true' }}
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+      with:
+        client-id: ${{ secrets.APP_CLIENT_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
+        owner: ${{ steps.chart-repo.outputs.owner }}
+        repositories: ${{ steps.chart-repo.outputs.name }}
+        permission-actions: write
+
+    - name: Trigger helm-charts update
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_PAT }}
+        CHART_DIR: ${{ inputs.CHART_DIR }}
+        CHART_REPO: ${{ inputs.CHART_REPO }}
+        WORKFLOW_NAME: ${{ inputs.WORKFLOW_NAME }}
+        CHART_NAME: ${{ inputs.CHART_NAME }}
+        APP_VERSION: ${{ inputs.APP_VERSION }}
+        UPGRADE_TYPE: ${{ inputs.UPGRADE_TYPE }}
+        PRERELEASE_IDENTIFIER: ${{ inputs.PRERELEASE_IDENTIFIER }}
+        AUTOMERGE_PRERELEASE: ${{ inputs.AUTOMERGE_PRERELEASE }}
+        AUTOMERGE_RELEASE: ${{ inputs.AUTOMERGE_RELEASE }}
+        AUTOMERGE_METHOD: ${{ inputs.AUTOMERGE_METHOD }}
+        BASE_BRANCH: ${{ inputs.BASE_BRANCH }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "$GH_TOKEN" ]; then
+          echo "::error::Dispatching a workflow in another repository is something GITHUB_TOKEN cannot do. Pass APP_CLIENT_ID/APP_PRIVATE_KEY (preferred) or GH_PAT."
+          exit 1
+        fi
+
+        # Remove trailing slashes
+        while [ "${CHART_DIR%/}" != "$CHART_DIR" ]; do CHART_DIR="${CHART_DIR%/}"; done
+
+        echo "Trigger workflow '$WORKFLOW_NAME' in repository '$CHART_REPO' to update chart '$CHART_DIR/$CHART_NAME' with app version '$APP_VERSION'"
+
+        DISPATCH_ARGS=(
+          -f "APP_VERSION=$APP_VERSION"
+          -f "CHART_NAME=$CHART_NAME"
+          -f "CHART_DIR=$CHART_DIR"
+          -f "UPGRADE_TYPE=$UPGRADE_TYPE"
+          -f "PRERELEASE_IDENTIFIER=$PRERELEASE_IDENTIFIER"
+          -f "AUTOMERGE_PRERELEASE=$AUTOMERGE_PRERELEASE"
+          -f "AUTOMERGE_RELEASE=$AUTOMERGE_RELEASE"
+          -f RUN_MODE=called
+        )
+
+        # --ref is required here: without it, `gh workflow run` looks up
+        # CHART_REPO's default branch itself via a GraphQL `defaultBranchRef`
+        # query, which needs more than this token's `actions: write` scope and
+        # fails with "unable to determine default branch for <repo>: GraphQL:
+        # Resource not accessible by integration (repository.defaultBranchRef)".
+        # Passing BASE_BRANCH sidesteps that lookup instead of widening the
+        # token to work around it.
+        #
+        # AUTOMERGE_METHOD is newer than this dispatch contract. A chart
+        # repository whose entry-point workflow predates it does not declare the
+        # input, and `gh workflow run` rejects the whole dispatch with 422
+        # "Unexpected inputs provided" rather than ignoring the extra value - so
+        # sending it unconditionally would break every existing chart repo.
+        # Try with it, fall back without it, and say which happened. The first
+        # attempt dispatches nothing when it fails, so the retry is safe.
+        if dispatch_output=$(gh workflow --repo "$CHART_REPO" run "$WORKFLOW_NAME" --ref "$BASE_BRANCH" \
+          "${DISPATCH_ARGS[@]}" -f "AUTOMERGE_METHOD=$AUTOMERGE_METHOD" 2>&1); then
+          printf '%s\n' "$dispatch_output"
+          echo "Dispatched with AUTOMERGE_METHOD=$AUTOMERGE_METHOD"
+          exit 0
+        fi
+
+        case "$dispatch_output" in
+          *"Unexpected inputs provided"*)
+            echo "::warning::'$WORKFLOW_NAME' in '$CHART_REPO' does not declare an AUTOMERGE_METHOD input, so the chart repository's own default applies instead of '$AUTOMERGE_METHOD'. Add the input to that workflow to control the merge method from here - see docs/workflows/dispatch-helm-chart.md."
+            gh workflow --repo "$CHART_REPO" run "$WORKFLOW_NAME" --ref "$BASE_BRANCH" "${DISPATCH_ARGS[@]}"
+            ;;
+          *)
+            printf '%s\n' "$dispatch_output" >&2
+            exit 1
+            ;;
+        esac

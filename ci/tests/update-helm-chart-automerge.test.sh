@@ -4,7 +4,7 @@
 # shellcheck source=ci/tests/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-BLOCK=$(extract_run update-helm-chart.yml called "Automerge chart update PR")
+BLOCK=$(extract_run update-helm-chart.yml update "Automerge chart update PR")
 
 automerge_env() {
   export GH_TOKEN="app-token"

@@ -13,8 +13,8 @@ GUARDED_JOBS=(
   "release-helm.yml:release:Validate credentials"
   "scan-trivy.yml:images-scan:Validate credentials"
   "scan-trivy.yml:config-scan:Validate credentials"
-  "update-helm-chart.yml:caller:Validate inputs"
-  "update-helm-chart.yml:called:Validate inputs"
+  "dispatch-helm-chart.yml:dispatch:Validate inputs"
+  "update-helm-chart.yml:update:Validate inputs"
 )
 
 # A superset of what any of the guards reads. Steps that do not use a value
@@ -24,6 +24,7 @@ guard_env() {
   export HAS_APP_AUTH="false"
   export HAS_PAT="false"
   export CHART_REPO="my-org/helm-charts"
+  export RUN_MODE="called"
   export AUTOMERGE_METHOD="auto"
   export BASE_BRANCH="main"
   export BUILD_SECRET_GITHUB_TOKEN="none"

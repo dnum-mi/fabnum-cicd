@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# update-helm-chart.yml - caller mode: input validation, coordinate resolution
-# and the cross-repository dispatch.
+# dispatch-helm-chart.yml - input validation, coordinate resolution and the
+# cross-repository dispatch.
 
 # shellcheck source=ci/tests/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-VALIDATE=$(extract_run update-helm-chart.yml caller "Validate inputs")
-RESOLVE=$(extract_run update-helm-chart.yml caller "Resolve chart repository coordinates")
-DISPATCH=$(extract_run update-helm-chart.yml caller "Trigger helm-charts update")
+VALIDATE=$(extract_run dispatch-helm-chart.yml dispatch "Validate inputs")
+RESOLVE=$(extract_run dispatch-helm-chart.yml dispatch "Resolve chart repository coordinates")
+DISPATCH=$(extract_run dispatch-helm-chart.yml dispatch "Trigger helm-charts update")
 
 validate_env() {
   export HAS_PARTIAL_APP_AUTH="false"
@@ -146,7 +146,7 @@ test_dispatch_fails_without_a_credential() {
   run_block "$DISPATCH"
 
   assert_status 1 "GITHUB_TOKEN cannot dispatch across repositories, so this must fail loudly"
-  assert_output_contains "::error::Caller mode dispatches a workflow in another repository"
+  assert_output_contains "::error::Dispatching a workflow in another repository"
   assert_not_called "workflow "
 }
 
