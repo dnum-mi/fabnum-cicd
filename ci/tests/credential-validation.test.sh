@@ -10,7 +10,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 GUARDED_JOBS=(
   "build-docker.yml:build:Validate credentials"
   "release-app.yml:release:Validate inputs"
-  "release-helm.yml:release:Validate credentials"
+  "release-helm.yml:release:Validate inputs"
   "scan-trivy.yml:images-scan:Validate credentials"
   "scan-trivy.yml:config-scan:Validate credentials"
   "dispatch-helm-chart.yml:dispatch:Validate inputs"
@@ -33,6 +33,16 @@ guard_env() {
   # and empty by default, PRERELEASE_IDENTIFIER defaults to 'rc'.
   export APP_VERSION=""
   export PRERELEASE_IDENTIFIER="rc"
+  # release-helm.yml is the one deviation from "the defaults": both of its
+  # distribution channels default to false, and that combination is rejected
+  # by design. A valid minimal configuration is used instead, so these tests
+  # keep exercising the App-credential guard rather than tripping over the
+  # channel guard. The channel guard has its own tests in
+  # release-helm-channels.test.sh.
+  export PUBLISH_OCI="true"
+  export CREATE_GITHUB_RELEASE="false"
+  export REGISTRY="ghcr.io"
+  export HAS_REGISTRY_AUTH="false"
 }
 
 test_partial_credentials_fail_every_guarded_job() {

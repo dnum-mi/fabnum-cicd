@@ -464,6 +464,7 @@ jobs:
       contents: write
       packages: write
     with:
+      PUBLISH_OCI: true
       CHARTS_DIR: ./charts
 ```
 

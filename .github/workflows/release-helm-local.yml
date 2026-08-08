@@ -1,3 +1,9 @@
+# The OCI registry is this workflow's only distribution channel, and unlike
+# release-helm.yml there is no input to turn it off. In a monorepo the GitHub
+# Releases and git tags belong to the application, so the chart cannot claim
+# them for its own packages - which rules out the tgz-on-release + index.yaml
+# channel that chart-releaser offers there. Disabling the OCI push would
+# therefore leave this workflow with nothing to publish.
 name: Release chart (local)
 
 on:
@@ -57,10 +63,15 @@ on:
         default: '["ubuntu-24.04"]'
     secrets:
       REGISTRY_USERNAME:
-        description: Username for OCI registry authentication
+        description: >-
+          Username for OCI registry authentication. Required when REGISTRY is
+          not ghcr.io; for ghcr.io the workflow authenticates with the
+          built-in GITHUB_TOKEN instead.
         required: false
       REGISTRY_PASSWORD:
-        description: Password for OCI registry authentication
+        description: >-
+          Password for OCI registry authentication. Required alongside
+          REGISTRY_USERNAME under the same conditions.
         required: false
 
 jobs:
@@ -70,7 +81,25 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      # `secrets` is not available in a step-level `if`, but it is here.
+      HAS_REGISTRY_AUTH: ${{ secrets.REGISTRY_USERNAME != '' && secrets.REGISTRY_PASSWORD != '' }}
     steps:
+    - name: Validate inputs
+      env:
+        REGISTRY: ${{ inputs.REGISTRY }}
+      run: |
+        set -euo pipefail
+
+        # Only ghcr.io can fall back to the built-in GITHUB_TOKEN. Any other
+        # registry needs explicit credentials; without them the login step
+        # would pipe an empty password into `helm registry login` and fail
+        # with an opaque authentication error instead of naming the cause.
+        if [ "$REGISTRY" != "ghcr.io" ] && [ "$HAS_REGISTRY_AUTH" != "true" ]; then
+          echo "::error::REGISTRY_USERNAME and REGISTRY_PASSWORD are required when REGISTRY ('$REGISTRY') is not ghcr.io."
+          exit 1
+        fi
+
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
@@ -93,11 +122,14 @@ jobs:
         helm repo update
 
     - name: Login to OCI Registry
+      id: oci-login
       env:
         REGISTRY: ${{ inputs.REGISTRY }}
         USERNAME: ${{ inputs.REGISTRY == 'ghcr.io' && github.actor || secrets.REGISTRY_USERNAME }}
         PASSWORD: ${{ inputs.REGISTRY == 'ghcr.io' && secrets.GITHUB_TOKEN || secrets.REGISTRY_PASSWORD }}
       run: |
+        set -euo pipefail
+
         echo "$PASSWORD" | helm registry login "$REGISTRY" -u "$USERNAME" --password-stdin
 
     - name: Package and push chart(s)
@@ -160,3 +192,17 @@ jobs:
           echo "Publishing ${chart_file} to oci://$REGISTRY/${OCI_REPO}"
           helm push "$chart_package" "oci://$REGISTRY/${OCI_REPO}"
         done
+
+    # Helm stores registry credentials in the runner's Helm config, which on a
+    # self-hosted runner (supported through RUNS_ON) outlives the job and would
+    # otherwise stay readable by whatever runs next. Hosted runners are
+    # ephemeral and do not care, but the cleanup costs one step either way.
+    # `always()` so a failed push still clears them.
+    - name: Logout from OCI Registry
+      if: ${{ always() && steps.oci-login.outcome == 'success' }}
+      env:
+        REGISTRY: ${{ inputs.REGISTRY }}
+      run: |
+        set -euo pipefail
+
+        helm registry logout "$REGISTRY"

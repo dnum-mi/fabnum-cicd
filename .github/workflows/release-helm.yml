@@ -25,6 +25,18 @@ on:
         type: string
         required: false
         default: gh-pages
+      PUBLISH_OCI:
+        description: >-
+          Package the changed charts and push them to the OCI registry
+          (see REGISTRY/REPOSITORY). Independent of CREATE_GITHUB_RELEASE:
+          the two are the workflow's two distribution channels and can be
+          enabled separately or together. At least one of them must be
+          enabled, otherwise the workflow would package charts and discard
+          them - that combination fails the run rather than passing green
+          having published nothing.
+        type: boolean
+        required: false
+        default: false
       HELM_REPOS:
         description: Helm repositories to add (name=url, comma-separated)
         type: string
@@ -45,10 +57,15 @@ on:
         default: '["ubuntu-24.04"]'
     secrets:
       REGISTRY_USERNAME:
-        description: Username for OCI registry authentication
+        description: >-
+          Username for OCI registry authentication. Required with
+          PUBLISH_OCI when REGISTRY is not ghcr.io; for ghcr.io the workflow
+          authenticates with the built-in GITHUB_TOKEN instead.
         required: false
       REGISTRY_PASSWORD:
-        description: Password for OCI registry authentication
+        description: >-
+          Password for OCI registry authentication. Required alongside
+          REGISTRY_USERNAME under the same conditions.
         required: false
       APP_CLIENT_ID:
         description: >-
@@ -75,6 +92,10 @@ jobs:
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     permissions:
       contents: write
+      # `permissions:` takes no expressions, so this is granted even with
+      # PUBLISH_OCI false, where nothing uses it. Unavoidable in a single
+      # workflow file; splitting the two channels apart just to narrow it
+      # would double the file count for no real gain.
       packages: write
     env:
       # `secrets` is not available in a step-level `if`, but it is here.
@@ -82,13 +103,36 @@ jobs:
       # Exactly one of the two set: a typo or a half-finished setup. Never a
       # valid configuration, and silently falling back would downgrade auth.
       HAS_PARTIAL_APP_AUTH: ${{ (secrets.APP_CLIENT_ID != '') != (secrets.APP_PRIVATE_KEY != '') }}
+      HAS_REGISTRY_AUTH: ${{ secrets.REGISTRY_USERNAME != '' && secrets.REGISTRY_PASSWORD != '' }}
     steps:
-    - name: Validate credentials
+    - name: Validate inputs
+      env:
+        PUBLISH_OCI: ${{ inputs.PUBLISH_OCI }}
+        CREATE_GITHUB_RELEASE: ${{ inputs.CREATE_GITHUB_RELEASE }}
+        REGISTRY: ${{ inputs.REGISTRY }}
       run: |
         set -euo pipefail
 
         if [ "$HAS_PARTIAL_APP_AUTH" = "true" ]; then
           echo "::error::APP_CLIENT_ID and APP_PRIVATE_KEY must be supplied together, but only one was. Continuing would silently fall back to GH_PAT or GITHUB_TOKEN instead of authenticating as the App."
+          exit 1
+        fi
+
+        # PUBLISH_OCI and CREATE_GITHUB_RELEASE are the two distribution
+        # channels. With both off the run would package charts, publish them
+        # nowhere and still report success - a green run that shipped nothing
+        # is worse than a failed one, so this stops here.
+        if [ "$PUBLISH_OCI" != "true" ] && [ "$CREATE_GITHUB_RELEASE" != "true" ]; then
+          echo "::error::Nothing to publish: PUBLISH_OCI and CREATE_GITHUB_RELEASE are both false. Enable PUBLISH_OCI to push charts to an OCI registry, CREATE_GITHUB_RELEASE to attach them to a GitHub Release and maintain index.yaml on the pages branch, or both."
+          exit 1
+        fi
+
+        # Only ghcr.io can fall back to the built-in GITHUB_TOKEN. Any other
+        # registry needs explicit credentials; without them the login step
+        # would pipe an empty password into `helm registry login` and fail
+        # with an opaque authentication error instead of naming the cause.
+        if [ "$PUBLISH_OCI" = "true" ] && [ "$REGISTRY" != "ghcr.io" ] && [ "$HAS_REGISTRY_AUTH" != "true" ]; then
+          echo "::error::REGISTRY_USERNAME and REGISTRY_PASSWORD are required when PUBLISH_OCI is true and REGISTRY ('$REGISTRY') is not ghcr.io."
           exit 1
         fi
 
@@ -138,8 +182,9 @@ jobs:
       with:
         version: v1.8.1
         charts_dir: ${{ inputs.CHARTS_DIR }}
-        # skip_upload=true only packages charts (OCI-only); false additionally
-        # creates GitHub Releases/tags and updates index.yaml on the pages branch
+        # skip_upload=true only packages charts into .cr-release-packages,
+        # which is all the OCI path below needs; false additionally creates
+        # GitHub Releases/tags and updates index.yaml on the pages branch
         skip_upload: ${{ !inputs.CREATE_GITHUB_RELEASE }}
         pages_branch: ${{ inputs.PAGES_BRANCH }}
       env:
@@ -155,39 +200,59 @@ jobs:
         CR_TOKEN: "${{ steps.app-token.outputs.token || (inputs.CREATE_GITHUB_RELEASE && secrets.GH_PAT) || secrets.GITHUB_TOKEN }}"
 
     - name: Login to OCI Registry
-      if: steps.chart-releaser.outputs.changed_charts != ''
+      id: oci-login
+      if: ${{ inputs.PUBLISH_OCI && steps.chart-releaser.outputs.changed_charts != '' }}
       env:
         REGISTRY: ${{ inputs.REGISTRY }}
         USERNAME: ${{ inputs.REGISTRY == 'ghcr.io' && github.actor || secrets.REGISTRY_USERNAME }}
         PASSWORD: ${{ inputs.REGISTRY == 'ghcr.io' && secrets.GITHUB_TOKEN || secrets.REGISTRY_PASSWORD }}
       run: |
+        set -euo pipefail
+
         echo "$PASSWORD" | helm registry login "$REGISTRY" -u "$USERNAME" --password-stdin
 
     - name: Publish charts to OCI registry
-      if: steps.chart-releaser.outputs.changed_charts != ''
+      if: ${{ inputs.PUBLISH_OCI && steps.chart-releaser.outputs.changed_charts != '' }}
       env:
         REGISTRY: ${{ inputs.REGISTRY }}
         OCI_REPOSITORY: ${{ inputs.REPOSITORY }}
       run: |
+        set -euo pipefail
+
         # Determine OCI repository path
-        OCI_REPO="$OCI_REPOSITORY"
-        if [ -z "$OCI_REPO" ]; then
-          OCI_REPO="$GITHUB_REPOSITORY"
-        fi
+        OCI_REPO="${OCI_REPOSITORY:-$GITHUB_REPOSITORY}"
 
         # Normalize OCI repository path: lowercase and replace _ with -
         OCI_REPO=$(echo "$OCI_REPO" | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')
 
-        # Only process charts that were actually released
-        for chart_package in .cr-release-packages/*.tgz; do
-          if [ ! -f "$chart_package" ]; then
-            echo "No charts to publish"
-            continue
-          fi
+        # nullglob so an unmatched pattern yields an empty array rather than
+        # the literal glob. The previous `[ ! -f "$chart_package" ] && continue`
+        # form turned that case into a green run that published nothing, even
+        # though chart-releaser had just reported changed charts - so an empty
+        # set is an anomaly worth failing on, not a state to skip past.
+        shopt -s nullglob
+        CHART_PACKAGES=(.cr-release-packages/*.tgz)
 
-          chart_file=$(basename "$chart_package")
+        if [ ${#CHART_PACKAGES[@]} -eq 0 ]; then
+          echo "::error::chart-releaser reported changed charts but produced no package in .cr-release-packages."
+          exit 1
+        fi
 
-          # Push to OCI registry
-          echo "Publishing ${chart_file} to OCI registry..."
+        for chart_package in "${CHART_PACKAGES[@]}"; do
+          echo "Publishing $(basename "$chart_package") to oci://$REGISTRY/$OCI_REPO"
           helm push "$chart_package" "oci://$REGISTRY/$OCI_REPO"
         done
+
+    # Helm stores registry credentials in the runner's Helm config, which on a
+    # self-hosted runner (supported through RUNS_ON) outlives the job and would
+    # otherwise stay readable by whatever runs next. Hosted runners are
+    # ephemeral and do not care, but the cleanup costs one step either way.
+    # `always()` so a failed push still clears them.
+    - name: Logout from OCI Registry
+      if: ${{ always() && steps.oci-login.outcome == 'success' }}
+      env:
+        REGISTRY: ${{ inputs.REGISTRY }}
+      run: |
+        set -euo pipefail
+
+        helm registry logout "$REGISTRY"
