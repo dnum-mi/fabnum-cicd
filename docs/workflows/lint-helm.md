@@ -41,6 +41,8 @@ on:
 jobs:
   lint-helm:
     uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@v0
+    permissions:
+      contents: read
     with:
       CT_CONF_PATH: ci/configs/ct.yaml
 ```
@@ -51,6 +53,8 @@ jobs:
 jobs:
   lint-helm:
     uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@v0
+    permissions:
+      contents: read
     with:
       CT_CONF_PATH: ci/configs/ct.yaml
       LINT_CHARTS: true
@@ -63,6 +67,8 @@ jobs:
 jobs:
   lint-helm:
     uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@v0
+    permissions:
+      contents: read
     with:
       CT_CONF_PATH: ci/configs/ct.yaml # chart-dirs: [.] dans ce fichier
       CHARTS_DIR: helm
@@ -74,6 +80,8 @@ jobs:
 jobs:
   lint-helm:
     uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@v0
+    permissions:
+      contents: read
     with:
       CT_CONF_PATH: .github/ct.yaml
       HELM_DOCS_VERSION: "1.13.0"

@@ -84,6 +84,10 @@ on:
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
 

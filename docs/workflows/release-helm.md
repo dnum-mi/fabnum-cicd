@@ -61,6 +61,9 @@ on:
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
+    permissions:
+      contents: write
+      packages: write
 ```
 
 ### Avec dépôts Helm personnalisés
@@ -69,6 +72,9 @@ jobs:
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
+    permissions:
+      contents: write
+      packages: write
     with:
       CHARTS_DIR: ./charts
       HELM_REPOS: "bitnami=https://charts.bitnami.com/bitnami,stable=https://charts.helm.sh/stable"
@@ -98,6 +104,9 @@ Pour un chart hébergé aux côtés du code applicatif, voir [`release-helm-loca
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
+    permissions:
+      contents: write
+      packages: write
     with:
       REGISTRY: registry.gitlab.com
       REPOSITORY: my-group/my-project
@@ -112,6 +121,9 @@ jobs:
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
+    permissions:
+      contents: write
+      packages: write
     with:
       REGISTRY: registry-1.docker.io
       REPOSITORY: my-org/charts
@@ -126,6 +138,9 @@ jobs:
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
+    permissions:
+      contents: write
+      packages: write
     with:
       REGISTRY: myregistry.azurecr.io
       REPOSITORY: helm-charts
@@ -140,6 +155,9 @@ jobs:
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
+    permissions:
+      contents: write
+      packages: write
     with:
       CHARTS_DIR: ./helm-charts
 ```
