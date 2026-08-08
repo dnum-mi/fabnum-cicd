@@ -58,7 +58,32 @@ sandbox_setup() {
   mkdir -p "$SANDBOX/bin"
   install_gh_stub
   install_git_stub
+  install_docker_stub
   export PATH="$SANDBOX/bin:$PATH"
+}
+
+# `buildx imagetools inspect --raw` answers from STUB_DOCKER_MANIFEST_JSON, so a
+# test can decide whether a version is a multi-arch manifest list (children to
+# delete alongside it) or a plain image. Absent, the inspect fails the way it
+# does for a digest that is already gone.
+install_docker_stub() {
+  cat >"$SANDBOX/bin/docker" <<'STUB'
+#!/usr/bin/env bash
+args="$*"
+printf 'docker|%s\n' "$args" >>"$CALL_LOG"
+
+case "$args" in
+  "buildx imagetools inspect"*)
+    if [ -z "${STUB_DOCKER_MANIFEST_JSON:-}" ]; then
+      printf 'stub docker: no such manifest\n' >&2
+      exit 1
+    fi
+    printf '%s' "$STUB_DOCKER_MANIFEST_JSON"
+    ;;
+esac
+exit 0
+STUB
+  chmod +x "$SANDBOX/bin/docker"
 }
 
 # Records every git invocation. `config --local --get-regexp` answers from
@@ -134,6 +159,36 @@ apply_filter() {
 case "$args" in
   "pr list"*)
     printf '%s' "${STUB_GH_PR_LIST_JSON:-[]}" | apply_filter
+    ;;
+  # Ordered before the generic /orgs/ and /users/ cases below: a DELETE is a
+  # write against those same paths and must stay a no-op, not return a body.
+  "api --method DELETE"*)
+    if [ -n "${STUB_GH_DELETE_FAIL_ON:-}" ] && [[ "$args" == *"${STUB_GH_DELETE_FAIL_ON}"* ]]; then
+      printf 'stub gh: forced delete failure\n' >&2
+      exit 1
+    fi
+    ;;
+  *"packages/container"*)
+    printf '%s' "${STUB_GH_PACKAGE_VERSIONS_JSON:-[]}" | apply_filter
+    ;;
+  "api /users/"*|"api /orgs/"*)
+    printf '%s' "${STUB_GH_OWNER_JSON:-{\"type\":\"Organization\"\}}" | apply_filter
+    ;;
+  # `gh cache list` speaks two dialects: tab separated by default (what
+  # clean-cache.yml pipes through `cut`) and JSON under --json (what the sweep
+  # reads). Answer whichever the caller asked for.
+  "cache list"*)
+    if [[ "$args" == *"--json"* ]]; then
+      printf '%s' "${STUB_GH_CACHE_LIST_JSON:-[]}" | apply_filter
+    else
+      printf '%s' "${STUB_GH_CACHE_LIST:-}"
+    fi
+    ;;
+  "cache delete"*)
+    if [ -n "${STUB_GH_CACHE_DELETE_FAIL_ON:-}" ] && [[ "$args" == *"${STUB_GH_CACHE_DELETE_FAIL_ON}"* ]]; then
+      printf 'stub gh: forced cache delete failure\n' >&2
+      exit 1
+    fi
     ;;
   "api repos/"*)
     printf '%s' "${STUB_GH_REPO_JSON:-{\"allow_auto_merge\":true\}}" | apply_filter
