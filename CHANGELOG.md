@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.11.5...v0.12.0) (2026-08-08)
+
+
+### Features
+
+* **release-app:** support repositories with immutable releases ([91fcac1](https://github.com/dnum-mi/fabnum-cicd/commit/91fcac1b785702f227ed9f14931c408f70007545))
+
 ## [0.11.5](https://github.com/dnum-mi/fabnum-cicd/compare/v0.11.4...v0.11.5) (2026-08-08)
 
 
