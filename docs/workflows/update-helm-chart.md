@@ -1,33 +1,33 @@
 # `update-helm-chart.yml`
 
-Mise à jour automatique de la version d'un chart Helm et de l'`appVersion` dans `Chart.yaml`.
+Mise à jour automatique de la version d'un chart Helm et de l'`appVersion` dans `Chart.yaml`, **dans le dépôt qui appelle le workflow**.
+
+> Pour mettre à jour un chart hébergé dans un **dépôt séparé**, c'est [`dispatch-helm-chart.yml`](./dispatch-helm-chart.md) qu'il faut appeler : il déclenche le workflow d'entrée du dépôt chart, qui appelle celui-ci de son côté.
 
 ## Inputs
 
-| Input                 | Type   | Description                                                                                                                                                                                                                                                                                                          | Requis | Défaut                   |
-| --------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------ |
-| RUN_MODE              | string | Mode d'exécution : `caller` déclenche le workflow dans un dépôt chart séparé, `called` met à jour le chart dans le dépôt actuel via une Pull Request, `local` met à jour le chart et commit directement sur la branche courante (pipelines monorepo - la nouvelle version est exposée via l'output `chart-version`). | Oui    | -                        |
-| WORKFLOW_NAME         | string | Nom du workflow à déclencher dans le dépôt chart (ex: `update-chart.yml`)                                                                                                                                                                                                                                            | Non    | `update-app-version.yml` |
-| CHART_REPO            | string | Nom du dépôt chart (ex: `this-is-tobi/helm-charts`)                                                                                                                                                                                                                                                                  | Non    | -                        |
-| CHART_DIR             | string | Nom du dossier contenant le chart (dans CHART_REPO)                                                                                                                                                                                                                                                                  | Non    | `charts`                 |
-| CHART_NAME            | string | Nom du chart à mettre à jour (dans CHART_DIR)                                                                                                                                                                                                                                                                        | Oui    | -                        |
-| APP_VERSION           | string | Version de l'application à injecter dans `Chart.yaml` (`appVersion`). Laisser vide pour conserver l'`appVersion` actuelle - une release "chart-only" où seule la version du chart évolue.                                                                                                                            | Non    | `""`                     |
-| UPGRADE_TYPE          | string | Type de mise à jour : `major`, `minor`, `patch` ou `prerelease`                                                                                                                                                                                                                                                      | Non    | `patch`                  |
-| PRERELEASE_IDENTIFIER | string | Identifiant de pré-release (utilisé seulement si UPGRADE_TYPE est `prerelease`)                                                                                                                                                                                                                                      | Non    | `rc`                     |
-| HELM_DOCS_VERSION     | string | Version de helm-docs utilisée pour régénérer le README du chart (ex: `v1.14.2`). Épinglée plutôt que `:latest`, pour qu'une nouvelle release amont ne change pas silencieusement ce que le job exécute sur votre chart.                                                                                              | Non    | `v1.14.2`                |
-| AUTOMERGE_PRERELEASE  | bool   | Fusionner automatiquement la PR créée quand `UPGRADE_TYPE` est `prerelease` (nécessite `APP_CLIENT_ID`/`APP_PRIVATE_KEY` ou `GH_PAT`)                                                                                                                                                                                | Non    | `false`                  |
-| AUTOMERGE_RELEASE     | bool   | Fusionner automatiquement la PR créée quand `UPGRADE_TYPE` n'est pas `prerelease` (nécessite `APP_CLIENT_ID`/`APP_PRIVATE_KEY` ou `GH_PAT`)                                                                                                                                                                          | Non    | `false`                  |
-| AUTOMERGE_METHOD      | string | Méthode de fusion de la PR de mise à jour du chart quand l'automerge est activé : `auto` (file d'attente, nécessite *Allow auto-merge*) ou `admin` (fusion immédiate en contournant la protection de branche)                                                                                                        | Non    | `auto`                   |
-| BASE_BRANCH           | string | Branche de base : contre laquelle ouvrir la Pull Request de mise à jour du chart (mode `called`), ou celle ciblée par le `workflow_dispatch` dans `CHART_REPO` (mode `caller`)                                                                                                                                      | Non    | `main`                   |
-| RUNS_ON               | string | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                                                                                                                                                                                               | Non    | `["ubuntu-24.04"]`       |
+| Input                 | Type   | Description                                                                                                                                                                                                             | Requis | Défaut             |
+| --------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------ |
+| RUN_MODE              | string | Mode de livraison du bump : `called` ouvre une Pull Request contre `BASE_BRANCH`, `local` commit directement sur la branche courante (pipelines monorepo - la nouvelle version et le SHA du commit sont exposés en outputs). | Oui    | -                  |
+| CHART_NAME            | string | Nom du chart à mettre à jour (dans CHART_DIR)                                                                                                                                                                          | Oui    | -                  |
+| CHART_DIR             | string | Nom du dossier contenant le chart                                                                                                                                                                                      | Non    | `charts`           |
+| APP_VERSION           | string | Version de l'application à injecter dans `Chart.yaml` (`appVersion`). Laisser vide pour conserver l'`appVersion` actuelle - une release "chart-only" où seule la version du chart évolue.                              | Non    | `""`               |
+| UPGRADE_TYPE          | string | Type de mise à jour : `major`, `minor`, `patch` ou `prerelease`                                                                                                                                                        | Non    | `patch`            |
+| PRERELEASE_IDENTIFIER | string | Identifiant de pré-release (utilisé seulement si UPGRADE_TYPE est `prerelease`)                                                                                                                                        | Non    | `rc`               |
+| HELM_DOCS_VERSION     | string | Version de helm-docs utilisée pour régénérer le README du chart (ex: `v1.14.2`). Épinglée plutôt que `:latest`, pour qu'une nouvelle release amont ne change pas silencieusement ce que le job exécute sur votre chart. | Non    | `v1.14.2`          |
+| AUTOMERGE_PRERELEASE  | bool   | Fusionner automatiquement la PR créée quand `UPGRADE_TYPE` est `prerelease` (mode `called` ; nécessite `APP_CLIENT_ID`/`APP_PRIVATE_KEY` ou `GH_PAT`)                                                                  | Non    | `false`            |
+| AUTOMERGE_RELEASE     | bool   | Fusionner automatiquement la PR créée quand `UPGRADE_TYPE` n'est pas `prerelease` (mode `called` ; nécessite `APP_CLIENT_ID`/`APP_PRIVATE_KEY` ou `GH_PAT`)                                                            | Non    | `false`            |
+| AUTOMERGE_METHOD      | string | Méthode de fusion de la PR quand l'automerge est activé : `auto` (file d'attente, nécessite *Allow auto-merge*) ou `admin` (fusion immédiate en contournant la protection de branche)                                   | Non    | `auto`             |
+| BASE_BRANCH           | string | Branche de base contre laquelle ouvrir la Pull Request de mise à jour du chart (mode `called`)                                                                                                                          | Non    | `main`             |
+| RUNS_ON               | string | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                                                                                                 | Non    | `["ubuntu-24.04"]` |
 
 ## Secrets
 
-| Secret            | Description                                                                                                                                       | Requis |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| APP_CLIENT_ID      | Client ID d'une GitHub App. À fournir avec `APP_PRIVATE_KEY` pour authentifier comme une App — prend le pas sur `GH_PAT`. Requis (avec `APP_PRIVATE_KEY`) ou `GH_PAT` en mode `caller`, et pour l'automerge dans tous les modes. Voir [`authentication.md`](./authentication.md). | Non    |
-| APP_PRIVATE_KEY    | Clé privée (PEM) de la GitHub App. Requis avec `APP_CLIENT_ID`.                                                                                    | Non    |
-| GH_PAT             | Personal Access Token GitHub. Alternative historique à `APP_CLIENT_ID`/`APP_PRIVATE_KEY`, toujours supportée mais l'authentification App est préférée. | Non    |
+| Secret          | Description                                                                                                                                                                                                                                        | Requis |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| APP_CLIENT_ID   | Client ID d'une GitHub App. À fournir avec `APP_PRIVATE_KEY` pour authentifier comme une App — prend le pas sur `GH_PAT`. Requis (avec `APP_PRIVATE_KEY`) ou `GH_PAT` pour l'automerge, et pour que la PR déclenche la CI. Voir [`authentication.md`](./authentication.md). | Non    |
+| APP_PRIVATE_KEY | Clé privée (PEM) de la GitHub App. Requis avec `APP_CLIENT_ID`.                                                                                                                                                                                    | Non    |
+| GH_PAT          | Personal Access Token GitHub. Alternative historique à `APP_CLIENT_ID`/`APP_PRIVATE_KEY`, toujours supportée mais l'authentification App est préférée.                                                                                              | Non    |
 
 ## Outputs
 
@@ -39,22 +39,25 @@ Mise à jour automatique de la version d'un chart Helm et de l'`appVersion` dans
 
 ## Permissions
 
-| Scope         | Accès | Description                                                                      |
-| ------------- | ----- | -------------------------------------------------------------------------------- |
-| pull-requests | write | Créer des PRs pour les mises à jour (mode `called`)                              |
-| contents      | write | Modifier les fichiers Chart.yaml et pousser les commits (modes `called`/`local`) |
+| Scope         | Accès | Description                                                     |
+| ------------- | ----- | --------------------------------------------------------------- |
+| contents      | write | Modifier `Chart.yaml` et pousser les commits (les deux modes)   |
+| pull-requests | write | Créer et fusionner la PR de mise à jour (mode `called`)         |
+
+> **Mode `local`** : les deux scopes doivent être accordés, alors que ce mode n'utilise pas `pull-requests: write`. Le `permissions:` d'un job ne peut pas dépendre d'un input, et garder les deux modes dans un seul job est ce qui évite de dupliquer la centaine de lignes de calcul de version dans un second fichier. Le surplus porte sur votre propre dépôt, en plus du `contents: write` déjà nécessaire pour pousser.
 
 ## Notes
 
-### Modes de fonctionnement (`RUN_MODE`)
+### Modes de livraison (`RUN_MODE`)
 
 | Mode     | Utilisation                                                                                 | Comportement                                                                                                                                           |
 | -------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `caller` | Le dépôt applicatif veut mettre à jour un chart dans un **dépôt chart séparé**              | Déclenche le workflow `WORKFLOW_NAME` dans `CHART_REPO`, sur la branche `BASE_BRANCH`, via `workflow_dispatch`. Nécessite `APP_CLIENT_ID`/`APP_PRIVATE_KEY` ou `GH_PAT` - `GITHUB_TOKEN` ne peut pas dispatcher un workflow dans un autre dépôt. En mode App, le token est réduit au dépôt `CHART_REPO` uniquement (l'App doit y être installée). |
-| `called` | Le dépôt chart reçoit l'appel de `caller` et effectue la mise à jour                        | Met à jour `Chart.yaml` et le README, puis crée une Pull Request contre `BASE_BRANCH`. Supporte l'automerge.                                           |
+| `called` | Le chart est dans ce dépôt et la mise à jour doit passer par une revue (ou un automerge)    | Met à jour `Chart.yaml` et le README, puis crée une Pull Request contre `BASE_BRANCH`. Supporte l'automerge. C'est le mode utilisé par un dépôt chart qui reçoit un dispatch de [`dispatch-helm-chart.yml`](./dispatch-helm-chart.md). |
 | `local`  | Le chart est dans le **même dépôt** que l'application (monorepo), pipeline CI/CD applicatif | Met à jour `Chart.yaml` et le README, commit et pousse directement sur la branche courante (`git push origin HEAD:$GITHUB_REF_NAME`). Aucune PR créée. |
 
-> **Quand utiliser `local` ?** Lorsque le chart Helm est hébergé dans le même dépôt que l'application, généralement enchaîné après [`release-app.yml`](./release-app.md) pour committer le bump de version directement sur la branche qui vient d'être libérée, avant d'appeler [`release-helm.yml`](./release-helm.md) en mode `local` avec l'output `commit-sha`.
+Une valeur de `RUN_MODE` non reconnue fait échouer le job explicitement.
+
+> **Quand utiliser `local` ?** Lorsque le chart Helm est hébergé dans le même dépôt que l'application, généralement enchaîné après [`release-app.yml`](./release-app.md) pour committer le bump de version directement sur la branche qui vient d'être libérée, avant d'appeler [`release-helm-local.yml`](./release-helm-local.md) avec les outputs `chart-version` et `commit-sha`.
 
 ### Autres comportements
 
@@ -73,54 +76,13 @@ Mise à jour automatique de la version d'un chart Helm et de l'`appVersion` dans
   - `auto` (défaut) : met la PR en file d'attente, GitHub la fusionne une fois les checks requis passés. Nécessite *Allow auto-merge* activé sur le dépôt.
   - `admin` : fusionne immédiatement, en contournant la protection de branche et les checks requis.
   - Sans credential (`APP_CLIENT_ID`/`APP_PRIVATE_KEY` ou `GH_PAT`) fourni, le job échoue plutôt que de silencieusement ne rien fusionner. Voir [`authentication.md`](./authentication.md#automerge).
+- **Injection** : `APP_VERSION` et `PRERELEASE_IDENTIFIER` sont écrits dans `Chart.yaml` avec `yq` + `strenv()`, jamais avec `sed` - ils ne peuvent donc être que stockés, jamais interprétés. Ils sont en plus validés en début de job.
 - La documentation du chart est régénérée avec la version de helm-docs fixée par `HELM_DOCS_VERSION`.
-- Régénère automatiquement la documentation du chart avec helm-docs.
-- Utile pour synchroniser les versions d'application avec les versions de chart.
 - Suit le versioning sémantique (semver).
 
 ## Exemples
 
-### Mode caller - Déclencher la mise à jour dans un dépôt chart externe
-
-```yaml
-name: Update Chart
-
-on:
-  push:
-    branches:
-    - main
-
-jobs:
-  release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
-    secrets:
-      APP_CLIENT_ID: ${{ secrets.APP_CLIENT_ID }}
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-
-  update-chart:
-    needs: release
-    if: ${{ needs.release.outputs.release-created }}
-    uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
-    with:
-      RUN_MODE: caller
-      CHART_REPO: my-org/helm-charts
-      CHART_NAME: my-app
-      APP_VERSION: ${{ needs.release.outputs.version }}
-      UPGRADE_TYPE: minor
-      AUTOMERGE_PRERELEASE: true
-      AUTOMERGE_RELEASE: false
-      AUTOMERGE_METHOD: auto
-    secrets:
-      # Requires the App to also be installed on CHART_REPO (my-org/helm-charts).
-      APP_CLIENT_ID: ${{ secrets.APP_CLIENT_ID }}
-      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-```
-
-> En mode `caller`, l'App doit être installée sur le dépôt `CHART_REPO`, pas sur le dépôt qui exécute ce job. Voir [`authentication.md`](./authentication.md#dispatch-cross-repository-update-helm-chart-mode-caller).
-
-> Le dispatch cible toujours `BASE_BRANCH` explicitement (`--ref`) et ne laisse plus `gh workflow run` résoudre lui-même la branche par défaut de `CHART_REPO` : avec un token App réduit à `actions: write`, cette résolution automatique passait par une requête GraphQL `defaultBranchRef` qui échoue (`unable to determine default branch for <repo>: GraphQL: Resource not accessible by integration (repository.defaultBranchRef)`). Si la branche par défaut de `CHART_REPO` n'est pas `main`, `BASE_BRANCH` doit être renseigné explicitement, quel que soit le credential utilisé (App ou `GH_PAT`).
-
-### Mode called - Mise à jour dans le même dépôt via Pull Request
+### Mode called - Mise à jour dans ce dépôt via Pull Request
 
 ```yaml
 name: Update Chart Version
@@ -145,6 +107,9 @@ on:
 jobs:
   update:
     uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
+    permissions:
+      contents: write
+      pull-requests: write
     with:
       RUN_MODE: called
       CHART_NAME: my-app
@@ -161,6 +126,9 @@ jobs:
 jobs:
   update-chart:
     uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
+    permissions:
+      contents: write
+      pull-requests: write
     with:
       RUN_MODE: called
       CHART_NAME: my-app
@@ -176,15 +144,19 @@ jobs:
 jobs:
   update-chart:
     uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
+    permissions:
+      contents: write
+      pull-requests: write
     with:
-      RUN_MODE: caller
-      CHART_REPO: my-org/helm-charts
+      RUN_MODE: called
       CHART_NAME: my-app
       APP_VERSION: 1.2.3-rc.1
       UPGRADE_TYPE: prerelease
       PRERELEASE_IDENTIFIER: rc
+      AUTOMERGE_PRERELEASE: true
     secrets:
-      GH_PAT: ${{ secrets.GH_PAT }}
+      APP_CLIENT_ID: ${{ secrets.APP_CLIENT_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
 
 ### Changement d'identifiant de pré-release (alpha -> beta)
@@ -194,9 +166,11 @@ jobs:
   # Passage de alpha à beta (ex: 1.2.3-alpha.2 -> 1.2.3-beta)
   update-chart:
     uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
+    permissions:
+      contents: write
+      pull-requests: write
     with:
-      RUN_MODE: caller
-      CHART_REPO: my-org/helm-charts
+      RUN_MODE: called
       CHART_NAME: my-app
       APP_VERSION: 1.2.3-beta.1
       UPGRADE_TYPE: prerelease
@@ -220,15 +194,20 @@ on:
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
 
   update-chart:
     needs: release
-    if: ${{ needs.release.outputs.release-created }}
+    if: ${{ needs.release.outputs.release-created == 'true' }}
     uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
     permissions:
       contents: write
+      pull-requests: write
     with:
       RUN_MODE: local
       CHART_NAME: my-app

@@ -4,7 +4,7 @@
 # shellcheck source=ci/tests/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-BLOCK=$(extract_run update-helm-chart.yml called "Commit and push chart bump")
+BLOCK=$(extract_run update-helm-chart.yml update "Commit and push chart bump")
 
 push_env() {
   export CHART_DIR="./charts"

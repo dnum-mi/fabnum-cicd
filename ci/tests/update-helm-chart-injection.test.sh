@@ -9,14 +9,47 @@
 # shellcheck source=ci/tests/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-VALIDATE=$(extract_run update-helm-chart.yml called "Validate inputs")
-UPDATE=$(extract_run update-helm-chart.yml called "update chart version")
+VALIDATE=$(extract_run update-helm-chart.yml update "Validate inputs")
+UPDATE=$(extract_run update-helm-chart.yml update "update chart version")
 
 validate_env() {
   export HAS_PARTIAL_APP_AUTH="false"
+  export RUN_MODE="called"
   export AUTOMERGE_METHOD="auto"
   export APP_VERSION="1.4.0"
   export PRERELEASE_IDENTIFIER="rc"
+}
+
+test_validate_accepts_both_delivery_modes() {
+  local mode
+  for mode in called local; do
+    validate_env
+    export RUN_MODE="$mode"
+    run_block "$VALIDATE"
+    assert_status 0 "RUN_MODE '$mode' is a supported mode"
+  done
+}
+
+test_validate_rejects_an_unknown_run_mode() {
+  validate_env
+  # A typo must not skip every step and report success.
+  export RUN_MODE="colled"
+
+  run_block "$VALIDATE"
+
+  assert_status 1 "an unrecognised RUN_MODE must fail, not silently do nothing"
+  assert_output_contains "RUN_MODE must be 'called' or 'local'"
+}
+
+test_validate_points_caller_mode_at_the_dispatch_workflow() {
+  validate_env
+  # A call aimed at the wrong workflow must say where to go, not just fail.
+  export RUN_MODE="caller"
+
+  run_block "$VALIDATE"
+
+  assert_status 1
+  assert_output_contains "dispatch-helm-chart.yml"
 }
 
 # A chart tree the update block can actually rewrite, plus a `docker` stub so

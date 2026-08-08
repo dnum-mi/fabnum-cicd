@@ -6,7 +6,7 @@
 # shellcheck source=ci/tests/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-WORKFLOWS=(build-docker.yml release-app.yml release-helm.yml scan-trivy.yml update-helm-chart.yml)
+WORKFLOWS=(build-docker.yml dispatch-helm-chart.yml release-app.yml release-helm.yml scan-trivy.yml update-helm-chart.yml)
 
 # Emits one `<workflow>\t<job>\t<keys>\t<key=value pairs>` line per mint, with
 # keys comma-separated and pairs semicolon-separated.

@@ -11,7 +11,7 @@ Partir du haut du tableau et s'arrêter à la première ligne qui correspond.
 | build/test/scan/push vers GHCR uniquement                                        | **`GITHUB_TOKEN`** — automatique  | aucun                                |
 | avez besoin que les PRs de release/chart déclenchent la CI                       | **GitHub App** (ou `GH_PAT`)       | `APP_CLIENT_ID`, `APP_PRIVATE_KEY`  |
 | avez besoin de l'automerge                                                       | **GitHub App** (ou `GH_PAT`)       | `APP_CLIENT_ID`, `APP_PRIVATE_KEY`  |
-| devez déclencher un workflow dans un **autre** dépôt (`update-helm-chart` mode `caller`) | **GitHub App** (ou `GH_PAT`) | `APP_CLIENT_ID`, `APP_PRIVATE_KEY`  |
+| devez déclencher un workflow dans un **autre** dépôt (`dispatch-helm-chart`)     | **GitHub App** (ou `GH_PAT`)       | `APP_CLIENT_ID`, `APP_PRIVATE_KEY`  |
 | avez besoin que les releases de chart déclenchent des triggers `release:` (`release-helm`) | **GitHub App** (ou `GH_PAT`) | `APP_CLIENT_ID`, `APP_PRIVATE_KEY`  |
 | atteignez les limites de l'API GitHub pendant les scans Trivy                    | **GitHub App** (ou `GH_PAT`)       | `APP_CLIENT_ID`, `APP_PRIVATE_KEY`  |
 | atteignez les limites de l'API GitHub **dans un build Docker**                   | **GitHub App** (ou `GH_PAT`)       | les deux ci-dessus, **plus** [`BUILD_SECRET_GITHUB_TOKEN`](#ce-que-build-docker-injecte-réellement) |
@@ -36,7 +36,7 @@ Trois cas ne vont pas jusqu'au bout de cette chaîne, chacun échouant avec un m
 | Cas                                                          | S'arrête à           | Pourquoi                                                        |
 | -------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------ |
 | Automerge (`release-app`, `update-helm-chart`)                | Token App ou `GH_PAT`  | `GITHUB_TOKEN` ne peut pas fusionner une pull request              |
-| Dispatch cross-repository (`update-helm-chart` mode `caller`) | Token App ou `GH_PAT`  | `GITHUB_TOKEN` est scopé à son propre dépôt                        |
+| Dispatch cross-repository (`dispatch-helm-chart`)             | Token App ou `GH_PAT`  | `GITHUB_TOKEN` est scopé à son propre dépôt                        |
 | Build secret de `build-docker`                                | ce que vous demandez   | La valeur est lisible par tout ce que le Dockerfile exécute, donc le credential est nommé explicitement plutôt que de retomber silencieusement sur un autre — voir [Ce que `build-docker` injecte réellement](#ce-que-build-docker-injecte-réellement) |
 
 ## Pourquoi le mode App existe
@@ -80,15 +80,15 @@ Si rien de tout ça ne vous concerne, restez sur ce mode — c'est celui à priv
 | Contents       | Read and write | Commits, tags, releases                   |
 | Pull requests  | Read and write | Ouvrir et fusionner des pull requests     |
 | Issues         | Read and write | Labels release-please                     |
-| Actions        | Read and write | `update-helm-chart` mode `caller` uniquement |
+| Actions        | Read and write | `dispatch-helm-chart` uniquement          |
 
 Chaque workflow mint ensuite son propre token, réduit à ce dont ce job a besoin :
 
 | Workflow                                  | Token réduit à                                | Portée                    |
 | -------------------------------------------- | ------------------------------------------------ | ---------------------------- |
 | `release-app.yml`                            | `contents`, `pull-requests`, `issues` = write   | dépôt courant                |
-| `update-helm-chart.yml` (`called`/`local`)   | `contents`, `pull-requests` = write             | dépôt courant                |
-| `update-helm-chart.yml` (`caller`)           | `actions: write`                                | dépôt du chart uniquement    |
+| `update-helm-chart.yml`                      | `contents`, `pull-requests` = write             | dépôt courant                |
+| `dispatch-helm-chart.yml`                    | `actions: write`                                | dépôt du chart uniquement    |
 | `release-helm.yml`                           | `contents: write`                               | dépôt courant                |
 | `build-docker.yml`                           | `contents`, `metadata` = read                   | dépôt courant                |
 | `scan-trivy.yml`                             | `contents`, `metadata` = read                   | dépôt courant                |
@@ -220,7 +220,7 @@ Accepté par tous les workflows qui prennent un credential, aux mêmes endroits 
 | Contents       | Read           | build secret de `build-docker`, téléchargement de la base Trivy dans `scan-trivy`      |
 | Contents       | Read and write | `release-app`, `release-helm`, `update-helm-chart` — push de commits, tags, releases   |
 | Pull requests  | Read and write | Automerge dans `release-app` et `update-helm-chart`                                    |
-| Actions        | Read and write | `update-helm-chart` mode `caller` uniquement — à accorder sur le dépôt **chart**       |
+| Actions        | Read and write | `dispatch-helm-chart` uniquement — à accorder sur le dépôt **chart**                   |
 
 > **Utiliser un token en lecture seule pour `build-docker`.** Sa valeur est montée dans le build Docker, lisible par tout ce que le Dockerfile exécute. `BUILD_SECRET_GITHUB_TOKEN: pat` accepte un `GH_PAT` mais refuse toujours de retomber sur le `GITHUB_TOKEN` du job — scoper le PAT à `Contents: read` et rien de plus.
 
@@ -269,16 +269,21 @@ L'automerge se déclenche quand `AUTOMERGE_RELEASE` / `AUTOMERGE_PRERELEASE` vau
 
 `auto` est le défaut car l'intérêt de l'authentification App est justement que les PRs de release exécutent enfin leur CI — fusionner en `admin` ignorerait ce résultat. Il n'y a pas de repli automatique entre les deux : si `auto` est sélectionné et que l'auto-merge n'est pas activé sur le dépôt, le job échoue avec un message indiquant quel réglage changer.
 
-## Dispatch cross-repository (`update-helm-chart` mode `caller`)
+## Dispatch cross-repository (`dispatch-helm-chart`)
 
-Le mode `caller` déclenche un workflow dans un dépôt **différent**, donc le token est minté scopé à ce dépôt-là — ce qui veut dire que l'App doit être installée sur le dépôt **chart**, pas sur celui qui exécute ce job.
+[`dispatch-helm-chart.yml`](./dispatch-helm-chart.md) déclenche un workflow dans un dépôt **différent**, donc le token est minté scopé à ce dépôt-là — ce qui veut dire que l'App doit être installée sur le dépôt **chart**, pas sur celui qui exécute ce job.
 
 ```yaml
 trigger-chart-update:
-  uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
+  uses: dnum-mi/fabnum-cicd/.github/workflows/dispatch-helm-chart.yml@v0
+  # Aucun scope sur le GITHUB_TOKEN : le dispatch est entièrement authentifié
+  # par le token de l'App (ou GH_PAT), minté par le job, et rien n'est écrit sur
+  # ce dépôt-ci. C'est précisément pourquoi le dispatch a son propre workflow
+  # réutilisable : GitHub valide au parsing les permissions de *tous* les jobs
+  # du workflow appelé, donc un job qui partagerait le fichier imposerait ses
+  # scopes à cet appel.
   permissions: {}
   with:
-    RUN_MODE: caller
     WORKFLOW_NAME: update-app-version.yml
     CHART_REPO: my-org/helm-charts
     CHART_NAME: my-app
