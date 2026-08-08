@@ -396,12 +396,14 @@ jobs:
     - config-scan
     steps:
     - name: Comment PR
-      uses: thollander/actions-comment-pull-request@24bffb9b452ba05a4f3f77933840a6a841d1b32b  # v3.0.1
+      uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88  # v3.0.5
       if: ${{ inputs.PR_NUMBER != '' }}
       with:
         message: |
           🤖 Hey !
 
           The security scan report for the current pull request is available in ${{ (inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif') && format('[the GitHub Security Tab](https://github.com/{0}/security/code-scanning?query=is%3Aopen+branch%3A{1}+pr%3A{2})', github.repository, github.ref_name, (github.event.pull_request.number || github.event.number)) || format('[the GitHub Workflow Summary](https://github.com/{0}/actions/runs/{1})', github.repository, github.run_id) }}.
-        comment-tag: vuln-scan
-        pr-number: ${{ inputs.PR_NUMBER }}
+        header: vuln-scan
+        # Not `number`: that one is only a fallback the event payload overrides,
+        # and the caller naming a pull request has to be what decides.
+        number_force: ${{ inputs.PR_NUMBER }}
