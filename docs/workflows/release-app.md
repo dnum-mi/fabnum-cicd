@@ -202,7 +202,7 @@ jobs:
 - **Les tags flottants `v<major>`/`v<major>.<minor>` de `TAG_MAJOR_AND_MINOR` ne sont pas concernés** : l'immutabilité ne verrouille que les tags portant une release publiée, et release-please n'en crée que sur `v<major>.<minor>.<patch>`.
 
 > [!WARNING]
-> [`release-helm.yml`](./release-helm.md) avec `CREATE_GITHUB_RELEASE: true` n'est **pas** compatible avec les releases immuables : `chart-releaser` crée la release puis attache le `.tgz` en deux appels séparés, sans option de brouillon ([helm/chart-releaser#591](https://github.com/helm/chart-releaser/issues/591)). Le mode par défaut (`CREATE_GITHUB_RELEASE: false`, publication OCI uniquement) n'est pas concerné.
+> [`release-helm.yml`](./release-helm.md) avec `CREATE_GITHUB_RELEASE: true` n'est **pas** compatible avec les releases immuables : `chart-releaser` crée la release puis attache le `.tgz` en deux appels séparés, sans option de brouillon ([helm/chart-releaser#591](https://github.com/helm/chart-releaser/issues/591)). Publier les charts sur un registre OCI à la place (`PUBLISH_OCI: true`, `CREATE_GITHUB_RELEASE: false`) ne crée aucune release GitHub et n'est pas concerné.
 
 ### Gestion de multiples identifiants de pré-release
 

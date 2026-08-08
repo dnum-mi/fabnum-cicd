@@ -33,8 +33,8 @@ Séparer en deux fichiers signifie que chacun ne déclare que les permissions do
 
 | Secret            | Description                                                                       | Requis |
 | ----------------- | ---------------------------------------------------------------------------------- | ------ |
-| REGISTRY_USERNAME | Nom d'utilisateur pour l'authentification au registre OCI (utilise `github.actor` automatiquement pour `ghcr.io`) | Non    |
-| REGISTRY_PASSWORD | Mot de passe pour l'authentification au registre OCI (utilise `GITHUB_TOKEN` automatiquement pour `ghcr.io`)      | Non    |
+| REGISTRY_USERNAME | Nom d'utilisateur pour l'authentification au registre OCI (utilise `github.actor` automatiquement pour `ghcr.io`). **Requis** quand `REGISTRY` n'est pas `ghcr.io`. | Non    |
+| REGISTRY_PASSWORD | Mot de passe pour l'authentification au registre OCI (utilise `GITHUB_TOKEN` automatiquement pour `ghcr.io`). **Requis** avec `REGISTRY_USERNAME` dans les mêmes conditions. | Non    |
 
 Pas de credentials GitHub App/PAT - ce workflow ne crée jamais de tag git, de release ni de commit, donc rien n'a besoin d'un credential au-delà de l'authentification au registre.
 
@@ -49,6 +49,9 @@ Pas de credentials GitHub App/PAT - ce workflow ne crée jamais de tag git, de r
 
 - N'inspecte pas l'historique git : package exactement ce qui est pointé, à la version présente dans `Chart.yaml` sauf si `CHART_VERSION`/`APP_VERSION` la remplacent. Cela rend les releases de charts déterministes dans un monorepo, sans nécessiter de commit sur `Chart.yaml`.
 - **Gardez les cycles de vie du chart et de l'application séparés** : le chart a son propre flux de versions - il est bumpé quand l'application est publiée (avec un nouvel `appVersion`), mais peut aussi être publié seul (correctif de values/template, sans changement applicatif). Le cerveau de versioning pour cela est [`update-helm-chart.yml`](./update-helm-chart.md) en mode `local` : il calcule la prochaine version du chart (compatible release-please, gère les prereleases), commit le bump sur la branche, et expose `commit-sha` en output - à fournir à ce workflow via `CHECKOUT_REF` pour que le package publié corresponde exactement à l'état commité. Les inputs `CHART_VERSION`/`APP_VERSION` restent une échappatoire pour les configurations sans commit ; préférez le `Chart.yaml` commité comme source de vérité.
+- **Pas de switch `PUBLISH_OCI`, contrairement à [`release-helm.yml`](./release-helm.md)** : le registre OCI est l'unique canal de distribution de ce workflow. Dans un monorepo, les GitHub Releases et les tags git appartiennent à l'*application*, le chart ne peut donc pas se les approprier pour ses propres packages - ce qui exclut le canal tgz-sur-release + `index.yaml` que chart-releaser propose dans un dépôt de charts dédié. Un input désactivant le push OCI ne laisserait plus rien à publier à ce workflow ; il n'existe donc pas.
+- **Les credentials de registre sont validés en amont** : avec un `REGISTRY` autre que `ghcr.io`, l'absence de `REGISTRY_USERNAME`/`REGISTRY_PASSWORD` fait échouer le run avec un message explicite, plutôt que d'atteindre `helm registry login` avec un mot de passe vide et d'échouer sur une erreur d'authentification opaque.
+- **Les credentials sont effacés ensuite** : une étape `helm registry logout` s'exécute dès lors que le login a réussi, y compris après un push en échec. Les runners hébergés étant éphémères, c'est sans effet chez eux, mais `RUNS_ON` supporte aussi les runners self-hosted, où la config de registre de Helm survivrait au job.
 - Les charts peuvent être récupérés via : `helm pull oci://ghcr.io/<owner>/<repo>/<chart-name> --version <version>`
 
 ## Exemples
