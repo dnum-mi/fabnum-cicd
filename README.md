@@ -10,6 +10,8 @@ Référencez un workflow avec `uses` dans votre fichier de workflow :
 jobs:
   lint-commits:
     uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
+    permissions:
+      contents: read
 ```
 
 > [!TIP]
@@ -35,7 +37,8 @@ jobs:
 | [release-app.yml](./.github/workflows/release-app.yml)             | Gestion automatisée des releases avec `release-please` (tags, changelogs, pré-releases)                   | [docs](./docs/workflows/release-app.md)       |
 | [release-helm.yml](./.github/workflows/release-helm.yml)           | Publication de charts Helm sur registres OCI via `chart-releaser` (dépôt de charts dédié)                 | [docs](./docs/workflows/release-helm.md)      |
 | [release-helm-local.yml](./.github/workflows/release-helm-local.yml) | Publication d'un chart Helm hébergé dans un monorepo applicatif, sans `chart-releaser`                  | [docs](./docs/workflows/release-helm-local.md) |
-| [update-helm-chart.yml](./.github/workflows/update-helm-chart.yml) | Mise à jour automatique des versions de charts Helm                                                       | [docs](./docs/workflows/update-helm-chart.md) |
+| [update-helm-chart.yml](./.github/workflows/update-helm-chart.yml) | Mise à jour de la version d'un chart Helm hébergé dans le dépôt appelant                                  | [docs](./docs/workflows/update-helm-chart.md) |
+| [dispatch-helm-chart.yml](./.github/workflows/dispatch-helm-chart.yml) | Déclenchement de la mise à jour d'un chart Helm hébergé dans un dépôt séparé                          | [docs](./docs/workflows/dispatch-helm-chart.md) |
 
 ### Sécurité & Qualité
 
@@ -56,8 +59,9 @@ jobs:
 
 | Workflow                                               | Description                                          | Docs                                    |
 | ------------------------------------------------------ | ---------------------------------------------------- | --------------------------------------- |
-| [clean-cache.yml](./.github/workflows/clean-cache.yml) | Nettoyage du cache GitHub Actions et des images GHCR | [docs](./docs/workflows/clean-cache.md) |
-| [sync-cpin.yml](./.github/workflows/sync-cpin.yml)     | Synchronisation vers l'instance GitLab CPiN          | [docs](./docs/workflows/sync-cpin.md)   |
+| [clean-cache.yml](./.github/workflows/clean-cache.yml)   | Nettoyage du cache GitHub Actions                    | [docs](./docs/workflows/clean-cache.md)  |
+| [clean-images.yml](./.github/workflows/clean-images.yml) | Nettoyage des images de conteneurs sur GHCR          | [docs](./docs/workflows/clean-images.md) |
+| [sync-cpin.yml](./.github/workflows/sync-cpin.yml)       | Synchronisation vers l'instance GitLab CPiN          | [docs](./docs/workflows/sync-cpin.md)    |
 
 ### Secrets requis
 
@@ -65,7 +69,7 @@ Certains workflows nécessitent des secrets à configurer dans les **Settings > 
 
 | Secret              | Workflows                      | Description                                                 |
 | ------------------- | ------------------------------ | ----------------------------------------------------------- |
-| `GH_PAT`            | release-app, update-helm-chart | Personal Access Token GitHub (pour automerge et cross-repo) |
+| `GH_PAT`            | release-app, update-helm-chart, dispatch-helm-chart | Personal Access Token GitHub (pour automerge et cross-repo) |
 | `SONAR_TOKEN`       | scan-sonarqube                 | Token d'authentification SonarQube                          |
 | `SONAR_PROJECT_KEY` | scan-sonarqube                 | Clé du projet SonarQube                                     |
 | `GIT_MIRROR_TOKEN`  | sync-cpin                      | Token GitLab pour la synchronisation CPiN                   |
