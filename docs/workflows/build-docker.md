@@ -209,6 +209,9 @@ Si seules *certaines* images nécessitent une attestation, ce pattern signifie a
 jobs:
   build:
     uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    permissions:
+      contents: read
+      packages: write
     with:
       IMAGE_NAME: ghcr.io/my-org/my-image
       IMAGE_TAG: 1.2.3
@@ -226,6 +229,9 @@ jobs:
 jobs:
   build:
     uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    permissions:
+      contents: read
+      packages: write
     with:
       IMAGE_NAME: ghcr.io/my-org/my-app
       IMAGE_TAG: ${{ needs.release.outputs.version }}
@@ -245,6 +251,9 @@ Les exemples d'attestation et de signature (provenance, SBOM, signature cosign, 
 jobs:
   build:
     uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    permissions:
+      contents: read
+      packages: write
     with:
       IMAGE_NAME: ghcr.io/my-org/my-app
       IMAGE_TAG: 1.0.0
@@ -262,6 +271,9 @@ jobs:
 jobs:
   build:
     uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    permissions:
+      contents: read
+      packages: write
     with:
       IMAGE_NAME: docker.io/my-org/my-image
       IMAGE_TAG: 1.0.0
@@ -282,6 +294,9 @@ jobs:
 jobs:
   build:
     uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    permissions:
+      contents: read
+      packages: write
     with:
       IMAGE_NAME: ghcr.io/my-org/my-app
       IMAGE_TAG: 1.0.0

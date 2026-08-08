@@ -37,6 +37,8 @@ on:
 jobs:
   test-helm:
     uses: dnum-mi/fabnum-cicd/.github/workflows/test-helm.yml@v0
+    permissions:
+      contents: read
     with:
       CT_CONF_PATH: ci/configs/ct.yaml
 ```
@@ -54,12 +56,16 @@ on:
 jobs:
   lint:
     uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@v0
+    permissions:
+      contents: read
     with:
       CT_CONF_PATH: ci/configs/ct.yaml
 
   test:
     needs: lint
     uses: dnum-mi/fabnum-cicd/.github/workflows/test-helm.yml@v0
+    permissions:
+      contents: read
     with:
       CT_CONF_PATH: ci/configs/ct.yaml
 ```

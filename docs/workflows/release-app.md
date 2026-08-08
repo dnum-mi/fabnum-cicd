@@ -181,16 +181,26 @@ Si vous souhaitez utiliser plusieurs identifiants (ex: `alpha`, `beta`, `rc`) po
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     with:
       ENABLE_PRERELEASE: true
       PRERELEASE_BRANCH: dev
       PRERELEASE_CONFIG_FILE: release-please-config-alpha.json
       PRERELEASE_MANIFEST_FILE: .release-please-manifest-alpha.json
+```
 
+```yaml
 # .github/workflows/release-staging.yml (branche staging)
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     with:
       ENABLE_PRERELEASE: true
       PRERELEASE_BRANCH: staging
@@ -217,6 +227,10 @@ Le workflow typique de progression des versions est :
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     with:
       ENABLE_PRERELEASE: true
       TAG_MAJOR_AND_MINOR: true
@@ -235,6 +249,10 @@ Nécessaire pour que la PR de release déclenche ses propres workflows `pull_req
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     with:
       TAG_MAJOR_AND_MINOR: true
       AUTOMERGE_RELEASE: true
@@ -250,6 +268,10 @@ jobs:
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     with:
       ENABLE_PRERELEASE: false
       TAG_MAJOR_AND_MINOR: true
@@ -275,6 +297,10 @@ jobs:
   release:
     needs: build
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     with:
       RELEASE_ARTIFACT_NAMES: my-binaries
       RELEASE_ASSET_PATHS: dist/app-linux-amd64,dist/app-darwin-amd64
@@ -286,6 +312,10 @@ jobs:
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     with:
       ENABLE_PRERELEASE: true
       RELEASE_CONFIG_FILE: custom-release-config.json

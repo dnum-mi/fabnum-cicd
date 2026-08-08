@@ -52,6 +52,10 @@ on:
 jobs:
   scan-sonarqube:
     uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@v0
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     with:
       SONAR_URL: https://sonarqube.example.com
       SOURCES_PATH: apps,packages
@@ -79,6 +83,10 @@ jobs:
   scan-sonarqube:
     needs: test
     uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@v0
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     with:
       SONAR_URL: https://sonarqube.example.com
       SOURCES_PATH: src
@@ -96,6 +104,10 @@ jobs:
 jobs:
   scan-sonarqube:
     uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@v0
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     with:
       SONAR_URL: https://sonarqube.example.com
       SOURCES_PATH: src
@@ -111,6 +123,10 @@ jobs:
 jobs:
   scan-sonarqube:
     uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@v0
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     with:
       SONAR_URL: https://sonarqube.example.com
       SOURCES_PATH: src

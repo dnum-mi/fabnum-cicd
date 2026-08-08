@@ -40,6 +40,8 @@ Valide que les messages de commit respectent la spécification [Conventional Com
 jobs:
   lint-commits:
     uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
+    permissions:
+      contents: read
 ```
 
 ### Exiger un scope
@@ -48,6 +50,8 @@ jobs:
 jobs:
   lint-commits:
     uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
+    permissions:
+      contents: read
     with:
       REQUIRE_SCOPE: true
 ```
@@ -58,6 +62,8 @@ jobs:
 jobs:
   lint-commits:
     uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
+    permissions:
+      contents: read
     with:
       ALLOWED_TYPES: "feat,fix,docs,chore"
       MAX_SUBJECT_LENGTH: 72
@@ -69,6 +75,8 @@ jobs:
 jobs:
   lint-commits:
     uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
+    permissions:
+      contents: read
     with:
       CONFIG_FILE: ".commitlintrc.js"
 ```
@@ -79,6 +87,8 @@ jobs:
 jobs:
   lint-commits:
     uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
+    permissions:
+      contents: read
     with:
       FAIL_ON_ERROR: false
 ```
@@ -95,6 +105,8 @@ on:
 jobs:
   lint-commits:
     uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
+    permissions:
+      contents: read
     with:
       COMMITS_SOURCE: push
 ```

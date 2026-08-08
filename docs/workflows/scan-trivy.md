@@ -75,6 +75,11 @@ on:
 jobs:
   scan:
     uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@v0
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: write
+      security-events: write
     with:
       IMAGE: ghcr.io/my-org/my-app:latest
       FORMAT: table
@@ -86,6 +91,11 @@ jobs:
 jobs:
   scan:
     uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@v0
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: write
+      security-events: write
     with:
       IMAGE: ghcr.io/my-org/my-app:${{ github.sha }}
       FORMAT: sarif
@@ -99,6 +109,11 @@ jobs:
 jobs:
   scan:
     uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@v0
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: write
+      security-events: write
     with:
       PATH: ./
       FORMAT: table
@@ -110,6 +125,11 @@ jobs:
 jobs:
   scan:
     uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@v0
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: write
+      security-events: write
     with:
       IMAGE: docker.io/my-org/my-app:latest
       FORMAT: json
@@ -143,6 +163,7 @@ jobs:
       contents: read
       security-events: write
       packages: read
+      pull-requests: write
     with:
       IMAGE_ARTIFACT: ${{ needs.build.outputs.artifact-prefix }}-amd64
       FORMAT: table

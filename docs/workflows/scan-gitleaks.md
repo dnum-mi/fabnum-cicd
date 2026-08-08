@@ -82,6 +82,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      pull-requests: write
     with:
       FAIL_ON_LEAKS: false
 ```
