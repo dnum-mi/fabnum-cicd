@@ -23,6 +23,7 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 - [**Release Helm**](./release-helm.md) - Publication de charts Helm sur registres OCI via chart-releaser (dépôt de charts dédié)
 - [**Release Helm (local)**](./release-helm-local.md) - Publication d'un chart Helm hébergé dans un monorepo applicatif
 - [**Update Helm Chart**](./update-helm-chart.md) - Mise à jour automatique des versions de charts Helm
+- [**Dispatch Helm Chart**](./dispatch-helm-chart.md) - Déclenchement de la mise à jour d'un chart hébergé dans un dépôt séparé
 
 ### Sécurité & Qualité
 
@@ -37,7 +38,8 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 
 ### Utilitaires
 
-- [**Clean Cache**](./clean-cache.md) - Nettoyage du cache GitHub Actions et des images GHCR
+- [**Clean Cache**](./clean-cache.md) - Nettoyage du cache GitHub Actions
+- [**Clean Images**](./clean-images.md) - Nettoyage des images de conteneurs sur GHCR
 - [**Sync CPiN**](./sync-cpin.md) - Synchronisation avec l'instance GitLab CPiN
 
 ## Utilisation rapide
@@ -57,10 +59,15 @@ jobs:
   # Exemple : Lint des commits
   lint-commits:
     uses: dnum-mi/fabnum-cicd/.github/workflows/lint-commits.yml@v0
+    permissions:
+      contents: read
 
   # Exemple : Build Docker
   build:
     uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    permissions:
+      contents: read
+      packages: write
     with:
       IMAGE_NAME: ghcr.io/my-org/my-app
       IMAGE_TAG: ${{ github.sha }}
@@ -71,6 +78,11 @@ jobs:
   security:
     needs: build
     uses: dnum-mi/fabnum-cicd/.github/workflows/scan-trivy.yml@v0
+    permissions:
+      contents: read
+      packages: read
+      pull-requests: write
+      security-events: write
     with:
       IMAGE: ghcr.io/my-org/my-app:${{ github.sha }}
       FORMAT: sarif
@@ -377,19 +389,16 @@ jobs:
     secrets: inherit
 
   bump-chart:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
+    uses: dnum-mi/fabnum-cicd/.github/workflows/dispatch-helm-chart.yml@v0
     needs:
     - expose-vars
     - release
     - build-docker
     if: ${{ needs.release.outputs.release-created == 'true' }}
-    permissions:
-      issues: write
-      pull-requests: write
-      contents: write
-      actions: write
+    # Le dispatch s'authentifie auprès du dépôt chart avec le credential fourni
+    # et n'écrit rien ici.
+    permissions: {}
     with:
-      RUN_MODE: caller
       WORKFLOW_NAME: update-chart.yml
       CHART_REPO: my-org/helm-charts
       CHART_NAME: my-app
@@ -434,6 +443,8 @@ jobs:
   lint-helm:
     if: github.event_name == 'pull_request'
     uses: dnum-mi/fabnum-cicd/.github/workflows/lint-helm.yml@v0
+    permissions:
+      contents: read
     with:
       CT_CONF_PATH: ci/configs/ct.yaml
 
@@ -441,12 +452,17 @@ jobs:
     if: github.event_name == 'pull_request'
     needs: lint-helm
     uses: dnum-mi/fabnum-cicd/.github/workflows/test-helm.yml@v0
+    permissions:
+      contents: read
     with:
       CT_CONF_PATH: ci/configs/ct.yaml
 
   release-helm:
     if: github.event_name == 'push'
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm.yml@v0
+    permissions:
+      contents: write
+      packages: write
     with:
       CHARTS_DIR: ./charts
 ```
@@ -459,9 +475,9 @@ Certains workflows nécessitent des secrets GitHub. Voici un résumé :
 
 | Secret              | Workflows concernés                                                    | Description                                                                  |
 | ------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `APP_CLIENT_ID`     | release-app, release-helm, update-helm-chart, build-docker, scan-trivy    | Client ID d'une GitHub App - voir [`authentication.md`](./authentication.md)    |
-| `APP_PRIVATE_KEY`   | release-app, release-helm, update-helm-chart, build-docker, scan-trivy    | Clé privée (PEM) de la GitHub App                                               |
-| `GH_PAT`            | release-app, release-helm, update-helm-chart, build-docker, scan-trivy    | GitHub Personal Access Token (alternative à la GitHub App)                     |
+| `APP_CLIENT_ID`     | release-app, release-helm, update-helm-chart, dispatch-helm-chart, build-docker, scan-trivy    | Client ID d'une GitHub App - voir [`authentication.md`](./authentication.md)    |
+| `APP_PRIVATE_KEY`   | release-app, release-helm, update-helm-chart, dispatch-helm-chart, build-docker, scan-trivy    | Clé privée (PEM) de la GitHub App                                               |
+| `GH_PAT`            | release-app, release-helm, update-helm-chart, dispatch-helm-chart, build-docker, scan-trivy    | GitHub Personal Access Token (alternative à la GitHub App)                     |
 | `SONAR_TOKEN`       | scan-sonarqube                                                              | Token d'authentification SonarQube                                              |
 | `SONAR_PROJECT_KEY` | scan-sonarqube                                                              | Clé du projet SonarQube                                                          |
 | `GIT_MIRROR_TOKEN`  | sync-cpin                                                                   | Token GitLab pour synchronisation                                               |
