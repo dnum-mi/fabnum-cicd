@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.12.0...v0.13.0) (2026-08-08)
+
+
+### Features
+
+* **release-helm:** make the OCI push an opt-in distribution channel ([63ff751](https://github.com/dnum-mi/fabnum-cicd/commit/63ff751aab511c2451e38c7c0e4785bc9115a32b))
+
 ## [0.12.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.11.5...v0.12.0) (2026-08-08)
 
 
