@@ -46,6 +46,11 @@ Pour un **monorepo** - un chart hébergé aux côtés du code applicatif, où l'
 - Configure Git avec le bot GitHub Actions pour les commits automatiques.
 - **`CREATE_GITHUB_RELEASE: true`** : fournir `APP_CLIENT_ID`/`APP_PRIVATE_KEY` (ou `GH_PAT`) permet aux releases GitHub créées de déclencher des triggers `release:`, ce que `GITHUB_TOKEN` ne peut jamais faire. Le push sur `PAGES_BRANCH` utilise le même token, donc le même credential peut aussi déclencher des workflows sur cette branche - à vérifier avant d'activer. Voir [`authentication.md`](./authentication.md).
 
+> [!WARNING]
+> **`CREATE_GITHUB_RELEASE: true` n'est pas compatible avec les [*immutable releases*](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases).** `chart-releaser` crée la release GitHub puis attache le `.tgz` du chart en deux appels API distincts, sans possibilité de passer par un brouillon ; sur un dépôt en releases immuables le second appel est rejeté et la release reste incomplète. Le support côté amont est suivi dans [helm/chart-releaser#591](https://github.com/helm/chart-releaser/issues/591).
+>
+> Le mode par défaut (`CREATE_GITHUB_RELEASE: false`, packaging + publication OCI uniquement) ne crée aucune release GitHub et n'est donc pas concerné.
+
 ## Exemples
 
 ### Exemple simple (GitHub Container Registry, mode chart-releaser)

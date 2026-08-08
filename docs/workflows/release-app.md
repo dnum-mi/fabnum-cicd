@@ -10,6 +10,7 @@ Gestion automatisée des releases d'application avec [release-please](https://gi
 | TAG_MAJOR_AND_MINOR      | boolean | Taguer les versions majeure et mineure                                                                                                                                    | Non    | `false`                            |
 | RELEASE_ASSET_PATHS      | string  | Liste de chemins locaux séparés par des virgules à uploader comme assets de release (ex: `dist/app-linux-amd64,dist/app-darwin-amd64`)                                    | Non    |                                    |
 | RELEASE_ARTIFACT_NAMES   | string  | Nom ou pattern glob d'artefacts (uploadés par des jobs précédents via `actions/upload-artifact`) à télécharger et attacher à la release (ex: `my-binaries` ou `my-app-*`) | Non    |                                    |
+| PUBLISH_DRAFT_RELEASE    | boolean | Publier la release GitHub une fois les assets attachés. À activer avec `"draft": true` et `"force-tag-creation": true` dans la config release-please pour rester compatible avec les *immutable releases* (voir [Compatibilité avec les releases immuables](#compatibilité-avec-les-releases-immuables))                                    | Non    | `false`                            |
 | AUTOMERGE_PRERELEASE     | boolean | Fusionner automatiquement la PR de pré-release                                                                                                                            | Non    | `false`                            |
 | AUTOMERGE_RELEASE        | boolean | Fusionner automatiquement la PR de release                                                                                                                                | Non    | `false`                            |
 | AUTOMERGE_METHOD         | string  | Méthode de fusion de la PR de release quand l'automerge est activé : `auto` (met en file d'attente, GitHub fusionne une fois les checks requis passés, nécessite *Allow auto-merge*) ou `admin` (fusionne immédiatement en contournant la protection de branche) | Non    | `auto`                              |
@@ -58,6 +59,7 @@ Gestion automatisée des releases d'application avec [release-please](https://gi
 - Si `TAG_MAJOR_AND_MINOR: true`, crée les tags `v<major>` et `v<major>.<minor>` après la création d'une release.
 - Si `RELEASE_ARTIFACT_NAMES` est défini, les artefacts correspondant au pattern (uploadés par des jobs précédents via `actions/upload-artifact`) sont automatiquement téléchargés et attachés à la release GitHub.
 - Si `RELEASE_ASSET_PATHS` est défini, les fichiers des chemins listés (séparés par des virgules) sont uploadés sur la release GitHub via `gh release upload` après sa création.
+- Si `PUBLISH_DRAFT_RELEASE: true`, la release est publiée après l'upload des assets. Sans effet si la release n'est pas un brouillon, ce qui rend l'étape rejouable. Voir [Compatibilité avec les releases immuables](#compatibilité-avec-les-releases-immuables).
 - Si `AUTOMERGE_*` est activé, un credential (App ou `GH_PAT`) est requis - sans credential, le job échoue plutôt que de silencieusement ne rien fusionner. `AUTOMERGE_METHOD` choisit `auto` (file d'attente, nécessite *Allow auto-merge*) ou `admin` (fusion immédiate en contournant la protection de branche). Voir [`authentication.md`](./authentication.md#automerge).
 - La PR de release est recherchée via l'API (`gh pr list`) plutôt que par nom de branche, ce qui fonctionne aussi pour les monorepos où release-please ouvre une PR par composant. `RELEASE_PR_AUTHOR` permet de restreindre cette recherche à un auteur précis ; laissé vide, l'auteur est dérivé automatiquement du credential utilisé (App, `github-actions[bot]`, ou désactivé sous PAT).
 - Fournir `APP_CLIENT_ID`/`APP_PRIVATE_KEY` (ou `GH_PAT`) permet à la PR de release de déclencher les workflows `pull_request`, ce que `GITHUB_TOKEN` ne peut jamais faire. Voir [`authentication.md`](./authentication.md).
@@ -159,6 +161,48 @@ Le workflow nécessite des fichiers de configuration release-please pour fonctio
 | `prerelease-type`          | Identifiant de pré-release                                        | `rc`, `alpha`, `beta`, ou vide pour releases stables              |
 | `extra-files`              | Fichiers supplémentaires à mettre à jour avec la version          | Tableau de patterns (ex: `["docker/version.txt"]`)                |
 | `changelog-sections`       | Sections du changelog selon les types de commits conventionnels   | Tableau d'objets `{type, section, hidden}`                        |
+
+### Compatibilité avec les releases immuables
+
+Les [*immutable releases*](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases) gèlent une release GitHub dès sa publication : plus aucun asset ne peut être ajouté, modifié ou supprimé, et le tag associé ne peut plus être déplacé ni supprimé. Le seul ordonnancement supporté est donc **créer en brouillon → attacher les assets → publier**.
+
+Ce n'est un sujet que si vous attachez des assets, via `RELEASE_ASSET_PATHS` ou `RELEASE_ARTIFACT_NAMES`. Sans assets, le workflow est déjà compatible et il n'y a rien à faire.
+
+Trois changements sont nécessaires, dont deux dans votre propre configuration release-please :
+
+```jsonc
+{
+  "packages": {
+    ".": {
+      // La release est créée en brouillon : les assets peuvent y être attachés.
+      "draft": true,
+      // GitHub ne crée pas le tag git tant que le brouillon n'est pas publié.
+      // Sans ceci, release-please ne retrouve pas la version précédente.
+      "force-tag-creation": true
+    }
+  }
+}
+```
+
+```yaml
+jobs:
+  release:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
+    with:
+      RELEASE_ARTIFACT_NAMES: my-binaries
+      PUBLISH_DRAFT_RELEASE: true
+```
+
+À noter :
+
+- **`PUBLISH_DRAFT_RELEASE` est un opt-in explicite.** L'option `draft` de release-please sert aussi à publier manuellement une release après relecture ; le workflow ne publie donc jamais un brouillon sans qu'on le lui demande.
+- **L'étape est idempotente.** Une release déjà publiée est laissée telle quelle, l'étape est rejouable sans risque.
+- **Les évènements `release:` arrivent plus tard.** Un brouillon ne déclenche rien ; `release: published`/`released` part de l'étape de publication, une fois les assets attachés. Vérifiez les triggers de vos workflows consommateurs.
+- **Un échec en cours de route laisse un brouillon**, qu'il suffit de publier (`gh release edit <tag> --draft=false`) ou de relancer. C'est précisément ce que cette configuration évite : sans elle, sur un dépôt en releases immuables, un upload d'asset échoué laisse une release publiée incomplète et **irrécupérable**, le nom du tag étant brûlé définitivement même après suppression de la release.
+- **Les tags flottants `v<major>`/`v<major>.<minor>` de `TAG_MAJOR_AND_MINOR` ne sont pas concernés** : l'immutabilité ne verrouille que les tags portant une release publiée, et release-please n'en crée que sur `v<major>.<minor>.<patch>`.
+
+> [!WARNING]
+> [`release-helm.yml`](./release-helm.md) avec `CREATE_GITHUB_RELEASE: true` n'est **pas** compatible avec les releases immuables : `chart-releaser` crée la release puis attache le `.tgz` en deux appels séparés, sans option de brouillon ([helm/chart-releaser#591](https://github.com/helm/chart-releaser/issues/591)). Le mode par défaut (`CREATE_GITHUB_RELEASE: false`, publication OCI uniquement) n'est pas concerné.
 
 ### Gestion de multiples identifiants de pré-release
 
