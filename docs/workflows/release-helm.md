@@ -17,6 +17,8 @@ Pour un **monorepo** - un chart hébergé aux côtés du code applicatif, où l'
 | PUBLISH_OCI           | boolean | Pousser les charts packagés sur le registre OCI (voir `REGISTRY`/`REPOSITORY`). Indépendant de `CREATE_GITHUB_RELEASE` ; au moins un des deux doit être activé.                                                                                                                                                       | Non    | `false`             |
 | CREATE_GITHUB_RELEASE | boolean | Créer en plus une GitHub Release et un tag git pour chaque chart modifié, et mettre à jour `index.yaml` sur la branche `PAGES_BRANCH`. Nécessite que cette branche existe déjà.                                                                                                                                       | Non    | `false`             |
 | PAGES_BRANCH          | string  | Branche recevant `index.yaml` et les artefacts de release quand `CREATE_GITHUB_RELEASE` est `true`. Doit déjà exister.                                                                                                                                                                                                  | Non    | `gh-pages`          |
+| SIGN_CHART            | boolean | Signer chaque chart packagé avec GPG, produisant le fichier `.prov` que `helm verify` contrôle. Nécessite `CREATE_GITHUB_RELEASE`, `SIGNING_KEY_ID` et les secrets GPG - voir [Signature](#signature).                                                                                            | Non    | `false`             |
+| SIGNING_KEY_ID        | string  | Identité de la clé GPG de signature, telle qu'elle apparaît dans le trousseau (ex: `Jane Doe <jane@example.com>`). Requis avec `SIGN_CHART`.                                                                                                                                                       | Non    | -                   |
 | HELM_REPOS            | string  | Dépôts Helm à ajouter (format: `name=url`, séparés par des virgules)                                                                                                                                                                                                                                                     | Non    | -                   |
 | REGISTRY              | string  | Registre OCI pour publier les charts (ex: `ghcr.io`, `registry.gitlab.com`)                                                                                                                                                                                                                                                                                                              | Non    | `ghcr.io`           |
 | REPOSITORY            | string  | Chemin du repository dans le registre OCI (défaut: `github.repository`)                                                                                                                                                                                                                                                                                                                  | Non    | `github.repository` |
@@ -31,6 +33,8 @@ Pour un **monorepo** - un chart hébergé aux côtés du code applicatif, où l'
 | APP_CLIENT_ID     | Client ID d'une GitHub App. À fournir avec `APP_PRIVATE_KEY` pour que chart-releaser authentifie comme une App - contrairement à `GITHUB_TOKEN`, les releases créées peuvent alors déclencher des triggers `release:`. Voir [`authentication.md`](./authentication.md). | Non    |
 | APP_PRIVATE_KEY   | Clé privée (PEM) de la GitHub App. Requis avec `APP_CLIENT_ID`.                                                        | Non    |
 | GH_PAT            | Personal Access Token, utilisé pour le même usage que les credentials App ci-dessus et résolu après eux. Comme un token App, il peut déclencher des workflows - la même précaution s'applique au push sur `PAGES_BRANCH`. | Non    |
+| GPG_PRIVATE_KEY   | Clé privée GPG au format ASCII-armored, utilisée pour signer les packages de charts. Requis avec `SIGN_CHART`. | Non    |
+| GPG_PASSPHRASE    | Passphrase de `GPG_PRIVATE_KEY`. Ne passer une valeur vide que si la clé n'en a réellement aucune. | Non    |
 
 ## Permissions
 
@@ -57,6 +61,43 @@ Le workflow package les charts une fois et peut les diffuser par deux canaux, ac
 Activer les deux est possible et publie les mêmes packages par les deux chemins.
 
 **Les deux laissés à `false` font échouer le run.** Le workflow packagerait sinon les charts, ne les publierait nulle part, et signalerait malgré tout un succès - un run vert n'ayant rien livré est plus difficile à repérer qu'un run rouge, donc l'étape de validation l'arrête d'emblée avec un message nommant les deux inputs.
+
+## Outputs
+
+| Output           | Description                                                                                                                                                                    |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| published-charts | Tableau JSON des charts poussés sur le registre OCI - `{name, version, repository, digest}` par entrée. Tableau vide si `PUBLISH_OCI` est `false` ou si aucun chart n'a changé. |
+
+`repository` et `digest` sont gardés séparés pour être transmis tels quels à [`attest-helm.yml`](./attest-helm.md), qui les passe comme sujet à cosign et comme couple `subject-name`/`subject-digest` attendu par `actions/attest-build-provenance` - la même forme que `attest-docker.yml` consomme pour les images. Le nom et la version sont relus depuis la sortie de `helm push` plutôt qu'extraits du nom de fichier du package, qui ne peut pas être découpé de façon fiable : une version de prerelease contient elle-même des tirets (`my-chart-1.2.3-rc.1.tgz`).
+
+## Signature
+
+Les deux canaux sont signés par des mécanismes différents, complémentaires plutôt qu'alternatifs :
+
+| | `SIGN_CHART: true` (ici) | [`attest-helm.yml`](./attest-helm.md) |
+| --- | --- | --- |
+| Produit | un fichier de provenance GPG `.prov` | signatures cosign et/ou provenance SLSA dans le registre |
+| Couvre | le canal GitHub Release / `helm repo add` | le canal OCI |
+| Vérifié avec | `helm verify`, `helm install --verify` | `cosign verify` / `gh attestation verify` |
+| Gestion de clé | votre clé GPG, en secrets du dépôt | keyless - aucune clé à détenir |
+
+**`SIGN_CHART` nécessite `CREATE_GITHUB_RELEASE`.** Le fichier `.prov` est publié comme asset de release ; `helm push` ne l'emporte pas vers un registre OCI, donc sur le seul canal OCI il serait généré puis silencieusement jeté. Le workflow échoue plutôt que de laisser faire - utilisez `attest-helm.yml` pour le côté OCI.
+
+GPG n'est pas une préférence ici : `helm verify` n'implémente qu'OpenPGP, le canal classique ne peut donc pas utiliser le flux keyless. Si vous ne publiez que sur OCI, préférez `attest-helm.yml` et ne détenez aucune clé GPG - une clé de signature à longue durée de vie ne vaut sa charge de gestion que si les consommateurs exécutent réellement `helm verify`.
+
+```yaml
+with:
+  CREATE_GITHUB_RELEASE: true
+  SIGN_CHART: true
+  SIGNING_KEY_ID: "Jane Doe <jane@example.com>"
+secrets:
+  GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+  GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+```
+
+Exportez la clé avec `gpg --armor --export-secret-keys <key-id>` et stockez-la dans `GPG_PRIVATE_KEY`. Les consommateurs vérifient avec `helm verify my-chart-1.2.3.tgz` après avoir importé la clé publique correspondante.
+
+Toute pièce manquante fait échouer le run en amont plutôt que de produire des charts non signés : chart-releaser ne considère pas une clé absente comme fatale, il package simplement sans signature - un `GPG_PRIVATE_KEY` vide, un `SIGNING_KEY_ID` vide ou une clé qui ne s'exporte pas arrêtent donc le run.
 
 ## Notes
 

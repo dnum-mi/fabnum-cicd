@@ -16,6 +16,10 @@ channel_env() {
   export PUBLISH_OCI="false"
   export CREATE_GITHUB_RELEASE="false"
   export REGISTRY="ghcr.io"
+  # Signing off by default; release-helm-signing.test.sh opts in.
+  export SIGN_CHART="false"
+  export SIGNING_KEY_ID=""
+  export HAS_GPG_KEY="false"
 }
 
 test_rejects_both_channels_disabled() {

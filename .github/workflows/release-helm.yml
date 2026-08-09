@@ -10,11 +10,12 @@ on:
         default: ./charts
       CREATE_GITHUB_RELEASE:
         description: >-
-          Additionally create a GitHub Release and git tag for each changed
-          chart and update the Helm repo index.yaml on the pages branch. This
-          requires the pages branch (see PAGES_BRANCH) to already exist. Left
-          false (the default), the workflow only packages charts and pushes
-          them to the OCI registry - no GitHub Pages branch required.
+          Create a GitHub Release and git tag for each changed chart and update
+          the Helm repo index.yaml on the pages branch, giving consumers a
+          classic `helm repo add` repository. Requires the pages branch (see
+          PAGES_BRANCH) to already exist. Independent of PUBLISH_OCI: the two
+          are the workflow's two distribution channels and can be enabled
+          separately or together, but at least one of them must be enabled.
         type: boolean
         required: false
         default: false
@@ -37,6 +38,25 @@ on:
         type: boolean
         required: false
         default: false
+      SIGN_CHART:
+        description: >-
+          GPG-sign each packaged chart, producing the .prov provenance file
+          that `helm verify` and `helm install --verify` check. Requires
+          CREATE_GITHUB_RELEASE, since the .prov is published as a release
+          asset alongside the .tgz - `helm push` does not carry it to an OCI
+          registry, where cosign signatures are the equivalent (see
+          attest-helm.yml). Needs SIGNING_KEY_ID plus the GPG_PRIVATE_KEY and
+          GPG_PASSPHRASE secrets.
+        type: boolean
+        required: false
+        default: false
+      SIGNING_KEY_ID:
+        description: >-
+          Identity of the GPG key to sign with, as it appears in the keyring
+          (e.g. 'Jane Doe <jane@example.com>' or a key ID). Required when
+          SIGN_CHART is true. Passed to chart-releaser as CR_KEY.
+        type: string
+        required: false
       HELM_REPOS:
         description: Helm repositories to add (name=url, comma-separated)
         type: string
@@ -85,11 +105,33 @@ on:
           trigger workflows, so the same caveat applies to the PAGES_BRANCH
           push.
         required: false
+      GPG_PRIVATE_KEY:
+        description: >-
+          ASCII-armored GPG private key used to sign chart packages. Required
+          with SIGN_CHART, ignored otherwise.
+        required: false
+      GPG_PASSPHRASE:
+        description: >-
+          Passphrase for GPG_PRIVATE_KEY. Required alongside it; pass an empty
+          value only if the key genuinely has no passphrase.
+        required: false
+    outputs:
+      published-charts:
+        description: >-
+          JSON array of the charts pushed to the OCI registry, each entry
+          `{name, version, repository, digest}`. repository and digest are kept
+          apart so they can be fed straight to attest-helm.yml, which passes
+          them on as cosign's subject and as the subject-name/subject-digest
+          pair actions/attest-build-provenance expects. Empty array when
+          PUBLISH_OCI is false or no chart changed.
+        value: ${{ jobs.release.outputs.published-charts }}
 
 jobs:
   release:
     name: Release charts (chart-releaser)
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    outputs:
+      published-charts: ${{ steps.publish.outputs.published-charts || '[]' }}
     permissions:
       contents: write
       # `permissions:` takes no expressions, so this is granted even with
@@ -104,12 +146,17 @@ jobs:
       # valid configuration, and silently falling back would downgrade auth.
       HAS_PARTIAL_APP_AUTH: ${{ (secrets.APP_CLIENT_ID != '') != (secrets.APP_PRIVATE_KEY != '') }}
       HAS_REGISTRY_AUTH: ${{ secrets.REGISTRY_USERNAME != '' && secrets.REGISTRY_PASSWORD != '' }}
+      # Only the key is checked: an empty passphrase is legitimate for a key
+      # that has none, so requiring both would reject a valid setup.
+      HAS_GPG_KEY: ${{ secrets.GPG_PRIVATE_KEY != '' }}
     steps:
     - name: Validate inputs
       env:
         PUBLISH_OCI: ${{ inputs.PUBLISH_OCI }}
         CREATE_GITHUB_RELEASE: ${{ inputs.CREATE_GITHUB_RELEASE }}
         REGISTRY: ${{ inputs.REGISTRY }}
+        SIGN_CHART: ${{ inputs.SIGN_CHART }}
+        SIGNING_KEY_ID: ${{ inputs.SIGNING_KEY_ID }}
       run: |
         set -euo pipefail
 
@@ -134,6 +181,28 @@ jobs:
         if [ "$PUBLISH_OCI" = "true" ] && [ "$REGISTRY" != "ghcr.io" ] && [ "$HAS_REGISTRY_AUTH" != "true" ]; then
           echo "::error::REGISTRY_USERNAME and REGISTRY_PASSWORD are required when PUBLISH_OCI is true and REGISTRY ('$REGISTRY') is not ghcr.io."
           exit 1
+        fi
+
+        if [ "$SIGN_CHART" = "true" ]; then
+          # The .prov file rides along as a GitHub Release asset. `helm push`
+          # does not carry it to an OCI registry, so on the OCI channel alone
+          # signing would produce a provenance file that nothing ever
+          # publishes - silently, which is exactly the shape this workflow
+          # refuses elsewhere. cosign covers the OCI side (attest-helm.yml).
+          if [ "$CREATE_GITHUB_RELEASE" != "true" ]; then
+            echo "::error::SIGN_CHART requires CREATE_GITHUB_RELEASE. The .prov provenance file is published as a GitHub Release asset; 'helm push' does not carry it to an OCI registry, so on the OCI channel alone it would be generated and discarded. Sign OCI artifacts with attest-helm.yml instead."
+            exit 1
+          fi
+
+          if [ "$HAS_GPG_KEY" != "true" ]; then
+            echo "::error::SIGN_CHART is true but the GPG_PRIVATE_KEY secret is empty. chart-releaser would fall back to producing unsigned packages."
+            exit 1
+          fi
+
+          if [ -z "$SIGNING_KEY_ID" ]; then
+            echo "::error::SIGN_CHART is true but SIGNING_KEY_ID is empty. It names which key in the keyring to sign with (chart-releaser's CR_KEY) and has no usable default."
+            exit 1
+          fi
         fi
 
     # Only minted when chart-releaser actually creates GitHub Releases and
@@ -176,6 +245,43 @@ jobs:
         done
         helm repo update
 
+    # chart-releaser signs through gpg's legacy keyring files, not the modern
+    # keybox gpg 2.1+ writes by default, so the imported key is exported back
+    # out into pubring.gpg/secring.gpg. This is what Helm's provenance
+    # documentation calls for, and skipping it leaves `cr` unable to find the
+    # key at all.
+    #
+    # The passphrase reaches gpg and `cr` through a file rather than an
+    # argument: process arguments are world-readable on the runner, and
+    # CR_PASSPHRASE_FILE is the only form chart-releaser accepts anyway.
+    - name: Import signing key
+      if: ${{ inputs.SIGN_CHART }}
+      env:
+        GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      run: |
+        set -euo pipefail
+
+        # Written under RUNNER_TEMP rather than ~/.gnupg so the paths handed to
+        # `cr` below are absolute: they come from ${{ runner.temp }} in a step
+        # `env:` block, and a '~' there would reach chart-releaser unexpanded.
+        umask 077
+        printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
+
+        gpg --batch --yes --export > "$RUNNER_TEMP/pubring.gpg"
+        printf '%s' "$GPG_PASSPHRASE" \
+          | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+                --export-secret-keys > "$RUNNER_TEMP/secring.gpg"
+
+        printf '%s' "$GPG_PASSPHRASE" > "$RUNNER_TEMP/gpg-passphrase"
+
+        # An empty secring means the export produced nothing, which `cr` would
+        # not treat as fatal - it would package unsigned charts and succeed.
+        if [ ! -s "$RUNNER_TEMP/secring.gpg" ]; then
+          echo "::error::No secret key was exported to the legacy keyring. Check that GPG_PRIVATE_KEY is an ASCII-armored private key and that GPG_PASSPHRASE matches it."
+          exit 1
+        fi
+
     - name: Run chart-releaser
       id: chart-releaser
       uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f  # v1.7.0
@@ -198,6 +304,12 @@ jobs:
         # charts and never writes through this token, so both elevated
         # credentials resolve to GITHUB_TOKEN and neither adds trigger surface.
         CR_TOKEN: "${{ steps.app-token.outputs.token || (inputs.CREATE_GITHUB_RELEASE && secrets.GH_PAT) || secrets.GITHUB_TOKEN }}"
+        # chart-releaser reads its flags from CR_-prefixed variables. Left
+        # false, the three below are ignored and `cr` packages unsigned.
+        CR_SIGN: ${{ inputs.SIGN_CHART }}
+        CR_KEY: ${{ inputs.SIGNING_KEY_ID }}
+        CR_KEYRING: ${{ runner.temp }}/secring.gpg
+        CR_PASSPHRASE_FILE: ${{ runner.temp }}/gpg-passphrase
 
     - name: Login to OCI Registry
       id: oci-login
@@ -212,6 +324,7 @@ jobs:
         echo "$PASSWORD" | helm registry login "$REGISTRY" -u "$USERNAME" --password-stdin
 
     - name: Publish charts to OCI registry
+      id: publish
       if: ${{ inputs.PUBLISH_OCI && steps.chart-releaser.outputs.changed_charts != '' }}
       env:
         REGISTRY: ${{ inputs.REGISTRY }}
@@ -238,10 +351,45 @@ jobs:
           exit 1
         fi
 
+        # Each entry is recorded from helm's own Pushed:/Digest: output rather
+        # than rebuilt from the file name: '<name>-<version>.tgz' cannot be
+        # split back reliably, because a prerelease version contains dashes of
+        # its own ('my-chart-1.2.3-rc.1.tgz').
+        PUBLISHED='[]'
+
         for chart_package in "${CHART_PACKAGES[@]}"; do
-          echo "Publishing $(basename "$chart_package") to oci://$REGISTRY/$OCI_REPO"
-          helm push "$chart_package" "oci://$REGISTRY/$OCI_REPO"
+          chart_file=$(basename "$chart_package")
+          echo "Publishing $chart_file to oci://$REGISTRY/$OCI_REPO"
+          push_output=$(helm push "$chart_package" "oci://$REGISTRY/$OCI_REPO" 2>&1 | tee /dev/stderr)
+
+          pushed=$(printf '%s\n' "$push_output" | awk '/^Pushed:/ { print $2 }')
+          digest=$(printf '%s\n' "$push_output" | awk '/^Digest:/ { print $2 }')
+
+          # Downstream signing pins the digest, so a missing one has to fail
+          # here rather than produce an entry that cosign cannot resolve.
+          if [ -z "$pushed" ] || [ -z "$digest" ]; then
+            echo "::error::Could not read the reference and digest of $chart_file back from 'helm push'."
+            exit 1
+          fi
+
+          # repository and digest are kept apart rather than pre-joined:
+          # actions/attest-build-provenance takes them as separate
+          # subject-name/subject-digest inputs, exactly as attest-docker.yml
+          # feeds it. Consumers that want one string join them with '@'.
+          PUBLISHED=$(printf '%s' "$PUBLISHED" | jq -c \
+            --arg name "${pushed##*/}" \
+            --arg repository "${pushed%:*}" \
+            --arg digest "$digest" \
+            '. + [{
+               name: ($name | split(":")[0]),
+               version: ($name | split(":")[1]),
+               repository: $repository,
+               digest: $digest
+             }]')
         done
+
+        printf 'published-charts=%s\n' "$PUBLISHED" >> "$GITHUB_OUTPUT"
+        printf 'Published %s chart(s)\n' "$(printf '%s' "$PUBLISHED" | jq 'length')"
 
     # Helm stores registry credentials in the runner's Helm config, which on a
     # self-hosted runner (supported through RUNS_ON) outlives the job and would
