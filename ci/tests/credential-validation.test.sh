@@ -43,6 +43,9 @@ guard_env() {
   export CREATE_GITHUB_RELEASE="false"
   export REGISTRY="ghcr.io"
   export HAS_REGISTRY_AUTH="false"
+  export SIGN_CHART="false"
+  export SIGNING_KEY_ID=""
+  export HAS_GPG_KEY="false"
 }
 
 test_partial_credentials_fail_every_guarded_job() {
