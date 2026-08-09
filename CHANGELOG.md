@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.13.0...v0.14.0) (2026-08-09)
+
+
+### Features
+
+* **release-helm:** sign and attest charts on both distribution channels ([27d58a6](https://github.com/dnum-mi/fabnum-cicd/commit/27d58a627c3f79b85c3710ebab027230f9e2cd53))
+
 ## [0.13.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.12.0...v0.13.0) (2026-08-08)
 
 
