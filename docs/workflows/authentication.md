@@ -191,7 +191,10 @@ jobs:
       contents: write
       packages: write
     with:
-      PUBLISH_OCI: true
+      # Canal classique laissé par défaut : c'est lui qui crée les GitHub
+      # Releases, donc le seul pour lequel les credentials App ci-dessous
+      # servent à quelque chose (sous GITHUB_TOKEN elles ne déclencheraient
+      # aucun trigger `release:`).
       CHARTS_DIR: ./charts
     secrets:
       APP_CLIENT_ID: ${{ secrets.APP_CLIENT_ID }}

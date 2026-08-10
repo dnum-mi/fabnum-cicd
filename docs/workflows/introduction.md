@@ -464,7 +464,8 @@ jobs:
       contents: write
       packages: write
     with:
-      PUBLISH_OCI: true
+      # Canaux laissés par défaut : GitHub Release + index.yaml sur gh-pages.
+      # Ajouter PUBLISH_OCI: true pour publier aussi sur un registre OCI.
       CHARTS_DIR: ./charts
 ```
 
