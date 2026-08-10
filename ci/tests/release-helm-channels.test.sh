@@ -8,8 +8,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 BLOCK=$(extract_run release-helm.yml release "Validate inputs")
 
-# Both channels off is the workflow's default, and is rejected on purpose -
-# so this baseline sets neither, and each test opts in to what it exercises.
+# Both channels off is rejected on purpose, so this baseline sets neither and
+# each test opts in to what it exercises. Note this is NOT the workflow's
+# default any more - CREATE_GITHUB_RELEASE ships true, asserted below.
 channel_env() {
   export HAS_PARTIAL_APP_AUTH="false"
   export HAS_REGISTRY_AUTH="false"
@@ -107,6 +108,23 @@ test_ignores_registry_credentials_when_the_oci_channel_is_off() {
   # No login happens on the GitHub Release channel, so a custom registry with
   # no credentials is irrelevant rather than fatal.
   assert_status 0
+}
+
+# The declared defaults are load-bearing: a caller that names neither channel
+# relies on them to publish anything at all, and flipping CREATE_GITHUB_RELEASE
+# back to false would make every such caller fail the guard above instead.
+test_ships_the_classic_channel_on_and_oci_off_by_default() {
+  local defaults
+  defaults=$(yq '
+    .on.workflow_call.inputs
+    | [.CREATE_GITHUB_RELEASE.default, .PUBLISH_OCI.default]
+    | join(",")
+  ' "$WORKFLOWS_DIR/release-helm.yml")
+
+  if [ "$defaults" != "true,false" ]; then
+    printf 'expected CREATE_GITHUB_RELEASE=true and PUBLISH_OCI=false, got %q\n' "$defaults"
+    return 1
+  fi
 }
 
 run_tests

@@ -16,9 +16,14 @@ on:
           PAGES_BRANCH) to already exist. Independent of PUBLISH_OCI: the two
           are the workflow's two distribution channels and can be enabled
           separately or together, but at least one of them must be enabled.
+          On by default: this workflow serves a dedicated chart repository,
+          where the git tags belong to the charts and chart-releaser's classic
+          output is the channel that repository shape exists for. Turn it off
+          (and PUBLISH_OCI on) on a repository with immutable releases - see
+          docs/workflows/release-helm.md.
         type: boolean
         required: false
-        default: false
+        default: true
       PAGES_BRANCH:
         description: >-
           Branch that receives the Helm repo index.yaml and release artifacts
@@ -34,7 +39,10 @@ on:
           enabled separately or together. At least one of them must be
           enabled, otherwise the workflow would package charts and discard
           them - that combination fails the run rather than passing green
-          having published nothing.
+          having published nothing. Off by default, so a dedicated chart
+          repository publishes through the classic channel alone unless it
+          asks for OCI; release-helm-local.yml is the monorepo counterpart and
+          publishes to OCI only.
         type: boolean
         required: false
         default: false
@@ -168,9 +176,11 @@ jobs:
         # PUBLISH_OCI and CREATE_GITHUB_RELEASE are the two distribution
         # channels. With both off the run would package charts, publish them
         # nowhere and still report success - a green run that shipped nothing
-        # is worse than a failed one, so this stops here.
+        # is worse than a failed one, so this stops here. CREATE_GITHUB_RELEASE
+        # defaults to true, so reaching this means a caller turned it off
+        # without enabling the other channel.
         if [ "$PUBLISH_OCI" != "true" ] && [ "$CREATE_GITHUB_RELEASE" != "true" ]; then
-          echo "::error::Nothing to publish: PUBLISH_OCI and CREATE_GITHUB_RELEASE are both false. Enable PUBLISH_OCI to push charts to an OCI registry, CREATE_GITHUB_RELEASE to attach them to a GitHub Release and maintain index.yaml on the pages branch, or both."
+          echo "::error::Nothing to publish: PUBLISH_OCI and CREATE_GITHUB_RELEASE are both false. CREATE_GITHUB_RELEASE is on by default, so it was explicitly disabled - re-enable it to attach charts to a GitHub Release and maintain index.yaml on the pages branch, or set PUBLISH_OCI to push them to an OCI registry instead."
           exit 1
         fi
 
