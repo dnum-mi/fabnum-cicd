@@ -17,7 +17,6 @@ Gestion automatisée des releases d'application avec [release-please](https://gi
 | RELEASE_PR_AUTHOR        | string  | Limiter l'action à la PR de release ouverte par ce login (tel que `gh` le rapporte, ex: `app/github-actions` pour un bot). Laisser vide pour dériver automatiquement l'auteur du credential utilisé. `*` désactive explicitement la vérification.        | Non    | `""`                                |
 | PRERELEASE_BRANCH        | string  | Branche sur laquelle créer les pré-releases                                                                                                                               | Non    | `develop`                          |
 | RELEASE_BRANCH           | string  | Branche sur laquelle créer les releases                                                                                                                                   | Non    | `main`                             |
-| REBASE_PRERELEASE_BRANCH | boolean | Rebaser la branche de pré-release après une release                                                                                                                       | Non    | `false`                            |
 | RELEASE_CONFIG_FILE      | string  | Fichier de configuration release-please pour les releases                                                                                                                 | Non    | `release-please-config.json`       |
 | RELEASE_MANIFEST_FILE    | string  | Fichier manifest release-please pour les releases                                                                                                                         | Non    | `.release-please-manifest.json`    |
 | PRERELEASE_CONFIG_FILE   | string  | Fichier de configuration release-please pour les pré-releases                                                                                                             | Non    | `release-please-config-rc.json`    |
@@ -63,7 +62,24 @@ Gestion automatisée des releases d'application avec [release-please](https://gi
 - Si `AUTOMERGE_*` est activé, un credential (App ou `GH_PAT`) est requis - sans credential, le job échoue plutôt que de silencieusement ne rien fusionner. `AUTOMERGE_METHOD` choisit `auto` (file d'attente, nécessite *Allow auto-merge*) ou `admin` (fusion immédiate en contournant la protection de branche). Voir [`authentication.md`](./authentication.md#automerge).
 - La PR de release est recherchée via l'API (`gh pr list`) plutôt que par nom de branche, ce qui fonctionne aussi pour les monorepos où release-please ouvre une PR par composant. `RELEASE_PR_AUTHOR` permet de restreindre cette recherche à un auteur précis ; laissé vide, l'auteur est dérivé automatiquement du credential utilisé (App, `github-actions[bot]`, ou désactivé sous PAT).
 - Fournir `APP_CLIENT_ID`/`APP_PRIVATE_KEY` (ou `GH_PAT`) permet à la PR de release de déclencher les workflows `pull_request`, ce que `GITHUB_TOKEN` ne peut jamais faire. Voir [`authentication.md`](./authentication.md).
-- Optionnellement, rebase `PRERELEASE_BRANCH` sur `RELEASE_BRANCH` après une release quand `REBASE_PRERELEASE_BRANCH: true` (seulement quand `ENABLE_PRERELEASE: true`).
+- **Assère** que `PRERELEASE_BRANCH` contient tout ce qui est publié sur `RELEASE_BRANCH`, avant tout calcul de version — voir [Assertion de synchronisation](#assertion-de-synchronisation). Le rebase lui-même appartient à [`sync-prerelease-branch.yml`](./sync-prerelease-branch.md).
+
+## Assertion de synchronisation
+
+Sur un run de `PRERELEASE_BRANCH` (et seulement avec `ENABLE_PRERELEASE: true`), le workflow vérifie **avant tout calcul de version** que la branche de pré-release contient bien tout ce que la branche de release a publié. Rien à configurer : les deux noms de branches sont déjà des inputs.
+
+C'est l'invariant dont dépend chaque version calculée ici : *la branche de pré-release, c'est la branche de release plus le seul travail non publié*. Quand il tient, release-please et un éventuel bump de chart partent de l'état publié. Quand il ne tient pas, ils partent de l'état où la branche a été figée, et émettent des versions **sous** celles déjà publiées — silencieusement.
+
+Ce qui maintient l'invariant est un job que **l'appelant** ordonnance ([`sync-prerelease-branch.yml`](./sync-prerelease-branch.md)), et aucun workflow ne peut vérifier qu'il a bien été câblé. L'assertion attrape donc toutes les façons dont cela peut casser : job absent, `needs:` incomplet, synchronisation en échec, force-push, ou une forme de pipeline que personne n'avait anticipée.
+
+En échec, le run s'arrête avec le nombre de commits manquants et la marche à suivre. Deux causes possibles :
+
+- **Le job de synchronisation manque ou son `needs:` ne couvre pas tout le pipeline.** C'est le cas à corriger.
+- **Un pipeline de release tourne encore sur la branche de release.** Le `concurrency` par défaut étant indexé sur la branche, un run de pré-release peut démarrer pendant une release : rejouer le run une fois celle-ci terminée suffit.
+
+> L'assertion repose sur un appel `compare` de l'API GitHub plutôt que sur `git merge-base --is-ancestor` : l'ascendance exige un historique réel, et `actions/checkout` laisse le clone superficiel — la forme git imposerait un `--unshallow` du dépôt à chaque run de pré-release.
+
+> Un dépôt qui n'a pas encore créé `RELEASE_BRANCH` n'a rien à comparer : l'assertion ne fait rien plutôt que de bloquer les premières pré-releases.
 
 ## Configuration
 
@@ -188,6 +204,10 @@ Trois changements sont nécessaires, dont deux dans votre propre configuration r
 jobs:
   release:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     with:
       RELEASE_ARTIFACT_NAMES: my-binaries
       PUBLISH_DRAFT_RELEASE: true
@@ -280,7 +300,6 @@ jobs:
       TAG_MAJOR_AND_MINOR: true
       AUTOMERGE_PRERELEASE: true
       AUTOMERGE_RELEASE: true
-      REBASE_PRERELEASE_BRANCH: true
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
 ```

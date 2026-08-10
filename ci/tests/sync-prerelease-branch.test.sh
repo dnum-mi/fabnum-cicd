@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# release-app.yml - 'Ensure ${{ inputs.PRERELEASE_BRANCH }} is up to date with ${{ inputs.RELEASE_BRANCH }}'
+# sync-prerelease-branch.yml - the rebase that keeps the prerelease branch
+# equal to the release branch plus only the unreleased work.
 
 # shellcheck source=ci/tests/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # shellcheck disable=SC2016 # the Actions marker is meant to stay literal
-BLOCK=$(extract_run release-app.yml release 'Ensure ${{ inputs.PRERELEASE_BRANCH }} is up to date with ${{ inputs.RELEASE_BRANCH }}')
+BLOCK=$(extract_run sync-prerelease-branch.yml sync 'Ensure ${{ inputs.PRERELEASE_BRANCH }} is up to date with ${{ inputs.RELEASE_BRANCH }}')
 
 rebase_env() {
   export RELEASE_BRANCH="main"
   export PRERELEASE_BRANCH="develop"
+  export CREATE_IF_MISSING="true"
 }
 
 test_unshallows_before_fetching_when_the_clone_is_shallow() {
@@ -74,9 +76,55 @@ test_aborts_and_fails_when_the_rebase_conflicts() {
   run_block "$BLOCK"
 
   assert_status 1 "a rebase conflict must fail the job, not push a broken branch"
-  assert_output_contains "Rebase failed due to conflicts"
+  assert_output_contains "failed due to conflicts"
   assert_called "git|rebase --abort"
   assert_not_called "push"
+}
+
+test_skips_a_missing_branch_when_creation_is_disabled() {
+  rebase_env
+  export CREATE_IF_MISSING="false"
+  export STUB_GIT_FAIL_ON="ls-remote"
+
+  run_block "$BLOCK"
+
+  assert_status 0
+  assert_output_contains "nothing to do"
+  assert_not_called "checkout -b"
+  assert_not_called "push"
+}
+
+# 'Validate inputs' - the two branch names name the two ends of the
+# synchronisation, so a caller collapsing them onto one branch would rebase a
+# branch onto itself and never see a synchronisation happen.
+VALIDATE=$(extract_run sync-prerelease-branch.yml sync 'Validate inputs')
+
+test_validate_accepts_two_distinct_branches() {
+  rebase_env
+
+  run_block "$VALIDATE"
+
+  assert_status 0
+}
+
+test_validate_rejects_the_two_branches_being_equal() {
+  rebase_env
+  export PRERELEASE_BRANCH="main"
+
+  run_block "$VALIDATE"
+
+  assert_status 1
+  assert_output_contains "must differ"
+}
+
+test_validate_rejects_an_empty_branch_name() {
+  rebase_env
+  export PRERELEASE_BRANCH=""
+
+  run_block "$VALIDATE"
+
+  assert_status 1
+  assert_output_contains "must both be set"
 }
 
 run_tests

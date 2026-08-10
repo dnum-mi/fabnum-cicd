@@ -24,6 +24,7 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 - [**Release Helm (local)**](./release-helm-local.md) - Publication d'un chart Helm hébergé dans un monorepo applicatif
 - [**Update Helm Chart**](./update-helm-chart.md) - Mise à jour automatique des versions de charts Helm
 - [**Dispatch Helm Chart**](./dispatch-helm-chart.md) - Déclenchement de la mise à jour d'un chart hébergé dans un dépôt séparé
+- [**Sync Prerelease Branch**](./sync-prerelease-branch.md) - Resynchronisation de la branche de pré-release après une release (à placer en dernier)
 
 ### Sécurité & Qualité
 
@@ -305,7 +306,6 @@ env:
   AUTOMERGE_RELEASE: false
   PRERELEASE_BRANCH: develop
   RELEASE_BRANCH: main
-  REBASE_PRERELEASE_BRANCH: true
   RELEASE_CONFIG_FILE: release-please-config.json
   RELEASE_MANIFEST_FILE: .release-please-manifest.json
   PRERELEASE_CONFIG_FILE: release-please-config-rc.json
@@ -325,7 +325,6 @@ jobs:
       AUTOMERGE_RELEASE: ${{ env.AUTOMERGE_RELEASE }}
       PRERELEASE_BRANCH: ${{ env.PRERELEASE_BRANCH }}
       RELEASE_BRANCH: ${{ env.RELEASE_BRANCH }}
-      REBASE_PRERELEASE_BRANCH: ${{ env.REBASE_PRERELEASE_BRANCH }}
       RELEASE_CONFIG_FILE: ${{ env.RELEASE_CONFIG_FILE }}
       RELEASE_MANIFEST_FILE: ${{ env.RELEASE_MANIFEST_FILE }}
       PRERELEASE_CONFIG_FILE: ${{ env.PRERELEASE_CONFIG_FILE }}
@@ -349,7 +348,6 @@ jobs:
       AUTOMERGE_RELEASE: ${{ needs.expose-vars.outputs.AUTOMERGE_RELEASE == 'true' }}
       PRERELEASE_BRANCH: ${{ needs.expose-vars.outputs.PRERELEASE_BRANCH }}
       RELEASE_BRANCH: ${{ needs.expose-vars.outputs.RELEASE_BRANCH }}
-      REBASE_PRERELEASE_BRANCH: ${{ needs.expose-vars.outputs.REBASE_PRERELEASE_BRANCH == 'true' }}
       RELEASE_CONFIG_FILE: ${{ needs.expose-vars.outputs.RELEASE_CONFIG_FILE }}
       RELEASE_MANIFEST_FILE: ${{ needs.expose-vars.outputs.RELEASE_MANIFEST_FILE }}
       PRERELEASE_CONFIG_FILE: ${{ needs.expose-vars.outputs.PRERELEASE_CONFIG_FILE }}
@@ -407,6 +405,24 @@ jobs:
       PRERELEASE_IDENTIFIER: rc
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
+
+  # En dernier : transmet à `develop` le commit de release que `main` vient de
+  # gagner, pour que sa prochaine rc parte de l'état publié et non d'un état
+  # figé. `needs:` doit lister tous les jobs qui COMMITENT sur `main` - ici
+  # `release` seul, le bump du chart atterrissant dans l'autre dépôt. Voir
+  # [`sync-prerelease-branch.yml`](./sync-prerelease-branch.md) pour les cas où
+  # il en faut plus, et ceux où le job est inutile.
+  sync-prerelease-branch:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/sync-prerelease-branch.yml@v0
+    needs:
+    - expose-vars
+    - release
+    if: ${{ github.ref_name == 'main' && needs.release.outputs.release-created == 'true' }}
+    permissions:
+      contents: write
+    with:
+      RELEASE_BRANCH: main
+      PRERELEASE_BRANCH: develop
 
   sync-cpin:
     uses: dnum-mi/fabnum-cicd/.github/workflows/sync-cpin.yml@v0

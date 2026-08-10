@@ -1,0 +1,145 @@
+# Keeps one invariant true: the prerelease branch is the release branch plus
+# only the work that has not been released yet.
+#
+# A release lands commits on the release branch that the prerelease branch does
+# not have - release-please's release commit, and a chart bump when the chart
+# lives in the same repository. Both edit files the prerelease branch also
+# edits on its own cycle (the manifest, CHANGELOG.md, Chart.yaml), so a
+# prerelease branch that never receives them ends up computing its next version
+# from a stale base - emitting a version BELOW the one just published - and
+# conflicting with the release branch on the next promotion.
+#
+# This is a workflow of its own, and a job the caller places LAST, because the
+# only thing that decides when it is correct to run is "has the release branch
+# stopped moving" - and nothing but the caller's job graph knows that. Encoding
+# it as an input on a workflow that cannot see the graph is what made the
+# earlier version silently wrong for pipelines that commit to the release
+# branch after their release job (a monorepo chart bump, typically).
+name: Sync prerelease branch
+
+on:
+  workflow_call:
+    inputs:
+      RELEASE_BRANCH:
+        description: Branch releases are cut on, and the branch to synchronise FROM
+        type: string
+        required: false
+        default: main
+      PRERELEASE_BRANCH:
+        description: Branch prereleases are cut on, and the branch to synchronise
+        type: string
+        required: false
+        default: develop
+      CREATE_IF_MISSING:
+        description: >-
+          Create PRERELEASE_BRANCH from RELEASE_BRANCH when it does not exist
+          yet, rather than skipping. Bootstraps a repository adopting the
+          two-branch flow; harmless afterwards, since the branch then always
+          exists.
+        type: boolean
+        required: false
+        default: true
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        type: string
+        required: false
+        default: '["ubuntu-24.04"]'
+
+jobs:
+  sync:
+    name: Sync prerelease branch
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    # Only ever moves a branch of the caller's own repository.
+    permissions:
+      contents: write
+    steps:
+    - name: Validate inputs
+      env:
+        RELEASE_BRANCH: ${{ inputs.RELEASE_BRANCH }}
+        PRERELEASE_BRANCH: ${{ inputs.PRERELEASE_BRANCH }}
+      run: |
+        set -euo pipefail
+
+        # Rebasing a branch onto itself is not a no-op, it is a caller who will
+        # never see a synchronisation happen.
+        if [ "$RELEASE_BRANCH" = "$PRERELEASE_BRANCH" ]; then
+          echo "::error::RELEASE_BRANCH and PRERELEASE_BRANCH are both '$RELEASE_BRANCH'. They name the two ends of the synchronisation and must differ."
+          exit 1
+        fi
+
+        if [ -z "$RELEASE_BRANCH" ] || [ -z "$PRERELEASE_BRANCH" ]; then
+          echo "::error::RELEASE_BRANCH and PRERELEASE_BRANCH must both be set."
+          exit 1
+        fi
+
+    # Deliberately NOT given an App token or a PAT. This step force-pushes the
+    # prerelease branch, which is a branch the caller's CD pipeline triggers on;
+    # under a credential that can trigger workflows that push would re-enter the
+    # pipeline, and a release moving the branch would start a prerelease run.
+    # GITHUB_TOKEN cannot trigger workflow runs, which is what prevents it.
+    # Do NOT add `token:` to this step.
+    - name: Checks-out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+    - name: Configure Git
+      run: |
+        git config user.name 'github-actions[bot]'
+        git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+    - name: Ensure ${{ inputs.PRERELEASE_BRANCH }} is up to date with ${{ inputs.RELEASE_BRANCH }}
+      env:
+        RELEASE_BRANCH: ${{ inputs.RELEASE_BRANCH }}
+        PRERELEASE_BRANCH: ${{ inputs.PRERELEASE_BRANCH }}
+        CREATE_IF_MISSING: ${{ inputs.CREATE_IF_MISSING }}
+      run: |
+        set -euo pipefail
+
+        # actions/checkout's default fetch-depth (1) leaves this clone
+        # shallow, with no history shared between $RELEASE_BRANCH and
+        # $PRERELEASE_BRANCH for git to compute a real merge-base from. The
+        # rebase below would then treat every commit on $PRERELEASE_BRANCH as
+        # unrelated to $RELEASE_BRANCH, replaying the whole branch from
+        # scratch and conflicting on every file it touches - even when the
+        # actual divergence is trivial. Guarded because --unshallow errors
+        # outright on a repository that is already complete.
+        if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+          git fetch --unshallow origin "$RELEASE_BRANCH" "$PRERELEASE_BRANCH"
+        fi
+
+        git fetch origin "$RELEASE_BRANCH" "$PRERELEASE_BRANCH" || true
+
+        if ! git ls-remote --exit-code --heads origin "$PRERELEASE_BRANCH" >/dev/null 2>&1; then
+          if [ "$CREATE_IF_MISSING" != "true" ]; then
+            echo "'$PRERELEASE_BRANCH' branch does not exist and CREATE_IF_MISSING is false, nothing to do"
+            exit 0
+          fi
+
+          echo "'$PRERELEASE_BRANCH' branch does not exist. Creating from $RELEASE_BRANCH..."
+
+          git checkout -b "$PRERELEASE_BRANCH" "origin/$RELEASE_BRANCH"
+          git push origin "$PRERELEASE_BRANCH"
+          exit 0
+        fi
+
+        echo "'$PRERELEASE_BRANCH' branch exists. Attempting rebase on $RELEASE_BRANCH..."
+
+        git checkout "$PRERELEASE_BRANCH"
+        git reset --hard "origin/$PRERELEASE_BRANCH"
+
+        # In the steady state this is a plain fast-forward: the promotion put
+        # the prerelease branch's commits into the release branch, so
+        # `$RELEASE_BRANCH..$PRERELEASE_BRANCH` is empty and nothing is
+        # replayed. It only does real work when the prerelease branch moved
+        # while the release was running - which is possible whenever the
+        # caller's concurrency group is keyed on the branch, and is exactly
+        # the case a plain push would reject.
+        if git rebase "origin/$RELEASE_BRANCH"; then
+          echo "Rebase successful. Pushing updated $PRERELEASE_BRANCH..."
+
+          git push --force-with-lease origin "$PRERELEASE_BRANCH"
+        else
+          echo "::error::Rebase of '$PRERELEASE_BRANCH' onto '$RELEASE_BRANCH' failed due to conflicts. Resolve it by hand: until then the prerelease branch computes its versions from a stale base and can publish below the version just released."
+
+          git rebase --abort || true
+          exit 1
+        fi
