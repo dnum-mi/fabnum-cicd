@@ -190,6 +190,12 @@ case "$args" in
       exit 1
     fi
     ;;
+  # Ordered before the generic "api repos/" case: a compare call matches both,
+  # and answering it with the repository metadata fixture would make every
+  # status look valid.
+  *"/compare/"*)
+    printf '%s' "${STUB_GH_COMPARE_JSON:-{\"status\":\"identical\",\"ahead_by\":0,\"behind_by\":0\}}" | apply_filter
+    ;;
   "api repos/"*)
     printf '%s' "${STUB_GH_REPO_JSON:-{\"allow_auto_merge\":true\}}" | apply_filter
     ;;

@@ -129,6 +129,29 @@ jobs:
       CHART_NAME: my-app
       # Package exactement le commit de bump poussé par update-helm-chart
       CHECKOUT_REF: ${{ needs.update-chart.outputs.commit-sha }}
+
+  # -------------------------------------------------
+  # 5. Resynchronisation de la branche de pré-release
+  # -------------------------------------------------
+  # C'est la forme de dépôt qui rend ce job obligatoire : `update-chart`
+  # commite la version publiée du chart sur `main` APRÈS le job de release, il
+  # doit donc figurer dans `needs:` - sinon `develop` conserve un Chart.yaml
+  # figé au dernier release candidate et son prochain bump passe SOUS ce que
+  # `main` vient de publier.
+  #
+  # `release-chart` est volontairement absent : il publie, il ne commite pas,
+  # et le lister laisserait une publication en échec sauter la synchronisation.
+  sync-prerelease-branch:
+    needs:
+    - release
+    - update-chart
+    uses: ./.github/workflows/sync-prerelease-branch.yml
+    if: ${{ github.ref_name == 'main' && needs.release.outputs.release-created == 'true' }}
+    permissions:
+      contents: write
+    with:
+      RELEASE_BRANCH: main
+      PRERELEASE_BRANCH: develop
 ```
 
 ### Fonctionnement
@@ -137,6 +160,7 @@ jobs:
 2. **Build + attest** – [`build-docker.yml`](./build-docker.md) construit et pousse chaque image, puis [`attest-docker.yml`](./attest-docker.md) génère la provenance SLSA et le SBOM pour cette image précise - une paire de jobs par composant, pas une matrice (voir l'encart dans le YAML ci-dessus).
 3. **Update chart** – [`update-helm-chart.yml`](./update-helm-chart.md) en mode `local` incrémente la version du chart, met à jour `appVersion`, régénère la doc, puis commit et pousse directement sur la branche courante (aucune PR). Expose `chart-version` et `commit-sha`.
 4. **Release chart** – [`release-helm-local.yml`](./release-helm-local.md) package le chart au commit produit à l'étape précédente (`CHECKOUT_REF`) et le pousse sur le registre OCI.
+5. **Sync pré-release** – [`sync-prerelease-branch.yml`](./sync-prerelease-branch.md) rebase `develop` sur `main` une fois que celle-ci a cessé de bouger, pour que la prochaine pré-release parte de l'état publié. [`release-app.yml`](./release-app.md#assertion-de-synchronisation) assère le résultat au run suivant sur `develop` : oublier ce job échoue là, plutôt que de produire silencieusement une version trop basse.
 
 ### Avantages
 

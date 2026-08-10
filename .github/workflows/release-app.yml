@@ -79,11 +79,6 @@ on:
         type: string
         required: false
         default: main
-      REBASE_PRERELEASE_BRANCH:
-        description: Rebase the prerelease branch on the release branch after the release is created
-        type: boolean
-        required: false
-        default: false
       RELEASE_CONFIG_FILE:
         description: Release-please config file for release branch
         type: string
@@ -218,6 +213,63 @@ jobs:
     # and only once the assets are attached.
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+    # The invariant every version computed on the prerelease branch depends on:
+    # that branch is the release branch plus only the unreleased work. When it
+    # holds, release-please and any chart bump start from the released state.
+    # When it does not, they start from whatever the branch was frozen at, and
+    # silently emit versions below the ones already published.
+    #
+    # Asserted here rather than guaranteed by configuration, because what keeps
+    # it true is a job the caller schedules (sync-prerelease-branch.yml) and no
+    # workflow can verify that it was wired up. This catches every way it can
+    # break - the job missing, a `needs:` that does not cover the whole
+    # pipeline, a sync that failed, a force-push - including shapes nobody
+    # anticipated.
+    #
+    # One API call rather than `git merge-base --is-ancestor`: ancestry needs
+    # real history, and actions/checkout leaves this clone shallow, so the git
+    # form would have to unshallow the repository on every prerelease run.
+    - name: Assert ${{ inputs.PRERELEASE_BRANCH }} is in sync with ${{ inputs.RELEASE_BRANCH }}
+      if: ${{ inputs.ENABLE_PRERELEASE && github.ref_name == inputs.PRERELEASE_BRANCH }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        RELEASE_BRANCH: ${{ inputs.RELEASE_BRANCH }}
+        PRERELEASE_BRANCH: ${{ inputs.PRERELEASE_BRANCH }}
+      run: |
+        set -euo pipefail
+
+        # A repository that has not created the release branch yet has nothing
+        # to be out of sync with.
+        if ! git ls-remote --exit-code --heads origin "$RELEASE_BRANCH" >/dev/null 2>&1; then
+          echo "'$RELEASE_BRANCH' does not exist yet, nothing to compare against"
+          exit 0
+        fi
+
+        # `compare/BASE...HEAD` reports HEAD relative to BASE. With the
+        # prerelease branch as BASE, the release branch is 'identical' or
+        # 'behind' exactly when the invariant holds; 'ahead' or 'diverged'
+        # means the prerelease branch is missing released commits.
+        comparison=$(gh api \
+          "repos/$GITHUB_REPOSITORY/compare/$PRERELEASE_BRANCH...$RELEASE_BRANCH" \
+          --jq '"\(.status) \(.ahead_by)"')
+        status="${comparison%% *}"
+        ahead_by="${comparison##* }"
+
+        case "$status" in
+          identical|behind)
+            echo "'$PRERELEASE_BRANCH' contains everything released on '$RELEASE_BRANCH'"
+            ;;
+          ahead|diverged)
+            echo "::error::'$PRERELEASE_BRANCH' is missing $ahead_by commit(s) from '$RELEASE_BRANCH' (compare reports '$status'). Every version computed on this branch - the app version, and the chart version if this repository bumps one - would be derived from a pre-release state and can land below what '$RELEASE_BRANCH' already published. Run sync-prerelease-branch.yml, and make sure the caller schedules it after every job that commits to '$RELEASE_BRANCH'. A release pipeline still running on '$RELEASE_BRANCH' produces this too - re-run once it completes."
+            exit 1
+            ;;
+          *)
+            echo "::error::Unexpected comparison status '$status' between '$PRERELEASE_BRANCH' and '$RELEASE_BRANCH'."
+            exit 1
+            ;;
+        esac
 
     - name: Release new version
       uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5.0.0
@@ -592,48 +644,3 @@ jobs:
           echo "Queuing PR #$pr_number for auto-merge into '$GITHUB_REF_NAME'"
           gh pr merge "$pr_number" --rebase --auto
         done
-
-    - name: Ensure ${{ inputs.PRERELEASE_BRANCH }} is up to date with ${{ inputs.RELEASE_BRANCH }}
-      if: ${{ inputs.ENABLE_PRERELEASE && inputs.REBASE_PRERELEASE_BRANCH && github.ref_name == inputs.RELEASE_BRANCH && steps.release.outputs.release_created }}
-      env:
-        RELEASE_BRANCH: ${{ inputs.RELEASE_BRANCH }}
-        PRERELEASE_BRANCH: ${{ inputs.PRERELEASE_BRANCH }}
-      run: |
-        set -euo pipefail
-
-        # actions/checkout's default fetch-depth (1) leaves this clone
-        # shallow, with no history shared between $RELEASE_BRANCH and
-        # $PRERELEASE_BRANCH for git to compute a real merge-base from. The
-        # rebase below would then treat every commit on $PRERELEASE_BRANCH as
-        # unrelated to $RELEASE_BRANCH, replaying the whole branch from
-        # scratch and conflicting on every file it touches - even when the
-        # actual divergence is trivial. Guarded because --unshallow errors
-        # outright on a repository that is already complete.
-        if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
-          git fetch --unshallow origin "$RELEASE_BRANCH" "$PRERELEASE_BRANCH"
-        fi
-
-        git fetch origin "$RELEASE_BRANCH" "$PRERELEASE_BRANCH" || true
-
-        if git ls-remote --exit-code --heads origin "$PRERELEASE_BRANCH" >/dev/null 2>&1; then
-          echo "'$PRERELEASE_BRANCH' branch exists. Attempting rebase on $RELEASE_BRANCH..."
-
-          git checkout "$PRERELEASE_BRANCH"
-          git reset --hard "origin/$PRERELEASE_BRANCH"
-
-          if git rebase "origin/$RELEASE_BRANCH"; then
-            echo "Rebase successful. Pushing updated $PRERELEASE_BRANCH..."
-
-            git push --force-with-lease origin "$PRERELEASE_BRANCH"
-          else
-            echo "Rebase failed due to conflicts. Aborting."
-
-            git rebase --abort || true
-            exit 1
-          fi
-        else
-          echo "'$PRERELEASE_BRANCH' branch does not exist. Creating from $RELEASE_BRANCH..."
-
-          git checkout -b "$PRERELEASE_BRANCH" "origin/$RELEASE_BRANCH"
-          git push origin "$PRERELEASE_BRANCH"
-        fi
