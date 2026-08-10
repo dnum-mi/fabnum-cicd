@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.14.0...v0.15.0) (2026-08-10)
+
+
+### Features
+
+* **release-helm:** publish through the classic channel by default ([67eae2c](https://github.com/dnum-mi/fabnum-cicd/commit/67eae2cc6cc8784dab8242641a89d7907a98d054))
+* **sync-prerelease-branch:** own the prerelease synchronisation in a dedicated workflow ([07a59fb](https://github.com/dnum-mi/fabnum-cicd/commit/07a59fbd5106b3c5cfd8c23b51040f0d4e21abda))
+
 ## [0.14.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.13.0...v0.14.0) (2026-08-09)
 
 
