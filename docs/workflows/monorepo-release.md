@@ -119,13 +119,10 @@ jobs:
     with:
       RUN_MODE: local
       CHART_NAME: my-app
+      # UPGRADE_TYPE par défaut ('auto') : le chart reflète le bump de
+      # l'application (delta d'appVersion), et la forme d'APP_VERSION choisit
+      # le flux - cycle rc sur develop, version finale sur main.
       APP_VERSION: ${{ needs.release.outputs.version }}
-      # 'auto' fait refléter au chart le bump de l'application (delta
-      # d'appVersion) et choisit le flux d'après la forme d'APP_VERSION :
-      # cycle rc sur develop, version finale sur main - une seule valeur pour
-      # les deux branches.
-      UPGRADE_TYPE: auto
-      PRERELEASE_IDENTIFIER: rc
 
   # -------------------------------------------------
   # 4. Publication du chart

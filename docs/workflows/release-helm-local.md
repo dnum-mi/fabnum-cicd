@@ -85,8 +85,9 @@ jobs:
     with:
       RUN_MODE: local
       CHART_NAME: my-app
+      # UPGRADE_TYPE par défaut ('auto') : le chart reflète le bump de
+      # l'application, dérivé du delta d'appVersion.
       APP_VERSION: ${{ needs.release.outputs.version }}
-      UPGRADE_TYPE: patch
 
   release-chart:
     uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm-local.yml@v0

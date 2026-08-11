@@ -77,4 +77,30 @@ test_propagates_a_failed_merge() {
   assert_status 1
 }
 
+test_gate_reads_the_resolved_flow_not_the_input() {
+  # Structural: the step's `if:` must gate on the bump step's EFFECTIVE_TYPE
+  # output. Under UPGRADE_TYPE=auto the input never says 'prerelease' even
+  # when the bump is one, so an input-based gate would route every rc bump
+  # through AUTOMERGE_RELEASE - inverting the standard "automerge the noisy
+  # rc bumps, review the real releases" configuration.
+  local gate
+  gate=$(yq '.jobs.update.steps[] | select(.name == "Automerge chart update PR") | .if' \
+    "$WORKFLOWS_DIR/update-helm-chart.yml")
+
+  case "$gate" in
+    *"steps.update-chart.outputs.EFFECTIVE_TYPE"*) ;;
+    *)
+      printf 'FAIL: the automerge gate does not read the resolved flow:\n%s\n' "$gate" >&2
+      exit 1
+      ;;
+  esac
+
+  case "$gate" in
+    *"inputs.UPGRADE_TYPE"*)
+      printf 'FAIL: the automerge gate still reads the raw input:\n%s\n' "$gate" >&2
+      exit 1
+      ;;
+  esac
+}
+
 run_tests
