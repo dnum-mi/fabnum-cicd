@@ -58,33 +58,52 @@ jobs:
       with:
         bun-version: latest
 
+    # Exact versions, not ranges: this is third-party code executed in the
+    # job, and 'latest' would let a new upstream release change what runs
+    # here without any change on our side.
     - name: Install commitlint
-      run: bun install @commitlint/cli @commitlint/config-conventional
+      run: bun install @commitlint/cli@19.8.1 @commitlint/config-conventional@19.8.1
 
+    # The generated file is static program text: it reads the three
+    # configuration values from the environment at lint time (see the env of
+    # the 'Lint commits' step below), so no workflow input ever becomes part
+    # of the JavaScript. Interpolating them here would let a crafted
+    # ALLOWED_TYPES escape both the heredoc and the string literal.
     - name: Create commitlint config
       if: ${{ inputs.CONFIG_FILE == '' }}
       run: |
         cat > commitlint.config.js << 'EOF'
+        const allowedTypes = (process.env.COMMITLINT_ALLOWED_TYPES ?? '')
+          .split(',').map(t => t.trim()).filter(Boolean);
+        const requireScope = process.env.COMMITLINT_REQUIRE_SCOPE === 'true';
+        const headerMaxLength = Number(process.env.COMMITLINT_MAX_SUBJECT_LENGTH ?? 100);
+
         export default {
           extends: ['@commitlint/config-conventional'],
           rules: {
-            'type-enum': [2, 'always', '${{ inputs.ALLOWED_TYPES }}'.split(',').map(t => t.trim())],
-            'scope-empty': [${{ inputs.REQUIRE_SCOPE && '2' || '0' }}, '${{ inputs.REQUIRE_SCOPE && 'never' || 'always' }}'],
-            'header-max-length': [2, 'always', ${{ inputs.MAX_SUBJECT_LENGTH }}],
+            'type-enum': [2, 'always', allowedTypes],
+            'scope-empty': [requireScope ? 2 : 0, requireScope ? 'never' : 'always'],
+            'header-max-length': [2, 'always', headerMaxLength],
           },
         };
         EOF
 
     - name: Get commits to lint
       id: get-commits
+      env:
+        COMMITS_SOURCE: ${{ inputs.COMMITS_SOURCE }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        EVENT_BEFORE: ${{ github.event.before }}
       run: |
         set -euo pipefail
 
-        if [ "${{ inputs.COMMITS_SOURCE }}" = "pr" ] && [ -n "${{ github.event.pull_request.number }}" ]; then
-          echo "Linting commits from PR #${{ github.event.pull_request.number }}"
+        if [ "$COMMITS_SOURCE" = "pr" ] && [ -n "$PR_NUMBER" ]; then
+          echo "Linting commits from PR #$PR_NUMBER"
 
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          BASE_SHA="$PR_BASE_SHA"
+          HEAD_SHA="$PR_HEAD_SHA"
 
           {
             echo "base-sha=${BASE_SHA}"
@@ -94,13 +113,13 @@ jobs:
         else
           echo "Linting commits from push event"
 
-          if [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
+          if [ "$EVENT_BEFORE" = "0000000000000000000000000000000000000000" ]; then
             # New branch, use first commit
             BASE_SHA=$(git rev-list --max-parents=0 HEAD | tail -1)
           else
-            BASE_SHA="${{ github.event.before }}"
+            BASE_SHA="$EVENT_BEFORE"
           fi
-          HEAD_SHA="${{ github.sha }}"
+          HEAD_SHA="$GITHUB_SHA"
 
           {
             echo "base-sha=${BASE_SHA}"
@@ -111,22 +130,32 @@ jobs:
 
     - name: Lint commits
       id: lint
+      env:
+        CONFIG_FILE: ${{ inputs.CONFIG_FILE }}
+        COMMIT_RANGE: ${{ steps.get-commits.outputs.commit-range }}
+        ALLOWED_TYPES: ${{ inputs.ALLOWED_TYPES }}
+        FAIL_ON_ERROR: ${{ inputs.FAIL_ON_ERROR }}
+        # Read by the generated commitlint.config.js; ignored when the caller
+        # supplied CONFIG_FILE.
+        COMMITLINT_ALLOWED_TYPES: ${{ inputs.ALLOWED_TYPES }}
+        COMMITLINT_REQUIRE_SCOPE: ${{ inputs.REQUIRE_SCOPE }}
+        COMMITLINT_MAX_SUBJECT_LENGTH: ${{ inputs.MAX_SUBJECT_LENGTH }}
       run: |
         set -euo pipefail
 
         CONFIG_FLAG=()
-        if [ -n "${{ inputs.CONFIG_FILE }}" ] && [ -f "${{ inputs.CONFIG_FILE }}" ]; then
-          CONFIG_FLAG=(--config "${{ inputs.CONFIG_FILE }}")
+        if [ -n "$CONFIG_FILE" ] && [ -f "$CONFIG_FILE" ]; then
+          CONFIG_FLAG=(--config "$CONFIG_FILE")
         fi
 
         echo "## Conventional Commits Check" >> "$GITHUB_STEP_SUMMARY"
         echo "" >> "$GITHUB_STEP_SUMMARY"
 
         EXIT_CODE=0
-        COMMITS=$(git log --pretty=format:"%H" ${{ steps.get-commits.outputs.commit-range }} 2>/dev/null || echo "")
+        COMMITS=$(git log --pretty=format:"%H" "$COMMIT_RANGE" 2>/dev/null || echo "")
 
         if [ -z "$COMMITS" ]; then
-          echo "No commits found in range ${{ steps.get-commits.outputs.commit-range }}"
+          echo "No commits found in range $COMMIT_RANGE"
           echo "✅ No commits to lint" >> "$GITHUB_STEP_SUMMARY"
           exit 0
         fi
@@ -178,11 +207,11 @@ jobs:
             echo '```'
             echo "<type>(<scope>): <subject>"
             echo ""
-            echo "Types: ${{ inputs.ALLOWED_TYPES }}"
+            echo "Types: $ALLOWED_TYPES"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "${{ inputs.FAIL_ON_ERROR }}" = "true" ]; then
+          if [ "$FAIL_ON_ERROR" = "true" ]; then
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "❌ **Workflow failed due to non-conventional commits**" >> "$GITHUB_STEP_SUMMARY"
             exit 1

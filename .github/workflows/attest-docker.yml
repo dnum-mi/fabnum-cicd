@@ -69,7 +69,25 @@ jobs:
       id: normalize
       env:
         INPUT_IMAGE_NAME: ${{ inputs.IMAGE_NAME }}
+        DIGEST: ${{ inputs.DIGEST }}
       run: |
+        set -euo pipefail
+
+        # Both values are joined into the reference cosign signs, so they are
+        # held to reference shape here - normalization (tr/sed) lowercases and
+        # de-underscores but strips nothing else.
+        # The first segment is the registry host and may carry a port; a
+        # colon anywhere after a '/' would be a tag, which stays rejected.
+        if [[ ! "$INPUT_IMAGE_NAME" =~ ^[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)+$ ]]; then
+          echo "::error::IMAGE_NAME must be a registry/path image reference without tag or digest (a registry port is allowed), got '$INPUT_IMAGE_NAME'"
+          exit 1
+        fi
+
+        if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+          echo "::error::DIGEST must be an image digest of the form 'sha256:<64 hex>', got '$DIGEST'"
+          exit 1
+        fi
+
         NORMALIZED_IMAGE=$(echo "$INPUT_IMAGE_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')
         echo "NORMALIZED_IMAGE=$NORMALIZED_IMAGE" >> "$GITHUB_OUTPUT"
         echo "REGISTRY=$(echo "$INPUT_IMAGE_NAME" | cut -d "/" -f 1 | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
@@ -90,8 +108,12 @@ jobs:
 
     - name: Sign image
       if: ${{ inputs.SIGN }}
+      env:
+        IMAGE_REF: ${{ steps.normalize.outputs.NORMALIZED_IMAGE }}@${{ inputs.DIGEST }}
       run: |
-        cosign sign --yes "${{ steps.normalize.outputs.NORMALIZED_IMAGE }}@${{ inputs.DIGEST }}"
+        set -euo pipefail
+
+        cosign sign --yes "$IMAGE_REF"
 
     - name: Generate SBOM with Trivy
       if: ${{ inputs.SBOM }}
@@ -115,9 +137,12 @@ jobs:
       # Provenance below stays on actions/attest-build-provenance, which *generates*
       # the SLSA predicate. cosign only signs a predicate you already have.
       if: ${{ inputs.SBOM }}
+      env:
+        IMAGE_REF: ${{ steps.normalize.outputs.NORMALIZED_IMAGE }}@${{ inputs.DIGEST }}
       run: |
-        cosign attest --yes --type spdxjson --predicate sbom.spdx.json \
-          "${{ steps.normalize.outputs.NORMALIZED_IMAGE }}@${{ inputs.DIGEST }}"
+        set -euo pipefail
+
+        cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$IMAGE_REF"
 
     - name: Attest build provenance
       # Deliberately not gated on the SBOM steps succeeding. Provenance is the

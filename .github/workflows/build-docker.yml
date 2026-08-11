@@ -278,6 +278,12 @@ jobs:
 
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        # Nothing after this step runs git against the remote, and with
+        # IMAGE_CONTEXT '.' the build context contains .git/ - persisted, the
+        # job's GITHUB_TOKEN would sit in .git/config, readable by any build
+        # stage that COPYs the context while this job holds packages:write.
+        persist-credentials: false
 
     - name: Set up Docker buildx
       uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
@@ -342,10 +348,14 @@ jobs:
 
     - name: Export digest
       if: ${{ inputs.PUSH }}
+      env:
+        LOWER_IMAGE: ${{ needs.infos.outputs.lower-image }}
+        DIGEST: ${{ steps.build.outputs.digest }}
       run: |
-        mkdir -p /tmp/digests/${{ needs.infos.outputs.lower-image }}
-        digest="${{ steps.build.outputs.digest }}"
-        touch "/tmp/digests/${{ needs.infos.outputs.lower-image }}/${digest#sha256:}"
+        set -euo pipefail
+
+        mkdir -p "/tmp/digests/$LOWER_IMAGE"
+        touch "/tmp/digests/$LOWER_IMAGE/${DIGEST#sha256:}"
 
     - name: Upload digest
       if: ${{ inputs.PUSH }}
