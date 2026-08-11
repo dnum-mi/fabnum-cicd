@@ -26,7 +26,10 @@ Synchronisation avec l'instance GitLab CPiN (Cloud Pi Natif) pour déclencher de
 - Passe automatiquement les informations de branche, commit SHA et nom du projet.
 - Permet d'ajouter des variables personnalisées au format JSON pour configurer le pipeline.
 - **Mode SYNC_ALL** : Si activé, synchronise toutes les branches au lieu d'une seule (passe `SYNC_ALL=true` à GitLab au lieu de `GIT_BRANCH_DEPLOY`)
-- Supprime automatiquement les trailing slashes de `GITLAB_URL` pour éviter les erreurs d'URL
+- `GITLAB_URL` doit être une URL `https://` : le token de trigger est envoyé à cette adresse, le workflow refuse donc tout autre schéma. Les trailing slashes sont tolérés.
+- `GIT_MIRROR_PROJECT_ID` accepte un ID numérique ou un chemin de projet URL-encodé (ex: `group%2Fproject`).
+- `ADDITIONAL_VARIABLES` doit être un objet JSON dont les clés sont des noms de variables de pipeline valides (`[A-Za-z0-9_]+`) ; toute autre forme fait échouer le job avant l'appel.
+- Le token n'apparaît jamais dans les arguments de processus : il transite par un fichier de configuration curl en 0600, supprimé dès la fin de l'appel.
 - Utile pour les organisations qui utilisent à la fois GitHub et GitLab CPiN.
 - Le pipeline GitLab doit être configuré pour accepter les triggers avec token.
 
@@ -117,6 +120,4 @@ jobs:
       REPOSITORY_NAME: my-app
     secrets:
       GIT_MIRROR_TOKEN: ${{ secrets.CPIN_GITLAB_TOKEN }}
-      REPOSITORY_NAME: my-app
-      ADDITIONAL_VARIABLES: '{"VERSION":"${{ needs.release.outputs.version }}"}'
 ```
