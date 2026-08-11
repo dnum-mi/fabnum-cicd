@@ -2,6 +2,8 @@
 
 Ce document explique comment publier **plusieurs applications** (ex: une API et un frontend) hébergées dans le **même dépôt**, avec un **chart Helm unique** qui déploie les deux services.
 
+Le pipeline suit le flux git à deux branches : les pushes sur `develop` publient des release candidates (`1.2.3-rc.4`, chart `0.4.2-rc.1`), la promotion `develop` → `main` publie les versions finales. Pour un dépôt mono-branche, retirez `develop` du trigger, `ENABLE_PRERELEASE` et le job `sync-prerelease-branch`.
+
 ## Pourquoi un orchestrateur dédié ?
 
 - Construire et pousser chaque image Docker en parallèle.
@@ -17,12 +19,16 @@ name: Release monorepo (API + Frontend)
 on:
   push:
     branches:
+    - develop
     - main
 
 jobs:
   # -------------------------------------------------
   # 1. Release-please : une seule version pour tout le dépôt
   # -------------------------------------------------
+  # Sur `develop`, release-please publie des release candidates ; sur `main`,
+  # les versions finales. La branche courante sélectionne le couple
+  # config/manifest correspondant.
   release:
     uses: ./.github/workflows/release-app.yml
     permissions:
@@ -31,6 +37,7 @@ jobs:
       pull-requests: write
     with:
       TAG_MAJOR_AND_MINOR: true
+      ENABLE_PRERELEASE: true
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
 
@@ -113,7 +120,10 @@ jobs:
       RUN_MODE: local
       CHART_NAME: my-app
       APP_VERSION: ${{ needs.release.outputs.version }}
-      UPGRADE_TYPE: minor
+      # Sur `develop`, le chart suit le cycle rc (0.4.2-rc -> rc.1 -> ...) ;
+      # sur `main`, il publie la version finale.
+      UPGRADE_TYPE: ${{ github.ref_name == 'develop' && 'prerelease' || 'minor' }}
+      PRERELEASE_IDENTIFIER: rc
 
   # -------------------------------------------------
   # 4. Publication du chart
@@ -156,7 +166,7 @@ jobs:
 
 ### Fonctionnement
 
-1. **Release-please** – [`release-app.yml`](./release-app.md) crée une unique version/tag/PR pour tout le dépôt, garantissant que le chart Helm et les images applicatives partagent la même version.
+1. **Release-please** – [`release-app.yml`](./release-app.md) crée une unique version/tag/PR pour tout le dépôt, garantissant que le chart Helm et les images applicatives partagent la même version. Avec `ENABLE_PRERELEASE`, le dépôt porte deux couples config/manifest release-please : `release-please-config.json` + `.release-please-manifest.json` pour `main`, `release-please-config-rc.json` + `.release-please-manifest-rc.json` pour `develop` (voir [release-app.md](./release-app.md) pour leur contenu).
 2. **Build + attest** – [`build-docker.yml`](./build-docker.md) construit et pousse chaque image, puis [`attest-docker.yml`](./attest-docker.md) génère la provenance SLSA et le SBOM pour cette image précise - une paire de jobs par composant, pas une matrice (voir l'encart dans le YAML ci-dessus).
 3. **Update chart** – [`update-helm-chart.yml`](./update-helm-chart.md) en mode `local` incrémente la version du chart, met à jour `appVersion`, régénère la doc, puis commit et pousse directement sur la branche courante (aucune PR). Expose `chart-version` et `commit-sha`.
 4. **Release chart** – [`release-helm-local.yml`](./release-helm-local.md) package le chart au commit produit à l'étape précédente (`CHECKOUT_REF`) et le pousse sur le registre OCI.
@@ -168,3 +178,7 @@ jobs:
 - **Réutilisation des workflows existants** – Aucune logique dupliquée, uniquement de l'orchestration.
 - **Adapté au monorepo** – Le mode `local` de `update-helm-chart.yml` et [`release-helm-local.yml`](./release-helm-local.md) s'affranchissent des tags git partagés entre applications et chart, contrairement à `chart-releaser`.
 - **Extensible** – Ajouter un nouveau composant revient à ajouter sa paire de jobs `build-<composant>`/`attest-<composant>` (copier-coller, pas une ligne de matrice, mais chaque paire reste indépendamment correcte).
+
+### Variante : monorepo sans chart Helm
+
+Supprimez les jobs `update-chart` et `release-chart`, et réduisez le `needs:` de `sync-prerelease-branch` à `[release]` — plus rien d'autre ne commite sur `main` après la release. Le reste du pipeline est inchangé.

@@ -68,6 +68,16 @@ En oublier un laisse la branche de pré-release périmée. En ajouter un qui ne 
 | Application + chart distant         | aucun — le bump atterrit dans l'*autre* dépôt              | `needs: [release]` |
 | Dépôt de charts seul, mono-branche  | —                                                          | inutile    |
 
+## Hotfix sur la branche de release
+
+Un correctif urgent suit le flux existant, sans procédure dédiée :
+
+1. Branchez `hotfix/...` depuis la branche de release, corrigez, ouvrez la pull request vers elle et mergez.
+2. La CD de la branche de release publie le correctif (ex. `1.4.1`), et ce job resynchronise la branche de pré-release : le rebase rejoue le travail non publié par-dessus le correctif.
+3. Au prochain push sur la branche de pré-release, release-please repart de la base corrigée — la pré-release suivante (ex. `1.5.0-rc.2`) contient le correctif.
+
+Le seul point de friction possible est un conflit entre le correctif et le travail en cours de la branche de pré-release : le job échoue alors explicitement au lieu de laisser la branche périmée (voir Notes), et le conflit se résout à la main une seule fois.
+
 ## Filet de sécurité
 
 Oublier ce job, ou oublier une entrée dans son `needs:`, resterait invisible jusqu'à ce qu'une version sorte fausse. [`release-app.yml`](./release-app.md#assertion-de-synchronisation) **assère donc l'invariant** au début de chaque run sur la branche de pré-release, avant tout calcul de version, et échoue en le nommant. Vous n'avez rien à configurer pour cela.
@@ -76,7 +86,7 @@ Oublier ce job, ou oublier une entrée dans son `needs:`, resterait invisible ju
 
 - **Ne s'exécute que depuis la branche de release.** Placez le `if:` côté appelant (voir l'exemple) : le job n'a rien à propager quand il tourne depuis la branche de pré-release elle-même.
 - **En régime établi, le rebase est un simple fast-forward.** La promotion ayant versé les commits de la branche de pré-release dans la branche de release, `RELEASE_BRANCH..PRERELEASE_BRANCH` est vide et rien n'est rejoué. Le rebase ne fait un vrai travail que si la branche de pré-release a bougé pendant la release — possible dès que le `concurrency` de l'appelant est indexé sur la branche — et c'est précisément le cas qu'un `git push` simple rejetterait.
-- **Cela suppose que la promotion préserve les commits** (merge ou rebase-merge). Un **squash** de `PRERELEASE_BRANCH` → `RELEASE_BRANCH` casse cette propriété : les commits d'origine ne sont plus des ancêtres, le rebase les rejoue tous, et les conflits deviennent la norme.
+- **Cela suppose que la promotion préserve les commits** — comme ancêtres (merge) ou comme copies patch-identiques (rebase-merge, où le rebase reconnaît chaque commit déjà appliqué et l'écarte). Un **squash** de `PRERELEASE_BRANCH` → `RELEASE_BRANCH` casse cette propriété : les N commits d'origine sont fondus en un seul dont aucun n'est patch-identique, le rebase les rejoue tous, et les conflits deviennent la norme.
 - **Un conflit fait échouer le job** plutôt que de laisser la branche périmée : la régression de version serait sinon silencieuse.
 - **Le push utilise le `GITHUB_TOKEN` du checkout**, qui ne peut pas déclencher de workflow. Déplacer la branche de pré-release ne relance donc pas la CD de l'appelant. Ne fournissez pas de token App ni de PAT à ce workflow.
 - `RELEASE_BRANCH` et `PRERELEASE_BRANCH` doivent différer — sinon le job échoue plutôt que de rebaser une branche sur elle-même sans jamais rien synchroniser.
