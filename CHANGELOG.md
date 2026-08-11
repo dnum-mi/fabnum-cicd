@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.16.1...v0.17.0) (2026-08-11)
+
+
+### Features
+
+* **update-helm-chart:** add 'auto' upgrade type deriving the bump from appVersion ([bb43be2](https://github.com/dnum-mi/fabnum-cicd/commit/bb43be284709569e9b0c2bf6357cb43e197d98b2))
+* **update-helm-chart:** make 'auto' the default upgrade type ([62eac1b](https://github.com/dnum-mi/fabnum-cicd/commit/62eac1ba2fd3c6de8a6954987d162e8c4a49243e))
+
 ## [0.16.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.16.0...v0.16.1) (2026-08-11)
 
 
