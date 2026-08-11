@@ -63,9 +63,26 @@ test_creates_the_branch_from_release_branch_when_missing() {
 
   assert_status 0
   assert_output_contains "does not exist. Creating from"
+  assert_called "git|fetch origin main"
   assert_called "git|checkout -b develop origin/main"
   assert_called "git|push origin develop"
   assert_not_called "rebase"
+}
+
+test_creation_never_fetches_the_missing_branch() {
+  rebase_env
+  # The default checkout is shallow, and a real `git fetch` naming a branch
+  # that does not exist fails hard - the stub cannot fail on the fetch and the
+  # probe at once, so this asserts the fix structurally: on the bootstrap
+  # path, no fetch may name $PRERELEASE_BRANCH, unshallow or otherwise.
+  export STUB_GIT_IS_SHALLOW="true"
+  export STUB_GIT_FAIL_ON="ls-remote"
+
+  run_block "$BLOCK"
+
+  assert_status 0 "bootstrap must survive a shallow clone"
+  assert_not_called "fetch --unshallow"
+  assert_not_called "git|fetch origin main develop"
 }
 
 test_aborts_and_fails_when_the_rebase_conflicts() {
