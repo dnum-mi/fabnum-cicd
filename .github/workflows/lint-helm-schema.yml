@@ -33,24 +33,28 @@ jobs:
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
+    # Exact version: third-party code executed in the job, and an unpinned
+    # install would let a new upstream release change what runs here.
     - name: Install check-jsonschema
-      run: pip install check-jsonschema
+      run: pip install check-jsonschema==0.33.0
 
     - name: Validate values files against JSON schema
       working-directory: ${{ inputs.CHART_PATH }}
+      env:
+        CHART_PATH: ${{ inputs.CHART_PATH }}
+        SCHEMA_FILE: ${{ inputs.SCHEMA_FILE }}
+        VALUES_FILES: ${{ inputs.VALUES_FILES }}
       run: |
         set -euo pipefail
 
-        SCHEMA_FILE="${{ inputs.SCHEMA_FILE }}"
-
         if [ ! -f "$SCHEMA_FILE" ]; then
-          echo "::error::Schema file '$SCHEMA_FILE' not found in '${{ inputs.CHART_PATH }}'"
+          echo "::error::Schema file '$SCHEMA_FILE' not found in '$CHART_PATH'"
           exit 1
         fi
 
         FILES=()
 
-        IFS=',' read -ra ITEMS <<< "${{ inputs.VALUES_FILES }}"
+        IFS=',' read -ra ITEMS <<< "$VALUES_FILES"
         for file in "${ITEMS[@]}"; do
           file=$(echo "$file" | xargs)
           if [ -n "$file" ] && [ -f "$file" ]; then

@@ -88,6 +88,12 @@ jobs:
     - name: Checks-out repository
       if: ${{ inputs.WORKSPACE_PATH != '' }}
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        # The checkout only exists to mount WORKSPACE_PATH into the container
+        # under test; nothing runs git afterwards. Persisted, the job's token
+        # would sit in .git/config while an arbitrary image executes with a
+        # repository directory mounted.
+        persist-credentials: false
 
     - name: Download image artifact
       if: ${{ inputs.IMAGE_ARTIFACT != '' }}

@@ -35,7 +35,9 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
     - name: Install yamllint
-      run: pip install yamllint
+      # Exact version: third-party code executed in the job, and an unpinned
+      # install would let a new upstream release change what runs here.
+      run: pip install yamllint==1.37.1
 
     - name: Run yamllint
       env:

@@ -276,6 +276,14 @@ jobs:
         # `cr` below are absolute: they come from ${{ runner.temp }} in a step
         # `env:` block, and a '~' there would reach chart-releaser unexpanded.
         umask 077
+
+        # A dedicated gpg home, so the cleanup step can remove the imported
+        # private key without touching any keyring a persistent self-hosted
+        # runner already had in ~/.gnupg.
+        export GNUPGHOME="$RUNNER_TEMP/gnupg"
+        mkdir -p "$GNUPGHOME"
+        chmod 700 "$GNUPGHOME"
+
         printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
 
         gpg --batch --yes --export > "$RUNNER_TEMP/pubring.gpg"
@@ -414,3 +422,16 @@ jobs:
         set -euo pipefail
 
         helm registry logout "$REGISTRY"
+
+    # Same self-hosted-runner reasoning as the registry logout above: the
+    # signing step leaves the private key in the gpg home and an exported
+    # legacy keyring plus the plaintext passphrase under RUNNER_TEMP, all of
+    # which would outlive the job. `always()` so a failed release still
+    # clears them.
+    - name: Remove signing material
+      if: ${{ always() && inputs.SIGN_CHART }}
+      run: |
+        set -euo pipefail
+
+        rm -f "$RUNNER_TEMP/pubring.gpg" "$RUNNER_TEMP/secring.gpg" "$RUNNER_TEMP/gpg-passphrase"
+        rm -rf "$RUNNER_TEMP/gnupg"

@@ -63,7 +63,9 @@ jobs:
       uses: helm/chart-testing-action@6ec842c01de15ebb84c8627d2744a0c2f2755c9f  # v2.8.0
 
     - name: Run chart-testing (lint)
-      run: ct lint --config ${{ inputs.CT_CONF_PATH }}
+      env:
+        CT_CONF_PATH: ${{ inputs.CT_CONF_PATH }}
+      run: ct lint --config "$CT_CONF_PATH"
 
   lint-docs:
     name: Lint docs
@@ -78,6 +80,7 @@ jobs:
     - name: Run helm-docs
       env:
         CHARTS_DIR: ${{ inputs.CHARTS_DIR }}
+        HELM_DOCS_VERSION: ${{ inputs.HELM_DOCS_VERSION }}
       run: |
         set -euo pipefail
 
@@ -86,5 +89,5 @@ jobs:
           --rm \
           --volume "$(pwd)/$CHARTS_DIR:/helm-docs:ro" \
           -u "$(id -u)" \
-          docker.io/jnorwood/helm-docs:${{ inputs.HELM_DOCS_VERSION }}
+          "docker.io/jnorwood/helm-docs:$HELM_DOCS_VERSION"
         echo "Helm chart docs are valid"
