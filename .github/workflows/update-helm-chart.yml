@@ -95,7 +95,7 @@ on:
           with APP_PRIVATE_KEY to authenticate as a GitHub App.
           Takes precedence over GH_PAT. Required (with APP_PRIVATE_KEY) or
           GH_PAT for automerge, and to give the chart pull request CI.
-          See docs/workflows/authentication.md.
+          See docs/workflows/05-authentication.md.
         required: false
       APP_PRIVATE_KEY:
         description: GitHub App private key (PEM). Required alongside APP_CLIENT_ID.

@@ -6,43 +6,51 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 
 ### Authentification
 
-- [**Authentification**](./authentication.md) - Choisir et configurer un credential GitHub (`GITHUB_TOKEN`, GitHub App ou PAT) pour les workflows qui en ont besoin
+- [**Authentification**](./05-authentication.md) - Choisir et configurer un credential GitHub (`GITHUB_TOKEN`, GitHub App ou PAT) pour les workflows qui en ont besoin
 
 ### Linting & Validation
 
-- [**Lint Commits**](./lint-commits.md) - Validation des messages de commit (Conventional Commits)
-- [**Lint Helm**](./lint-helm.md) - Lint des charts Helm avec chart-testing
-- [**Lint Helm Schema**](./lint-helm-schema.md) - Validation des values Helm contre un JSON Schema
-- [**Lint YAML**](./lint-yaml.md) - Lint des fichiers YAML avec yamllint
-
-### Build & Release
-
-- [**Build Docker**](./build-docker.md) - Build et push (optionnel) d'images Docker multi-architecture
-- [**Attest Docker**](./attest-docker.md) - Génération d'attestations de sécurité (provenance SLSA, SBOM, signature cosign) pour une image construite
-- [**Release App**](./release-app.md) - Gestion automatisée des releases d'application avec release-please
-- [**Release NPM**](./release-npm.md) - Publication de paquets sur un registre NPM (npmjs.org, GitHub Packages, registre privé)
-- [**Release Helm**](./release-helm.md) - Publication de charts Helm sur registres OCI via chart-releaser (dépôt de charts dédié)
-- [**Release Helm (local)**](./release-helm-local.md) - Publication d'un chart Helm hébergé dans un monorepo applicatif
-- [**Update Helm Chart**](./update-helm-chart.md) - Mise à jour automatique des versions de charts Helm
-- [**Dispatch Helm Chart**](./dispatch-helm-chart.md) - Déclenchement de la mise à jour d'un chart hébergé dans un dépôt séparé
-- [**Sync Prerelease Branch**](./sync-prerelease-branch.md) - Resynchronisation de la branche de pré-release après une release (à placer en dernier)
-
-### Sécurité & Qualité
-
-- [**Scan SonarQube**](./scan-sonarqube.md) - Analyse de qualité du code avec SonarQube
-- [**Scan Trivy**](./scan-trivy.md) - Analyse de vulnérabilités avec Trivy
-- [**Scan Gitleaks**](./scan-gitleaks.md) - Analyse de l'historique git complet à la recherche de secrets divulgués
+- [**Lint Commits**](./10-lint-commits.md) - Validation des messages de commit (Conventional Commits)
+- [**Lint Helm**](./11-lint-helm.md) - Lint des charts Helm avec chart-testing
+- [**Lint Helm Schema**](./12-lint-helm-schema.md) - Validation des values Helm contre un JSON Schema
+- [**Lint YAML**](./14-lint-yaml.md) - Lint des fichiers YAML avec yamllint
 
 ### Tests
 
-- [**Test Helm**](./test-helm.md) - Test d'installation des charts Helm dans un cluster Kind
-- [**Test Docker**](./test-docker.md) - Exécution d'une commande dans une image Docker construite (registre ou tarball)
+- [**Test Helm**](./20-test-helm.md) - Test d'installation des charts Helm dans un cluster Kind
+- [**Test Docker**](./24-test-docker.md) - Exécution d'une commande dans une image Docker construite (registre ou tarball)
+
+### Build
+
+- [**Build Docker**](./30-build-docker.md) - Build et push (optionnel) d'images Docker multi-architecture
+- [**Attest Docker**](./31-attest-docker.md) - Génération d'attestations de sécurité (provenance SLSA, SBOM, signature cosign) pour une image construite
+
+### Sécurité & Qualité
+
+- [**Scan SonarQube**](./40-scan-sonarqube.md) - Analyse de qualité du code avec SonarQube
+- [**Scan Trivy**](./41-scan-trivy.md) - Analyse de vulnérabilités avec Trivy
+- [**Scan Gitleaks**](./42-scan-gitleaks.md) - Analyse de l'historique git complet à la recherche de secrets divulgués
+
+### Release
+
+- [**Release App**](./50-release-app.md) - Gestion automatisée des releases d'application avec release-please
+- [**Release Helm**](./51-release-helm.md) - Publication de charts Helm sur registres OCI via chart-releaser (dépôt de charts dédié)
+- [**Release Helm (local)**](./52-release-helm-local.md) - Publication d'un chart Helm hébergé dans un monorepo applicatif
+- [**Update Helm Chart**](./53-update-helm-chart.md) - Mise à jour automatique des versions de charts Helm
+- [**Dispatch Helm Chart**](./54-dispatch-helm-chart.md) - Déclenchement de la mise à jour d'un chart hébergé dans un dépôt séparé
+- [**Release NPM**](./55-release-npm.md) - Publication de paquets sur un registre NPM (npmjs.org, GitHub Packages, registre privé)
+- [**Attest Helm**](./56-attest-helm.md) - Signatures cosign et provenance SLSA des charts publiés sur un registre OCI
+- [**Sync Prerelease Branch**](./57-sync-prerelease-branch.md) - Resynchronisation de la branche de pré-release après une release (à placer en dernier)
 
 ### Utilitaires
 
-- [**Clean Cache**](./clean-cache.md) - Nettoyage du cache GitHub Actions
-- [**Clean Images**](./clean-images.md) - Nettoyage des images de conteneurs sur GHCR
-- [**Sync CPiN**](./sync-cpin.md) - Synchronisation avec l'instance GitLab CPiN
+- [**Clean Cache**](./70-clean-cache.md) - Nettoyage du cache GitHub Actions
+- [**Clean Images**](./71-clean-images.md) - Nettoyage des images de conteneurs sur GHCR
+- [**Sync CPiN**](./72-sync-cpin.md) - Synchronisation avec l'instance GitLab CPiN
+
+### Guides
+
+- [**Release d'un monorepo**](./90-monorepo-release.md) - Pipeline complet publiant plusieurs applications et un chart Helm unique depuis un même dépôt
 
 ## Utilisation rapide
 
@@ -418,7 +426,7 @@ jobs:
   # gagner, pour que sa prochaine rc parte de l'état publié et non d'un état
   # figé. `needs:` doit lister tous les jobs qui COMMITENT sur `main` - ici
   # `release` seul, le bump du chart atterrissant dans l'autre dépôt. Voir
-  # [`sync-prerelease-branch.yml`](./sync-prerelease-branch.md) pour les cas où
+  # [`sync-prerelease-branch.yml`](./57-sync-prerelease-branch.md) pour les cas où
   # il en faut plus, et ceux où le job est inutile.
   sync-prerelease-branch:
     uses: dnum-mi/fabnum-cicd/.github/workflows/sync-prerelease-branch.yml@v0
@@ -501,7 +509,7 @@ Certains workflows nécessitent des secrets GitHub. Voici un résumé :
 
 | Secret              | Workflows concernés                                                    | Description                                                                  |
 | ------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `APP_CLIENT_ID`     | release-app, release-helm, update-helm-chart, dispatch-helm-chart, build-docker, scan-trivy    | Client ID d'une GitHub App - voir [`authentication.md`](./authentication.md)    |
+| `APP_CLIENT_ID`     | release-app, release-helm, update-helm-chart, dispatch-helm-chart, build-docker, scan-trivy    | Client ID d'une GitHub App - voir [`authentication.md`](./05-authentication.md)    |
 | `APP_PRIVATE_KEY`   | release-app, release-helm, update-helm-chart, dispatch-helm-chart, build-docker, scan-trivy    | Clé privée (PEM) de la GitHub App                                               |
 | `GH_PAT`            | release-app, release-helm, update-helm-chart, dispatch-helm-chart, build-docker, scan-trivy    | GitHub Personal Access Token (alternative à la GitHub App)                     |
 | `SONAR_TOKEN`       | scan-sonarqube                                                              | Token d'authentification SonarQube                                              |

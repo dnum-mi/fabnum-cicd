@@ -2,9 +2,9 @@
 
 Déclenche la mise à jour d'un chart Helm hébergé dans un **dépôt séparé**, via `workflow_dispatch`.
 
-Le dépôt applicatif ne touche à rien : il envoie la version au dépôt chart, qui exécute son propre workflow d'entrée (généralement [`update-helm-chart.yml`](./update-helm-chart.md) en mode `called`) et ouvre la Pull Request chez lui.
+Le dépôt applicatif ne touche à rien : il envoie la version au dépôt chart, qui exécute son propre workflow d'entrée (généralement [`update-helm-chart.yml`](./53-update-helm-chart.md) en mode `called`) et ouvre la Pull Request chez lui.
 
-> Si le chart est dans le **même dépôt** que l'application, ce workflow n'est pas celui qu'il vous faut : utilisez directement [`update-helm-chart.yml`](./update-helm-chart.md).
+> Si le chart est dans le **même dépôt** que l'application, ce workflow n'est pas celui qu'il vous faut : utilisez directement [`update-helm-chart.yml`](./53-update-helm-chart.md).
 
 ## Inputs
 
@@ -15,7 +15,7 @@ Le dépôt applicatif ne touche à rien : il envoie la version au dépôt chart,
 | WORKFLOW_NAME         | string | Nom du workflow à déclencher dans le dépôt chart (ex: `update-chart.yml`)                                                                                                                       | Non    | `update-app-version.yml` |
 | CHART_DIR             | string | Nom du dossier contenant le chart (dans CHART_REPO)                                                                                                                                             | Non    | `charts`                 |
 | APP_VERSION           | string | Version de l'application à injecter dans `Chart.yaml` (`appVersion`). Laisser vide pour conserver l'`appVersion` actuelle - une release "chart-only".                                           | Non    | `""`                     |
-| UPGRADE_TYPE          | string | Type de mise à jour : `auto` (défaut), `major`, `minor`, `patch` ou `prerelease` - transmis tel quel au dépôt chart, où [`update-helm-chart.yml`](./update-helm-chart.md#mode-auto) dérive le niveau du delta d'appVersion (repli sur `patch` avec avertissement sans delta à lire)                                                                                                                                 | Non    | `auto`                   |
+| UPGRADE_TYPE          | string | Type de mise à jour : `auto` (défaut), `major`, `minor`, `patch` ou `prerelease` - transmis tel quel au dépôt chart, où [`update-helm-chart.yml`](./53-update-helm-chart.md#mode-auto) dérive le niveau du delta d'appVersion (repli sur `patch` avec avertissement sans delta à lire)                                                                                                                                 | Non    | `auto`                   |
 | PRERELEASE_IDENTIFIER | string | Identifiant de pré-release, utilisé quand le bump entre dans le flux prerelease - `UPGRADE_TYPE: prerelease`, ou `auto` avec une `APP_VERSION` en pré-release                                                                                                                 | Non    | `rc`                     |
 | AUTOMERGE_PRERELEASE  | bool   | Demander au dépôt chart de fusionner sa PR quand le bump est une pré-release                                                                                                                | Non    | `false`                  |
 | AUTOMERGE_RELEASE     | bool   | Demander au dépôt chart de fusionner sa PR quand le bump n'est pas une pré-release                                                                                                          | Non    | `false`                  |
@@ -27,7 +27,7 @@ Le dépôt applicatif ne touche à rien : il envoie la version au dépôt chart,
 
 | Secret          | Description                                                                                                                                                                                       | Requis |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| APP_CLIENT_ID   | Client ID d'une GitHub App. À fournir avec `APP_PRIVATE_KEY` pour authentifier comme une App — prend le pas sur `GH_PAT`. Voir [`authentication.md`](./authentication.md).                        | Non\*  |
+| APP_CLIENT_ID   | Client ID d'une GitHub App. À fournir avec `APP_PRIVATE_KEY` pour authentifier comme une App — prend le pas sur `GH_PAT`. Voir [`authentication.md`](./05-authentication.md).                        | Non\*  |
 | APP_PRIVATE_KEY | Clé privée (PEM) de la GitHub App. Requis avec `APP_CLIENT_ID`.                                                                                                                                   | Non\*  |
 | GH_PAT          | Personal Access Token GitHub. Alternative historique à `APP_CLIENT_ID`/`APP_PRIVATE_KEY`, toujours supportée mais l'authentification App est préférée.                                             | Non\*  |
 
@@ -57,7 +57,7 @@ C'est la raison d'être de ce workflow séparé. Tout ce qu'il fait s'authentifi
 
 ## Notes
 
-- **Authentification** : en mode App, le token est réduit à `actions: write` **sur le seul dépôt `CHART_REPO`**. L'App doit donc être installée sur `CHART_REPO`, pas sur le dépôt qui exécute ce job. Voir [`authentication.md`](./authentication.md#dispatch-cross-repository-dispatch-helm-chart).
+- **Authentification** : en mode App, le token est réduit à `actions: write` **sur le seul dépôt `CHART_REPO`**. L'App doit donc être installée sur `CHART_REPO`, pas sur le dépôt qui exécute ce job. Voir [`authentication.md`](./05-authentication.md#dispatch-cross-repository-dispatch-helm-chart).
 - **`BASE_BRANCH` est toujours transmis explicitement** (`gh workflow run --ref`). Sans lui, `gh` résout lui-même la branche par défaut de `CHART_REPO` via une requête GraphQL `defaultBranchRef` qui dépasse le scope `actions: write` du token et échoue (`unable to determine default branch for <repo>: GraphQL: Resource not accessible by integration (repository.defaultBranchRef)`). Si la branche par défaut de `CHART_REPO` n'est pas `main`, renseignez `BASE_BRANCH`, quel que soit le credential utilisé.
 - **Compatibilité `AUTOMERGE_METHOD`** : un dépôt chart dont le workflow d'entrée ne déclare pas cet input fait rejeter tout le dispatch par l'API (`422 Unexpected inputs provided`), et non ignorer la valeur en trop. Le workflow réessaie donc sans l'input et émet un `::warning::` indiquant que c'est le défaut du dépôt chart qui s'applique. Ajoutez l'input `AUTOMERGE_METHOD` au workflow d'entrée du dépôt chart pour piloter la méthode de fusion depuis ici.
 - **Validation en amont du token** : `CHART_REPO` est validé (`owner/repository`, une seule ligne) *avant* que le token App ne soit émis — une valeur sans `/` ferait sinon émettre un token pour un propriétaire portant le nom du dépôt.
@@ -79,7 +79,7 @@ Le workflow d'entrée de `CHART_REPO` doit être déclenchable par `workflow_dis
 | `AUTOMERGE_RELEASE`     | `inputs.AUTOMERGE_RELEASE`                    |
 | `AUTOMERGE_METHOD`      | `inputs.AUTOMERGE_METHOD` (voir compatibilité ci-dessus) |
 
-Côté dépôt chart, ce workflow d'entrée relaie ces inputs vers [`update-helm-chart.yml`](./update-helm-chart.md) — voir l'exemple « Dépôt chart » plus bas.
+Côté dépôt chart, ce workflow d'entrée relaie ces inputs vers [`update-helm-chart.yml`](./53-update-helm-chart.md) — voir l'exemple « Dépôt chart » plus bas.
 
 ## Exemples
 

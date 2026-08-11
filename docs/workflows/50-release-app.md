@@ -27,7 +27,7 @@ Gestion automatisée des releases d'application avec [release-please](https://gi
 
 | Secret            | Description                                                                                                                                    | Requis |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| APP_CLIENT_ID      | Client ID d'une GitHub App (ex: `Iv23li...`, PAS l'App ID numérique). À fournir avec `APP_PRIVATE_KEY` pour authentifier comme une App — prend le pas sur `GH_PAT`. Contrairement à `GITHUB_TOKEN`, un token App permet à la PR de release de déclencher les workflows `pull_request`. Voir [`authentication.md`](./authentication.md). | Non    |
+| APP_CLIENT_ID      | Client ID d'une GitHub App (ex: `Iv23li...`, PAS l'App ID numérique). À fournir avec `APP_PRIVATE_KEY` pour authentifier comme une App — prend le pas sur `GH_PAT`. Contrairement à `GITHUB_TOKEN`, un token App permet à la PR de release de déclencher les workflows `pull_request`. Voir [`authentication.md`](./05-authentication.md). | Non    |
 | APP_PRIVATE_KEY    | Clé privée (PEM) de la GitHub App. Requis avec `APP_CLIENT_ID`.                                                                                    | Non    |
 | GH_PAT             | Personal Access Token GitHub. Alternative historique à `APP_CLIENT_ID`/`APP_PRIVATE_KEY`, toujours supportée mais l'authentification App est préférée. | Non    |
 
@@ -59,10 +59,10 @@ Gestion automatisée des releases d'application avec [release-please](https://gi
 - Si `RELEASE_ARTIFACT_NAMES` est défini, les artefacts correspondant au pattern (uploadés par des jobs précédents via `actions/upload-artifact`) sont automatiquement téléchargés et attachés à la release GitHub.
 - Si `RELEASE_ASSET_PATHS` est défini, les fichiers des chemins listés (séparés par des virgules) sont uploadés sur la release GitHub via `gh release upload` après sa création.
 - Si `PUBLISH_DRAFT_RELEASE: true`, la release est publiée après l'upload des assets. Sans effet si la release n'est pas un brouillon, ce qui rend l'étape rejouable. Voir [Compatibilité avec les releases immuables](#compatibilité-avec-les-releases-immuables).
-- Si `AUTOMERGE_*` est activé, un credential (App ou `GH_PAT`) est requis - sans credential, le job échoue plutôt que de silencieusement ne rien fusionner. `AUTOMERGE_METHOD` choisit `auto` (file d'attente, nécessite *Allow auto-merge*) ou `admin` (fusion immédiate en contournant la protection de branche). Voir [`authentication.md`](./authentication.md#automerge).
+- Si `AUTOMERGE_*` est activé, un credential (App ou `GH_PAT`) est requis - sans credential, le job échoue plutôt que de silencieusement ne rien fusionner. `AUTOMERGE_METHOD` choisit `auto` (file d'attente, nécessite *Allow auto-merge*) ou `admin` (fusion immédiate en contournant la protection de branche). Voir [`authentication.md`](./05-authentication.md#automerge).
 - La PR de release est recherchée via l'API (`gh pr list`) plutôt que par nom de branche, ce qui fonctionne aussi pour les monorepos où release-please ouvre une PR par composant. `RELEASE_PR_AUTHOR` permet de restreindre cette recherche à un auteur précis ; laissé vide, l'auteur est dérivé automatiquement du credential utilisé (App, `github-actions[bot]`, ou désactivé sous PAT).
-- Fournir `APP_CLIENT_ID`/`APP_PRIVATE_KEY` (ou `GH_PAT`) permet à la PR de release de déclencher les workflows `pull_request`, ce que `GITHUB_TOKEN` ne peut jamais faire. Voir [`authentication.md`](./authentication.md).
-- **Assère** que `PRERELEASE_BRANCH` contient tout ce qui est publié sur `RELEASE_BRANCH`, avant tout calcul de version — voir [Assertion de synchronisation](#assertion-de-synchronisation). Le rebase lui-même appartient à [`sync-prerelease-branch.yml`](./sync-prerelease-branch.md).
+- Fournir `APP_CLIENT_ID`/`APP_PRIVATE_KEY` (ou `GH_PAT`) permet à la PR de release de déclencher les workflows `pull_request`, ce que `GITHUB_TOKEN` ne peut jamais faire. Voir [`authentication.md`](./05-authentication.md).
+- **Assère** que `PRERELEASE_BRANCH` contient tout ce qui est publié sur `RELEASE_BRANCH`, avant tout calcul de version — voir [Assertion de synchronisation](#assertion-de-synchronisation). Le rebase lui-même appartient à [`sync-prerelease-branch.yml`](./57-sync-prerelease-branch.md).
 
 ## Assertion de synchronisation
 
@@ -70,7 +70,7 @@ Sur un run de `PRERELEASE_BRANCH` (et seulement avec `ENABLE_PRERELEASE: true`),
 
 C'est l'invariant dont dépend chaque version calculée ici : *la branche de pré-release, c'est la branche de release plus le seul travail non publié*. Quand il tient, release-please et un éventuel bump de chart partent de l'état publié. Quand il ne tient pas, ils partent de l'état où la branche a été figée, et émettent des versions **sous** celles déjà publiées — silencieusement.
 
-Ce qui maintient l'invariant est un job que **l'appelant** ordonnance ([`sync-prerelease-branch.yml`](./sync-prerelease-branch.md)), et aucun workflow ne peut vérifier qu'il a bien été câblé. L'assertion attrape donc toutes les façons dont cela peut casser : job absent, `needs:` incomplet, synchronisation en échec, force-push, ou une forme de pipeline que personne n'avait anticipée.
+Ce qui maintient l'invariant est un job que **l'appelant** ordonnance ([`sync-prerelease-branch.yml`](./57-sync-prerelease-branch.md)), et aucun workflow ne peut vérifier qu'il a bien été câblé. L'assertion attrape donc toutes les façons dont cela peut casser : job absent, `needs:` incomplet, synchronisation en échec, force-push, ou une forme de pipeline que personne n'avait anticipée.
 
 En échec, le run s'arrête avec le nombre de commits manquants et la marche à suivre. Deux causes possibles :
 
@@ -222,7 +222,7 @@ jobs:
 - **Les tags flottants `v<major>`/`v<major>.<minor>` de `TAG_MAJOR_AND_MINOR` ne sont pas concernés** : l'immutabilité ne verrouille que les tags portant une release publiée, et release-please n'en crée que sur `v<major>.<minor>.<patch>`.
 
 > [!WARNING]
-> [`release-helm.yml`](./release-helm.md) avec `CREATE_GITHUB_RELEASE: true` n'est **pas** compatible avec les releases immuables : `chart-releaser` crée la release puis attache le `.tgz` en deux appels séparés, sans option de brouillon ([helm/chart-releaser#591](https://github.com/helm/chart-releaser/issues/591)). Publier les charts sur un registre OCI à la place (`PUBLISH_OCI: true`, `CREATE_GITHUB_RELEASE: false`) ne crée aucune release GitHub et n'est pas concerné.
+> [`release-helm.yml`](./51-release-helm.md) avec `CREATE_GITHUB_RELEASE: true` n'est **pas** compatible avec les releases immuables : `chart-releaser` crée la release puis attache le `.tgz` en deux appels séparés, sans option de brouillon ([helm/chart-releaser#591](https://github.com/helm/chart-releaser/issues/591)). Publier les charts sur un registre OCI à la place (`PUBLISH_OCI: true`, `CREATE_GITHUB_RELEASE: false`) ne crée aucune release GitHub et n'est pas concerné.
 
 ### Gestion de multiples identifiants de pré-release
 
@@ -306,7 +306,7 @@ jobs:
 
 ### Avec authentification GitHub App (PR de release avec CI)
 
-Nécessaire pour que la PR de release déclenche ses propres workflows `pull_request`. Voir [`authentication.md`](./authentication.md).
+Nécessaire pour que la PR de release déclenche ses propres workflows `pull_request`. Voir [`authentication.md`](./05-authentication.md).
 
 ```yaml
 jobs:

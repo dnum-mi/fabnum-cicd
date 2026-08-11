@@ -1,6 +1,6 @@
 # `attest-docker.yml`
 
-Génère et attache des attestations de sécurité (provenance SLSA et/ou SBOM), une signature cosign et/ou un prédicat in-toto personnalisé à une image Docker déjà construite et poussée dans un registre. À utiliser après [`build-docker.yml`](./build-docker.md).
+Génère et attache des attestations de sécurité (provenance SLSA et/ou SBOM), une signature cosign et/ou un prédicat in-toto personnalisé à une image Docker déjà construite et poussée dans un registre. À utiliser après [`build-docker.yml`](./30-build-docker.md).
 
 ## Inputs
 
@@ -99,7 +99,7 @@ jobs:
 ```
 
 > [!TIP]
-> `build-docker.yml` peut aussi appeler `attest-docker.yml` directement en lui passant `PROVENANCE: true` et/ou `SBOM: true` : voir [`build-docker.md`](./build-docker.md).
+> `build-docker.yml` peut aussi appeler `attest-docker.yml` directement en lui passant `PROVENANCE: true` et/ou `SBOM: true` : voir [`build-docker.md`](./30-build-docker.md).
 
 ### Provenance uniquement
 

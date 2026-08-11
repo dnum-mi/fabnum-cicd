@@ -7,9 +7,9 @@ Le pipeline suit le flux git à deux branches : les pushes sur `develop` publien
 ## Pourquoi un orchestrateur dédié ?
 
 - Construire et pousser chaque image Docker en parallèle.
-- Générer la provenance et le SBOM pour chaque image via [`attest-docker.yml`](./attest-docker.md).
+- Générer la provenance et le SBOM pour chaque image via [`attest-docker.yml`](./31-attest-docker.md).
 - Créer **une seule** version / PR release-please pour tout le dépôt, afin que le chart et les images partagent la même version.
-- Publier le chart Helm via [`release-helm-local.yml`](./release-helm-local.md) (le partage de l'espace de tags entre les applications et le chart rend la détection automatique de chart-releaser peu fiable dans un monorepo) - voir aussi [`update-helm-chart.yml`](./update-helm-chart.md).
+- Publier le chart Helm via [`release-helm-local.yml`](./52-release-helm-local.md) (le partage de l'espace de tags entre les applications et le chart rend la détection automatique de chart-releaser peu fiable dans un monorepo) - voir aussi [`update-helm-chart.yml`](./53-update-helm-chart.md).
 
 ## Workflow orchestrateur (`.github/workflows/cd.yml`)
 
@@ -165,17 +165,17 @@ jobs:
 
 ### Fonctionnement
 
-1. **Release-please** – [`release-app.yml`](./release-app.md) crée une unique version/tag/PR pour tout le dépôt, garantissant que le chart Helm et les images applicatives partagent la même version. Avec `ENABLE_PRERELEASE`, le dépôt porte deux couples config/manifest release-please : `release-please-config.json` + `.release-please-manifest.json` pour `main`, `release-please-config-rc.json` + `.release-please-manifest-rc.json` pour `develop` (voir [release-app.md](./release-app.md) pour leur contenu).
-2. **Build + attest** – [`build-docker.yml`](./build-docker.md) construit et pousse chaque image, puis [`attest-docker.yml`](./attest-docker.md) génère la provenance SLSA et le SBOM pour cette image précise - une paire de jobs par composant, pas une matrice (voir l'encart dans le YAML ci-dessus).
-3. **Update chart** – [`update-helm-chart.yml`](./update-helm-chart.md) en mode `local` incrémente la version du chart, met à jour `appVersion`, régénère la doc, puis commit et pousse directement sur la branche courante (aucune PR). Expose `chart-version` et `commit-sha`.
-4. **Release chart** – [`release-helm-local.yml`](./release-helm-local.md) package le chart au commit produit à l'étape précédente (`CHECKOUT_REF`) et le pousse sur le registre OCI.
-5. **Sync pré-release** – [`sync-prerelease-branch.yml`](./sync-prerelease-branch.md) rebase `develop` sur `main` une fois que celle-ci a cessé de bouger, pour que la prochaine pré-release parte de l'état publié. [`release-app.yml`](./release-app.md#assertion-de-synchronisation) assère le résultat au run suivant sur `develop` : oublier ce job échoue là, plutôt que de produire silencieusement une version trop basse.
+1. **Release-please** – [`release-app.yml`](./50-release-app.md) crée une unique version/tag/PR pour tout le dépôt, garantissant que le chart Helm et les images applicatives partagent la même version. Avec `ENABLE_PRERELEASE`, le dépôt porte deux couples config/manifest release-please : `release-please-config.json` + `.release-please-manifest.json` pour `main`, `release-please-config-rc.json` + `.release-please-manifest-rc.json` pour `develop` (voir [release-app.md](./50-release-app.md) pour leur contenu).
+2. **Build + attest** – [`build-docker.yml`](./30-build-docker.md) construit et pousse chaque image, puis [`attest-docker.yml`](./31-attest-docker.md) génère la provenance SLSA et le SBOM pour cette image précise - une paire de jobs par composant, pas une matrice (voir l'encart dans le YAML ci-dessus).
+3. **Update chart** – [`update-helm-chart.yml`](./53-update-helm-chart.md) en mode `local` incrémente la version du chart, met à jour `appVersion`, régénère la doc, puis commit et pousse directement sur la branche courante (aucune PR). Expose `chart-version` et `commit-sha`.
+4. **Release chart** – [`release-helm-local.yml`](./52-release-helm-local.md) package le chart au commit produit à l'étape précédente (`CHECKOUT_REF`) et le pousse sur le registre OCI.
+5. **Sync pré-release** – [`sync-prerelease-branch.yml`](./57-sync-prerelease-branch.md) rebase `develop` sur `main` une fois que celle-ci a cessé de bouger, pour que la prochaine pré-release parte de l'état publié. [`release-app.yml`](./50-release-app.md#assertion-de-synchronisation) assère le résultat au run suivant sur `develop` : oublier ce job échoue là, plutôt que de produire silencieusement une version trop basse.
 
 ### Avantages
 
 - **Releases atomiques** – Les applications et le chart sont publiés ensemble, sans dérive de version.
 - **Réutilisation des workflows existants** – Aucune logique dupliquée, uniquement de l'orchestration.
-- **Adapté au monorepo** – Le mode `local` de `update-helm-chart.yml` et [`release-helm-local.yml`](./release-helm-local.md) s'affranchissent des tags git partagés entre applications et chart, contrairement à `chart-releaser`.
+- **Adapté au monorepo** – Le mode `local` de `update-helm-chart.yml` et [`release-helm-local.yml`](./52-release-helm-local.md) s'affranchissent des tags git partagés entre applications et chart, contrairement à `chart-releaser`.
 - **Extensible** – Ajouter un nouveau composant revient à ajouter sa paire de jobs `build-<composant>`/`attest-<composant>` (copier-coller, pas une ligne de matrice, mais chaque paire reste indépendamment correcte).
 
 ### Variante : monorepo sans chart Helm

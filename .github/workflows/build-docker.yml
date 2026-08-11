@@ -137,7 +137,7 @@ on:
           only to mint the token injected by BUILD_SECRET_GITHUB_TOKEN. The
           token is always narrowed to contents:read + metadata:read on this
           repository, so the same App used for releases is safe to pass here.
-          See docs/workflows/authentication.md.
+          See docs/workflows/05-authentication.md.
         required: false
       APP_PRIVATE_KEY:
         description: GitHub App private key (PEM). Required alongside APP_CLIENT_ID.

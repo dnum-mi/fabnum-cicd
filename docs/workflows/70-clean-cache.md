@@ -2,7 +2,7 @@
 
 Suppression des caches GitHub Actions rattachés à une pull request ou à une branche.
 
-Pour les images de conteneurs, voir [clean-images](./clean-images.md).
+Pour les images de conteneurs, voir [clean-images](./71-clean-images.md).
 
 ## Inputs
 
@@ -22,7 +22,7 @@ Pour les images de conteneurs, voir [clean-images](./clean-images.md).
 
 Un balayage planifié est le déclenchement recommandé.
 
-Le déclencheur `pull_request: closed` paraît naturel, mais il devient inopérant dès que les pull requests sont fusionnées avec `AUTOMERGE_METHOD: admin` — le seul mode disponible lorsque `Allow auto-merge` n'est pas activable sur le dépôt (voir [update-helm-chart](./update-helm-chart.md)).
+Le déclencheur `pull_request: closed` paraît naturel, mais il devient inopérant dès que les pull requests sont fusionnées avec `AUTOMERGE_METHOD: admin` — le seul mode disponible lorsque `Allow auto-merge` n'est pas activable sur le dépôt (voir [update-helm-chart](./53-update-helm-chart.md)).
 
 `admin` fusionne **sans attendre les checks**. Le nettoyage se déclenche donc au moment de la fusion, pendant que le build de la pull request écrit encore ses caches : il n'en trouve qu'une partie, ou aucune, et sort en 0. Le run est vert alors qu'il n'a rien fait, et les caches s'accumulent sans aucun signal d'échec.
 

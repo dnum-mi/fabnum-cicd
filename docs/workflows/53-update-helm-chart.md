@@ -2,7 +2,7 @@
 
 Mise à jour automatique de la version d'un chart Helm et de l'`appVersion` dans `Chart.yaml`, **dans le dépôt qui appelle le workflow**.
 
-> Pour mettre à jour un chart hébergé dans un **dépôt séparé**, c'est [`dispatch-helm-chart.yml`](./dispatch-helm-chart.md) qu'il faut appeler : il déclenche le workflow d'entrée du dépôt chart, qui appelle celui-ci de son côté.
+> Pour mettre à jour un chart hébergé dans un **dépôt séparé**, c'est [`dispatch-helm-chart.yml`](./54-dispatch-helm-chart.md) qu'il faut appeler : il déclenche le workflow d'entrée du dépôt chart, qui appelle celui-ci de son côté.
 
 ## Inputs
 
@@ -25,7 +25,7 @@ Mise à jour automatique de la version d'un chart Helm et de l'`appVersion` dans
 
 | Secret          | Description                                                                                                                                                                                                                                        | Requis |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
-| APP_CLIENT_ID   | Client ID d'une GitHub App. À fournir avec `APP_PRIVATE_KEY` pour authentifier comme une App — prend le pas sur `GH_PAT`. Requis (avec `APP_PRIVATE_KEY`) ou `GH_PAT` pour l'automerge, et pour que la PR déclenche la CI. Voir [`authentication.md`](./authentication.md). | Non    |
+| APP_CLIENT_ID   | Client ID d'une GitHub App. À fournir avec `APP_PRIVATE_KEY` pour authentifier comme une App — prend le pas sur `GH_PAT`. Requis (avec `APP_PRIVATE_KEY`) ou `GH_PAT` pour l'automerge, et pour que la PR déclenche la CI. Voir [`authentication.md`](./05-authentication.md). | Non    |
 | APP_PRIVATE_KEY | Clé privée (PEM) de la GitHub App. Requis avec `APP_CLIENT_ID`.                                                                                                                                                                                    | Non    |
 | GH_PAT          | Personal Access Token GitHub. Alternative historique à `APP_CLIENT_ID`/`APP_PRIVATE_KEY`, toujours supportée mais l'authentification App est préférée.                                                                                              | Non    |
 
@@ -52,12 +52,12 @@ Mise à jour automatique de la version d'un chart Helm et de l'`appVersion` dans
 
 | Mode     | Utilisation                                                                                 | Comportement                                                                                                                                           |
 | -------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `called` | Le chart est dans ce dépôt et la mise à jour doit passer par une revue (ou un automerge)    | Met à jour `Chart.yaml` et le README, puis crée une Pull Request contre `BASE_BRANCH`. Supporte l'automerge. C'est le mode utilisé par un dépôt chart qui reçoit un dispatch de [`dispatch-helm-chart.yml`](./dispatch-helm-chart.md). |
+| `called` | Le chart est dans ce dépôt et la mise à jour doit passer par une revue (ou un automerge)    | Met à jour `Chart.yaml` et le README, puis crée une Pull Request contre `BASE_BRANCH`. Supporte l'automerge. C'est le mode utilisé par un dépôt chart qui reçoit un dispatch de [`dispatch-helm-chart.yml`](./54-dispatch-helm-chart.md). |
 | `local`  | Le chart est dans le **même dépôt** que l'application (monorepo), pipeline CI/CD applicatif | Met à jour `Chart.yaml` et le README, commit et pousse directement sur la branche courante (`git push origin HEAD:$GITHUB_REF_NAME`). Aucune PR créée. |
 
 Une valeur de `RUN_MODE` non reconnue fait échouer le job explicitement.
 
-> **Quand utiliser `local` ?** Lorsque le chart Helm est hébergé dans le même dépôt que l'application, généralement enchaîné après [`release-app.yml`](./release-app.md) pour committer le bump de version directement sur la branche qui vient d'être libérée, avant d'appeler [`release-helm-local.yml`](./release-helm-local.md) avec les outputs `chart-version` et `commit-sha`.
+> **Quand utiliser `local` ?** Lorsque le chart Helm est hébergé dans le même dépôt que l'application, généralement enchaîné après [`release-app.yml`](./50-release-app.md) pour committer le bump de version directement sur la branche qui vient d'être libérée, avant d'appeler [`release-helm-local.yml`](./52-release-helm-local.md) avec les outputs `chart-version` et `commit-sha`.
 
 ### Autres comportements
 
@@ -99,7 +99,7 @@ Seule une `APP_VERSION` fournie mais non-semver fait échouer le run : cette val
 - **Automerge (mode `called`)** : Si `AUTOMERGE_PRERELEASE: true` (quand le bump est une pré-release) ou `AUTOMERGE_RELEASE: true` (sinon), tente de fusionner la PR automatiquement selon `AUTOMERGE_METHOD`. La distinction porte sur le flux **résolu**, pas sur l'entrée `UPGRADE_TYPE` : sous `auto`, un bump rc est bien traité comme une pré-release.
   - `auto` (défaut) : met la PR en file d'attente, GitHub la fusionne une fois les checks requis passés. Nécessite *Allow auto-merge* activé sur le dépôt.
   - `admin` : fusionne immédiatement, en contournant la protection de branche et les checks requis.
-  - Sans credential (`APP_CLIENT_ID`/`APP_PRIVATE_KEY` ou `GH_PAT`) fourni, le job échoue plutôt que de silencieusement ne rien fusionner. Voir [`authentication.md`](./authentication.md#automerge).
+  - Sans credential (`APP_CLIENT_ID`/`APP_PRIVATE_KEY` ou `GH_PAT`) fourni, le job échoue plutôt que de silencieusement ne rien fusionner. Voir [`authentication.md`](./05-authentication.md#automerge).
 - **Injection** : `APP_VERSION` et `PRERELEASE_IDENTIFIER` sont écrits dans `Chart.yaml` avec `yq` + `strenv()`, jamais avec `sed` - ils ne peuvent donc être que stockés, jamais interprétés. Ils sont en plus validés en début de job.
 - La documentation du chart est régénérée avec la version de helm-docs fixée par `HELM_DOCS_VERSION`.
 - Suit le versioning sémantique (semver).
@@ -208,7 +208,7 @@ jobs:
 
 ### Mode local — chart dans un monorepo, enchaîné avec release-helm-local.yml
 
-Utiliser `local` quand le chart Helm est dans le même dépôt que l'application. Le workflow commit et pousse directement la mise à jour du chart sur la branche courante, puis expose `chart-version` et `commit-sha` pour les jobs suivants (par exemple pour packager et publier le chart via [`release-helm-local.yml`](./release-helm-local.md)).
+Utiliser `local` quand le chart Helm est dans le même dépôt que l'application. Le workflow commit et pousse directement la mise à jour du chart sur la branche courante, puis expose `chart-version` et `commit-sha` pour les jobs suivants (par exemple pour packager et publier le chart via [`release-helm-local.yml`](./52-release-helm-local.md)).
 
 ```yaml
 name: Update Helm Chart on Release

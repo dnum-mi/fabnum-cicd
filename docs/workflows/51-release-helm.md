@@ -7,7 +7,7 @@ Publication des charts Helm via `chart-releaser`, qui détecte automatiquement l
 
 **Au moins un doit être activé**, sinon le run échoue. Le canal classique est actif par défaut parce que ce workflow s'adresse à un **dépôt de charts dédié**, où les tags git appartiennent aux charts : c'est la sortie native de `chart-releaser`, et la seule consommable par n'importe quel Helm 3. Elle suppose en revanche que la `PAGES_BRANCH` (`gh-pages` par défaut) **existe déjà** - voir [Prérequis de la branche de pages](#prérequis-de-la-branche-de-pages).
 
-Pour un **monorepo** - un chart hébergé aux côtés du code applicatif, où l'espace de tags est dominé par les tags de l'application et où la détection de changement de chart-releaser (basée sur les tags) devient peu fiable - utilisez [`release-helm-local.yml`](./release-helm-local.md) à la place. Les deux sont des workflows séparés plutôt qu'un seul avec un switch de mode : chacun ne déclare que les permissions dont sa propre logique a besoin, pour qu'un appelant monorepo n'ait jamais à accorder `contents: write` pour un chemin de code chart-releaser qu'il n'exécutera jamais. Voir [`release-helm-local.yml`](./release-helm-local.md#pourquoi-un-workflow-séparé) pour le raisonnement complet.
+Pour un **monorepo** - un chart hébergé aux côtés du code applicatif, où l'espace de tags est dominé par les tags de l'application et où la détection de changement de chart-releaser (basée sur les tags) devient peu fiable - utilisez [`release-helm-local.yml`](./52-release-helm-local.md) à la place. Les deux sont des workflows séparés plutôt qu'un seul avec un switch de mode : chacun ne déclare que les permissions dont sa propre logique a besoin, pour qu'un appelant monorepo n'ait jamais à accorder `contents: write` pour un chemin de code chart-releaser qu'il n'exécutera jamais. Voir [`release-helm-local.yml`](./52-release-helm-local.md#pourquoi-un-workflow-séparé) pour le raisonnement complet.
 
 ## Inputs
 
@@ -30,7 +30,7 @@ Pour un **monorepo** - un chart hébergé aux côtés du code applicatif, où l'
 | ----------------- | --------------------------------------------------------- | ------ |
 | REGISTRY_USERNAME | Nom d'utilisateur pour l'authentification au registre OCI (`github.actor` automatiquement pour `ghcr.io`). **Requis** avec `PUBLISH_OCI: true` quand `REGISTRY` n'est pas `ghcr.io`. | Non    |
 | REGISTRY_PASSWORD | Mot de passe pour l'authentification au registre OCI (`GITHUB_TOKEN` automatiquement pour `ghcr.io`). **Requis** avec `REGISTRY_USERNAME` dans les mêmes conditions. | Non    |
-| APP_CLIENT_ID     | Client ID d'une GitHub App. À fournir avec `APP_PRIVATE_KEY` pour que chart-releaser authentifie comme une App - contrairement à `GITHUB_TOKEN`, les releases créées peuvent alors déclencher des triggers `release:`. Voir [`authentication.md`](./authentication.md). | Non    |
+| APP_CLIENT_ID     | Client ID d'une GitHub App. À fournir avec `APP_PRIVATE_KEY` pour que chart-releaser authentifie comme une App - contrairement à `GITHUB_TOKEN`, les releases créées peuvent alors déclencher des triggers `release:`. Voir [`authentication.md`](./05-authentication.md). | Non    |
 | APP_PRIVATE_KEY   | Clé privée (PEM) de la GitHub App. Requis avec `APP_CLIENT_ID`.                                                        | Non    |
 | GH_PAT            | Personal Access Token, utilisé pour le même usage que les credentials App ci-dessus et résolu après eux. Comme un token App, il peut déclencher des workflows - la même précaution s'applique au push sur `PAGES_BRANCH`. | Non    |
 | GPG_PRIVATE_KEY   | Clé privée GPG au format ASCII-armored, utilisée pour signer les packages de charts. Requis avec `SIGN_CHART`. | Non    |
@@ -62,7 +62,7 @@ Activer les deux est possible et publie les mêmes packages par les deux chemins
 
 **Les deux laissés à `false` font échouer le run.** Le workflow packagerait sinon les charts, ne les publierait nulle part, et signalerait malgré tout un succès - un run vert n'ayant rien livré est plus difficile à repérer qu'un run rouge, donc l'étape de validation l'arrête d'emblée avec un message nommant les deux inputs. `CREATE_GITHUB_RELEASE` étant à `true` par défaut, atteindre ce cas suppose de l'avoir explicitement désactivé sans activer l'autre canal.
 
-> **Et en monorepo ?** [`release-helm-local.yml`](./release-helm-local.md) est le pendant pour un chart hébergé aux côtés du code applicatif, et n'expose aucun de ces deux inputs : l'OCI y est le seul canal possible. Les GitHub Releases et les tags git y appartiennent à l'application, le chart ne peut donc pas les revendiquer.
+> **Et en monorepo ?** [`release-helm-local.yml`](./52-release-helm-local.md) est le pendant pour un chart hébergé aux côtés du code applicatif, et n'expose aucun de ces deux inputs : l'OCI y est le seul canal possible. Les GitHub Releases et les tags git y appartiennent à l'application, le chart ne peut donc pas les revendiquer.
 
 ### Prérequis de la branche de pages
 
@@ -97,13 +97,13 @@ Sur un dépôt privé, trois options, par ordre de préférence :
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | published-charts | Tableau JSON des charts poussés sur le registre OCI - `{name, version, repository, digest}` par entrée. Tableau vide si `PUBLISH_OCI` est `false` ou si aucun chart n'a changé. |
 
-`repository` et `digest` sont gardés séparés pour être transmis tels quels à [`attest-helm.yml`](./attest-helm.md), qui les passe comme sujet à cosign et comme couple `subject-name`/`subject-digest` attendu par `actions/attest-build-provenance` - la même forme que `attest-docker.yml` consomme pour les images. Le nom et la version sont relus depuis la sortie de `helm push` plutôt qu'extraits du nom de fichier du package, qui ne peut pas être découpé de façon fiable : une version de prerelease contient elle-même des tirets (`my-chart-1.2.3-rc.1.tgz`).
+`repository` et `digest` sont gardés séparés pour être transmis tels quels à [`attest-helm.yml`](./56-attest-helm.md), qui les passe comme sujet à cosign et comme couple `subject-name`/`subject-digest` attendu par `actions/attest-build-provenance` - la même forme que `attest-docker.yml` consomme pour les images. Le nom et la version sont relus depuis la sortie de `helm push` plutôt qu'extraits du nom de fichier du package, qui ne peut pas être découpé de façon fiable : une version de prerelease contient elle-même des tirets (`my-chart-1.2.3-rc.1.tgz`).
 
 ## Signature
 
 Les deux canaux sont signés par des mécanismes différents, complémentaires plutôt qu'alternatifs :
 
-| | `SIGN_CHART: true` (ici) | [`attest-helm.yml`](./attest-helm.md) |
+| | `SIGN_CHART: true` (ici) | [`attest-helm.yml`](./56-attest-helm.md) |
 | --- | --- | --- |
 | Produit | un fichier de provenance GPG `.prov` | signatures cosign et/ou provenance SLSA dans le registre |
 | Couvre | le canal GitHub Release / `helm repo add` | le canal OCI |
@@ -142,7 +142,7 @@ Toute pièce manquante fait échouer le run en amont plutôt que de produire des
 - Pour ghcr.io, utilise automatiquement les credentials GitHub (pas besoin de fournir REGISTRY_USERNAME/PASSWORD).
 - Pour les autres registres, fournissez `REGISTRY_USERNAME` et `REGISTRY_PASSWORD` en tant que secrets.
 - Configure Git avec le bot GitHub Actions pour les commits automatiques.
-- **`CREATE_GITHUB_RELEASE: true`** : fournir `APP_CLIENT_ID`/`APP_PRIVATE_KEY` (ou `GH_PAT`) permet aux releases GitHub créées de déclencher des triggers `release:`, ce que `GITHUB_TOKEN` ne peut jamais faire. Le push sur `PAGES_BRANCH` utilise le même token, donc le même credential peut aussi déclencher des workflows sur cette branche - à vérifier avant d'activer. Voir [`authentication.md`](./authentication.md).
+- **`CREATE_GITHUB_RELEASE: true`** : fournir `APP_CLIENT_ID`/`APP_PRIVATE_KEY` (ou `GH_PAT`) permet aux releases GitHub créées de déclencher des triggers `release:`, ce que `GITHUB_TOKEN` ne peut jamais faire. Le push sur `PAGES_BRANCH` utilise le même token, donc le même credential peut aussi déclencher des workflows sur cette branche - à vérifier avant d'activer. Voir [`authentication.md`](./05-authentication.md).
 
 > [!WARNING]
 > **`CREATE_GITHUB_RELEASE: true` n'est pas compatible avec les [*immutable releases*](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases).** `chart-releaser` crée la release GitHub puis attache le `.tgz` du chart en deux appels API distincts, sans possibilité de passer par un brouillon ; sur un dépôt en releases immuables le second appel est rejeté et la release reste incomplète. Le support côté amont est suivi dans [helm/chart-releaser#591](https://github.com/helm/chart-releaser/issues/591).
@@ -204,7 +204,7 @@ jobs:
 
 ### Chart dans un monorepo applicatif
 
-Pour un chart hébergé aux côtés du code applicatif, voir [`release-helm-local.yml`](./release-helm-local.md) à la place - un workflow séparé, à permissions minimales, dédié à ce cas.
+Pour un chart hébergé aux côtés du code applicatif, voir [`release-helm-local.yml`](./52-release-helm-local.md) à la place - un workflow séparé, à permissions minimales, dédié à ce cas.
 
 ### Avec GitLab Container Registry
 
