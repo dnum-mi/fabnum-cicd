@@ -12,7 +12,7 @@ Mise à jour automatique de la version d'un chart Helm et de l'`appVersion` dans
 | CHART_NAME            | string | Nom du chart à mettre à jour (dans CHART_DIR)                                                                                                                                                                          | Oui    | -                  |
 | CHART_DIR             | string | Nom du dossier contenant le chart                                                                                                                                                                                      | Non    | `charts`           |
 | APP_VERSION           | string | Version de l'application à injecter dans `Chart.yaml` (`appVersion`). Laisser vide pour conserver l'`appVersion` actuelle - une release "chart-only" où seule la version du chart évolue.                              | Non    | `""`               |
-| UPGRADE_TYPE          | string | Type de mise à jour : `major`, `minor`, `patch` ou `prerelease`                                                                                                                                                        | Non    | `patch`            |
+| UPGRADE_TYPE          | string | Type de mise à jour : `major`, `minor`, `patch`, `prerelease` ou `auto` (dérive le niveau du delta d'appVersion - voir [Mode `auto`](#mode-auto) ; requiert `APP_VERSION`)                                                                                                                                                        | Non    | `patch`            |
 | PRERELEASE_IDENTIFIER | string | Identifiant de pré-release (utilisé seulement si UPGRADE_TYPE est `prerelease`)                                                                                                                                        | Non    | `rc`               |
 | HELM_DOCS_VERSION     | string | Version de helm-docs utilisée pour régénérer le README du chart (ex: `v1.14.2`). Épinglée plutôt que `:latest`, pour qu'une nouvelle release amont ne change pas silencieusement ce que le job exécute sur votre chart. | Non    | `v1.14.2`          |
 | AUTOMERGE_PRERELEASE  | bool   | Fusionner automatiquement la PR créée quand `UPGRADE_TYPE` est `prerelease` (mode `called` ; nécessite `APP_CLIENT_ID`/`APP_PRIVATE_KEY` ou `GH_PAT`)                                                                  | Non    | `false`            |
@@ -71,6 +71,25 @@ Une valeur de `RUN_MODE` non reconnue fait échouer le job explicitement.
 - **Logique standard (major/minor/patch)** :
   - Si la version actuelle est une prerelease (ex: `1.2.3-rc.1`), publie d'abord la version officielle (ex: `1.2.3`)
   - Si la version actuelle est stable, applique le bump classique (major/minor/patch)
+
+### Mode `auto`
+
+`UPGRADE_TYPE: auto` fait refléter au chart le bump de l'application, au lieu d'un niveau figé par l'appelant :
+
+- **Le niveau** est dérivé du delta d'appVersion - ce que `Chart.yaml` contient avant la mise à jour comparé à `APP_VERSION` (majeur différent → `major`, mineur différent → `minor`, sinon `patch`). La comparaison porte sur la base `X.Y.Z` seule.
+- **Le flux** est choisi par la forme d'`APP_VERSION` : une prerelease (ex: `0.3.0-rc.1`) entre ou continue le cycle rc du chart, une version stable applique le bump classique (ou retire le suffixe si le chart est en cycle). Une seule valeur couvre donc les deux branches d'un pipeline à deux branches - plus besoin de conditionner sur `github.ref_name`.
+
+| Chart actuel (version / appVersion) | `APP_VERSION` | Résultat | Pourquoi |
+| --- | --- | --- | --- |
+| `0.2.8` / `0.2.2` | `0.2.3-rc` | `0.2.9-rc` | delta patch, entrée en cycle |
+| `0.2.8` / `0.2.2` | `0.3.0-rc` | `0.3.0-rc` | delta minor, le cycle s'ouvre au bon niveau |
+| `0.3.0-rc` / `0.3.0-rc` | `0.3.0-rc.1` | `0.3.0-rc.1` | itération du cycle |
+| `0.2.9-rc.2` / `0.2.3-rc.1` | `0.3.0-rc.1` | `0.3.0-rc.2` | escalade en cours de cycle : la base monte, le compteur est conservé tel quel - la même règle que release-please applique à l'application |
+| `0.3.0-rc.2` / `0.3.0-rc.2` | `0.3.0` | `0.3.0` | promotion : le niveau est déjà dans la base, on retire le suffixe |
+| `0.3.0` / `0.3.0` | `0.3.1` | `0.3.1` | hotfix direct sur la branche de release |
+
+`auto` requiert `APP_VERSION` (une release chart-only n'a pas de delta - choisissez le niveau explicitement) et exige que les deux appVersions soient du semver.
+
 - **Mode `local`** : commit et push directement sur `$GITHUB_REF_NAME`, avec un `git pull --rebase` préalable pour tolérer les push concurrents d'autres jobs du même pipeline. Les push authentifiés avec `GITHUB_TOKEN` ne redéclenchent jamais de nouveau workflow (anti-récursion GitHub), ce qui permet d'enchaîner un job de release du chart dans le même run en toute sécurité - ce commit ne porte volontairement pas `[skip ci]` : `GITHUB_TOKEN` suffit déjà à empêcher la boucle, et `[skip ci]` supprimerait aussi les checks `pull_request` d'une pull request qu'un humain ouvrirait ensuite depuis cette branche (ex : une promotion manuelle `develop` → `main`).
 - **Automerge (mode `called`)** : Si `AUTOMERGE_PRERELEASE: true` (quand `UPGRADE_TYPE: prerelease`) ou `AUTOMERGE_RELEASE: true` (sinon), tente de fusionner la PR automatiquement selon `AUTOMERGE_METHOD` :
   - `auto` (défaut) : met la PR en file d'attente, GitHub la fusionne une fois les checks requis passés. Nécessite *Allow auto-merge* activé sur le dépôt.
@@ -212,7 +231,10 @@ jobs:
       RUN_MODE: local
       CHART_NAME: my-app
       APP_VERSION: ${{ needs.release.outputs.version }}
-      UPGRADE_TYPE: ${{ github.ref_name == 'develop' && 'prerelease' || 'patch' }}
+      # 'auto' derive le niveau du delta d'appVersion et choisit le flux
+      # (cycle rc ou release) d'apres la forme d'APP_VERSION - la meme valeur
+      # convient a develop et main.
+      UPGRADE_TYPE: auto
 
   release-chart:
     needs:

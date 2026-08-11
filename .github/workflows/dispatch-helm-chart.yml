@@ -30,7 +30,11 @@ on:
         type: string
         default: ""
       UPGRADE_TYPE:
-        description: Should update 'major', 'minor', 'patch' or 'prerelease'
+        description: >-
+          How the chart version is bumped: 'major', 'minor', 'patch',
+          'prerelease', or 'auto'. Passed through verbatim to the chart
+          repository's workflow; 'auto' lets update-helm-chart.yml derive the
+          level from the appVersion delta there (requires APP_VERSION).
         required: false
         type: string
         default: patch

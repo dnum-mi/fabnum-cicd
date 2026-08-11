@@ -409,7 +409,7 @@ jobs:
       CHART_REPO: my-org/helm-charts
       CHART_NAME: my-app
       APP_VERSION: ${{ needs.release.outputs.version }}
-      UPGRADE_TYPE: ${{ github.ref_name == 'develop' && 'prerelease' || github.ref_name == 'main' && 'patch' }}
+      UPGRADE_TYPE: auto
       PRERELEASE_IDENTIFIER: rc
     secrets:
       GH_PAT: ${{ secrets.GH_PAT }}
