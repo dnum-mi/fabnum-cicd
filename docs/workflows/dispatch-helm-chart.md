@@ -15,7 +15,7 @@ Le dépôt applicatif ne touche à rien : il envoie la version au dépôt chart,
 | WORKFLOW_NAME         | string | Nom du workflow à déclencher dans le dépôt chart (ex: `update-chart.yml`)                                                                                                                       | Non    | `update-app-version.yml` |
 | CHART_DIR             | string | Nom du dossier contenant le chart (dans CHART_REPO)                                                                                                                                             | Non    | `charts`                 |
 | APP_VERSION           | string | Version de l'application à injecter dans `Chart.yaml` (`appVersion`). Laisser vide pour conserver l'`appVersion` actuelle - une release "chart-only".                                           | Non    | `""`                     |
-| UPGRADE_TYPE          | string | Type de mise à jour : `major`, `minor`, `patch` ou `prerelease`                                                                                                                                 | Non    | `patch`                  |
+| UPGRADE_TYPE          | string | Type de mise à jour : `major`, `minor`, `patch`, `prerelease` ou `auto` - transmis tel quel au dépôt chart, où [`update-helm-chart.yml`](./update-helm-chart.md#mode-auto) dérive le niveau du delta d'appVersion                                                                                                                                 | Non    | `patch`                  |
 | PRERELEASE_IDENTIFIER | string | Identifiant de pré-release (utilisé seulement si UPGRADE_TYPE est `prerelease`)                                                                                                                 | Non    | `rc`                     |
 | AUTOMERGE_PRERELEASE  | bool   | Demander au dépôt chart de fusionner sa PR quand `UPGRADE_TYPE` est `prerelease`                                                                                                                | Non    | `false`                  |
 | AUTOMERGE_RELEASE     | bool   | Demander au dépôt chart de fusionner sa PR quand `UPGRADE_TYPE` n'est pas `prerelease`                                                                                                          | Non    | `false`                  |
@@ -185,7 +185,7 @@ on:
         required: false
         default: charts
       UPGRADE_TYPE:
-        description: major, minor, patch ou prerelease
+        description: major, minor, patch, prerelease ou auto
         required: false
         default: patch
       PRERELEASE_IDENTIFIER:

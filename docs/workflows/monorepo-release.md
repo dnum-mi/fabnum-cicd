@@ -120,9 +120,11 @@ jobs:
       RUN_MODE: local
       CHART_NAME: my-app
       APP_VERSION: ${{ needs.release.outputs.version }}
-      # Sur `develop`, le chart suit le cycle rc (0.4.2-rc -> rc.1 -> ...) ;
-      # sur `main`, il publie la version finale.
-      UPGRADE_TYPE: ${{ github.ref_name == 'develop' && 'prerelease' || 'minor' }}
+      # 'auto' fait refléter au chart le bump de l'application (delta
+      # d'appVersion) et choisit le flux d'après la forme d'APP_VERSION :
+      # cycle rc sur develop, version finale sur main - une seule valeur pour
+      # les deux branches.
+      UPGRADE_TYPE: auto
       PRERELEASE_IDENTIFIER: rc
 
   # -------------------------------------------------

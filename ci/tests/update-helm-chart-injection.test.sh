@@ -17,6 +17,7 @@ validate_env() {
   export RUN_MODE="called"
   export AUTOMERGE_METHOD="auto"
   export APP_VERSION="1.4.0"
+  export UPGRADE_TYPE="patch"
   export PRERELEASE_IDENTIFIER="rc"
 }
 

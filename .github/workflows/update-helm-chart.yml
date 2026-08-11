@@ -30,7 +30,14 @@ on:
         type: string
         default: ""
       UPGRADE_TYPE:
-        description: Should update 'major', 'minor', 'patch' or 'prerelease'
+        description: >-
+          How the chart version is bumped: 'major', 'minor', 'patch',
+          'prerelease', or 'auto'. 'auto' mirrors the app's own bump - the
+          level is derived from the appVersion delta (what Chart.yaml holds
+          now vs APP_VERSION), and APP_VERSION being a prerelease is what
+          selects the prerelease flow - so a single value covers both
+          branches of a two-branch pipeline. Requires APP_VERSION, so a
+          chart-only release must pick its level explicitly.
         required: false
         type: string
         default: patch
@@ -134,6 +141,7 @@ jobs:
         RUN_MODE: ${{ inputs.RUN_MODE }}
         AUTOMERGE_METHOD: ${{ inputs.AUTOMERGE_METHOD }}
         APP_VERSION: ${{ inputs.APP_VERSION }}
+        UPGRADE_TYPE: ${{ inputs.UPGRADE_TYPE }}
         PRERELEASE_IDENTIFIER: ${{ inputs.PRERELEASE_IDENTIFIER }}
       run: |
         set -euo pipefail
@@ -165,6 +173,23 @@ jobs:
             exit 1
             ;;
         esac
+
+        # An unrecognised value would fall through to the bump step's own
+        # guard, but failing here names the input before any token is minted.
+        case "$UPGRADE_TYPE" in
+          major|minor|patch|prerelease|auto) ;;
+          *)
+            echo "::error::UPGRADE_TYPE must be 'major', 'minor', 'patch', 'prerelease' or 'auto', got '$UPGRADE_TYPE'"
+            exit 1
+            ;;
+        esac
+
+        # 'auto' derives the bump level from the appVersion delta, and a
+        # chart-only release has no delta to derive it from.
+        if [ "$UPGRADE_TYPE" = "auto" ] && [ -z "$APP_VERSION" ]; then
+          echo "::error::UPGRADE_TYPE=auto derives the chart bump from the appVersion delta and needs APP_VERSION. For a chart-only release, pick the level explicitly."
+          exit 1
+        fi
 
         # Both values are written into Chart.yaml, and PRERELEASE_IDENTIFIER
         # additionally becomes part of the chart version and the pull request's
@@ -233,8 +258,54 @@ jobs:
         echo "Update chart '$CHART_NAME' in $CHART_DIR/$CHART_NAME with app version '$APP_VERSION'"
         CURRENT_VERSION=$(yq '.version' "$CHART_DIR/$CHART_NAME/Chart.yaml")
 
-        # Bump version using Release Please compatible logic
+        # 'auto' mirrors the app's own bump. The level comes from the
+        # appVersion delta - what Chart.yaml holds now vs what is being
+        # injected - and APP_VERSION being a prerelease is what selects the
+        # prerelease flow, so one caller value covers both branches of a
+        # two-branch pipeline. For the explicit types the level is the type
+        # itself, which keeps their behavior exactly as it was.
+        UPGRADE_LEVEL="$UPGRADE_TYPE"
+        EFFECTIVE_TYPE="$UPGRADE_TYPE"
         if [[ "$UPGRADE_TYPE" == "prerelease" ]]; then
+          UPGRADE_LEVEL="patch"
+        elif [[ "$UPGRADE_TYPE" == "auto" ]]; then
+          CURRENT_APP_VERSION=$(yq '.appVersion' "$CHART_DIR/$CHART_NAME/Chart.yaml")
+
+          # Compared on the base X.Y.Z only: mid-cycle both sides are
+          # prereleases, and their identifiers say nothing about the level.
+          if [[ ! "$CURRENT_APP_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)([-+].*)?$ ]]; then
+            echo "::error::UPGRADE_TYPE=auto derives the bump level from the appVersion delta, but the chart's current appVersion '$CURRENT_APP_VERSION' is not semver. Pick the level explicitly instead."
+            exit 1
+          fi
+          OLD_APP_MAJOR="${BASH_REMATCH[1]}"
+          OLD_APP_MINOR="${BASH_REMATCH[2]}"
+
+          if [[ ! "$APP_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9A-Za-z.-]+))?(\+.*)?$ ]]; then
+            echo "::error::UPGRADE_TYPE=auto derives the bump level from the appVersion delta, but APP_VERSION '$APP_VERSION' is not semver. Pick the level explicitly instead."
+            exit 1
+          fi
+          NEW_APP_MAJOR="${BASH_REMATCH[1]}"
+          NEW_APP_MINOR="${BASH_REMATCH[2]}"
+          NEW_APP_PRERELEASE="${BASH_REMATCH[5]}"
+
+          if [[ "$NEW_APP_MAJOR" != "$OLD_APP_MAJOR" ]]; then
+            UPGRADE_LEVEL="major"
+          elif [[ "$NEW_APP_MINOR" != "$OLD_APP_MINOR" ]]; then
+            UPGRADE_LEVEL="minor"
+          else
+            UPGRADE_LEVEL="patch"
+          fi
+
+          if [[ -n "$NEW_APP_PRERELEASE" ]]; then
+            EFFECTIVE_TYPE="prerelease"
+          else
+            EFFECTIVE_TYPE="$UPGRADE_LEVEL"
+          fi
+          echo "auto: app '$CURRENT_APP_VERSION' -> '$APP_VERSION' implies a $UPGRADE_LEVEL bump ($EFFECTIVE_TYPE flow)"
+        fi
+
+        # Bump version using Release Please compatible logic
+        if [[ "$EFFECTIVE_TYPE" == "prerelease" ]]; then
           # Parse version: extract base version and prerelease part
           if [[ $CURRENT_VERSION =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-(.+))?$ ]]; then
             MAJOR="${BASH_REMATCH[1]}"
@@ -243,9 +314,14 @@ jobs:
             PRERELEASE="${BASH_REMATCH[5]}"
 
             if [[ -z "$PRERELEASE" ]]; then
-              # No prerelease: bump patch then add prerelease identifier
-              # This prepares the next version (e.g., 0.2.0 -> 0.2.1-rc)
-              NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))-$PRERELEASE_IDENTIFIER"
+              # No prerelease: bump the base by the level, then open the
+              # cycle with the bare identifier (e.g. 1.2.3 -> 1.2.4-rc, or
+              # 1.2.3 -> 1.3.0-rc when the app bumped minor under 'auto')
+              case "$UPGRADE_LEVEL" in
+                major) NEXT_VERSION="$((MAJOR + 1)).0.0-$PRERELEASE_IDENTIFIER" ;;
+                minor) NEXT_VERSION="${MAJOR}.$((MINOR + 1)).0-$PRERELEASE_IDENTIFIER" ;;
+                patch) NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))-$PRERELEASE_IDENTIFIER" ;;
+              esac
             else
               # Has prerelease: extract current identifier. Same character
               # class as the PRERELEASE_IDENTIFIER validation - anything the
@@ -259,6 +335,15 @@ jobs:
                   # Different identifier: switch to new identifier without number
                   # e.g., 1.0.0-alpha.2 -> 1.0.0-beta
                   NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}-$PRERELEASE_IDENTIFIER"
+                elif [[ "$UPGRADE_LEVEL" == "major" ]] && [[ "$MINOR" -ne 0 || "$PATCH" -ne 0 ]]; then
+                  # The cycle's base does not encode the level yet: bump it
+                  # and carry the prerelease part verbatim - the same
+                  # escalation release-please applies to the app version when
+                  # a feat lands mid-cycle (e.g. 1.2.4-rc.2 -> 2.0.0-rc.2).
+                  NEXT_VERSION="$((MAJOR + 1)).0.0-${PRERELEASE}"
+                elif [[ "$UPGRADE_LEVEL" == "minor" && "$PATCH" -ne 0 ]]; then
+                  # e.g. 1.2.4-rc.2 -> 1.3.0-rc.2
+                  NEXT_VERSION="${MAJOR}.$((MINOR + 1)).0-${PRERELEASE}"
                 elif [[ -z "$CURRENT_NUM" ]]; then
                   # Same identifier without number: add .1
                   # e.g., 1.0.0-rc -> 1.0.0-rc.1
@@ -287,11 +372,13 @@ jobs:
             PRERELEASE="${BASH_REMATCH[5]}"
 
             if [[ -n "$PRERELEASE" ]]; then
-              # Has prerelease: release the official version without prerelease
+              # Has prerelease: release the official version without
+              # prerelease - the level was already baked into the base when
+              # the cycle was entered or escalated
               NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}"
             else
               # No prerelease: perform standard version bump
-              case "$UPGRADE_TYPE" in
+              case "$EFFECTIVE_TYPE" in
                 major)
                   NEXT_VERSION="$((MAJOR + 1)).0.0"
                   ;;

@@ -11,7 +11,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 UPDATE=$(extract_run update-helm-chart.yml update "update chart version")
 
-# A chart at a given version, ready for one bump.
+# A chart at a given version, ready for one bump. The 4th argument sets the
+# appVersion already in Chart.yaml - what 'auto' derives its level from.
 chart_at() {
   export CHART_DIR="charts"
   export CHART_NAME="my-app"
@@ -26,7 +27,7 @@ apiVersion: v2
 name: my-app
 type: application
 version: $1
-appVersion: "1.0.0"
+appVersion: "${4:-1.0.0}"
 YAML
 
   cd "$SANDBOX" || exit 1
@@ -111,6 +112,145 @@ test_prerelease_reads_back_any_identifier_it_can_write() {
   run_block "$UPDATE"
   assert_status 0 "an identifier the validation accepted must parse back"
   assert_version 1.0.0-rc2.1
+}
+
+# --- UPGRADE_TYPE=auto: the chart mirrors the app's bump level, derived from
+# --- the appVersion delta; APP_VERSION being a prerelease selects the flow.
+
+test_auto_maps_an_app_patch_to_a_chart_patch() {
+  chart_at 1.2.3 auto rc 1.0.0
+  export APP_VERSION="1.0.1"
+  run_block "$UPDATE"
+  assert_status 0
+  assert_version 1.2.4
+}
+
+test_auto_maps_an_app_minor_to_a_chart_minor() {
+  chart_at 1.2.3 auto rc 1.0.0
+  export APP_VERSION="1.1.0"
+  run_block "$UPDATE"
+  assert_status 0
+  assert_version 1.3.0
+}
+
+test_auto_maps_an_app_major_to_a_chart_major() {
+  chart_at 1.2.3 auto rc 1.0.0
+  export APP_VERSION="2.0.0"
+  run_block "$UPDATE"
+  assert_status 0
+  assert_version 2.0.0
+}
+
+test_auto_enters_a_prerelease_cycle_at_the_app_level() {
+  # App went 0.2.2 -> 0.3.0-rc (minor): the chart's cycle opens at minor too,
+  # not at the blanket patch the plain 'prerelease' type uses.
+  chart_at 0.2.8 auto rc 0.2.2
+  export APP_VERSION="0.3.0-rc"
+  run_block "$UPDATE"
+  assert_status 0
+  assert_version 0.3.0-rc
+}
+
+test_auto_iterates_a_running_cycle() {
+  chart_at 0.3.0-rc auto rc 0.3.0-rc
+  export APP_VERSION="0.3.0-rc.1"
+  run_block "$UPDATE"
+  assert_status 0
+  assert_version 0.3.0-rc.1
+}
+
+test_auto_escalates_a_running_cycle_when_the_app_level_rises() {
+  # The cycle started from fixes (chart 0.2.9-rc.2), then a feat raised the
+  # app to 0.3.0-rc.1: the chart base escalates the same way release-please
+  # escalated the app - bump the base, carry the prerelease part verbatim.
+  chart_at 0.2.9-rc.2 auto rc 0.2.3-rc.1
+  export APP_VERSION="0.3.0-rc.1"
+  run_block "$UPDATE"
+  assert_status 0
+  assert_version 0.3.0-rc.2
+}
+
+test_auto_does_not_reescalate_an_already_escalated_cycle() {
+  # The base already encodes the minor (patch == 0): later iterations only
+  # advance the counter.
+  chart_at 0.3.0-rc.2 auto rc 0.2.3-rc.1
+  export APP_VERSION="0.3.0-rc.2"
+  run_block "$UPDATE"
+  assert_status 0
+  assert_version 0.3.0-rc.3
+}
+
+test_auto_escalates_to_major_and_carries_the_counter() {
+  chart_at 0.3.0-rc.2 auto rc 0.3.0-rc.1
+  export APP_VERSION="1.0.0-rc.1"
+  run_block "$UPDATE"
+  assert_status 0
+  assert_version 1.0.0-rc.2
+}
+
+test_auto_promotes_by_stripping_the_prerelease() {
+  # On the release branch APP_VERSION is stable, and the level was baked into
+  # the base during the cycle - promotion only drops the suffix.
+  chart_at 0.3.0-rc.2 auto rc 0.3.0-rc.2
+  export APP_VERSION="0.3.0"
+  run_block "$UPDATE"
+  assert_status 0
+  assert_version 0.3.0
+}
+
+test_auto_rejects_a_non_semver_app_version() {
+  chart_at 1.2.3 auto rc 1.0.0
+  export APP_VERSION="not-semver"
+  run_block "$UPDATE"
+  assert_status 1 "auto cannot derive a level from a non-semver APP_VERSION"
+  assert_output_contains "not semver"
+}
+
+test_auto_rejects_a_non_semver_current_app_version() {
+  chart_at 1.2.3 auto rc latest
+  export APP_VERSION="1.0.1"
+  run_block "$UPDATE"
+  assert_status 1 "auto cannot derive a level from a non-semver appVersion"
+  assert_output_contains "not semver"
+}
+
+# --- 'Validate inputs' guards specific to the version contract.
+VALIDATE=$(extract_run update-helm-chart.yml update "Validate inputs")
+
+validate_env() {
+  export HAS_PARTIAL_APP_AUTH="false"
+  export RUN_MODE="local"
+  export AUTOMERGE_METHOD="auto"
+  export APP_VERSION="1.4.0"
+  export UPGRADE_TYPE="patch"
+  export PRERELEASE_IDENTIFIER="rc"
+}
+
+test_validate_accepts_every_upgrade_type() {
+  local type
+  for type in major minor patch prerelease auto; do
+    validate_env
+    export UPGRADE_TYPE="$type"
+    run_block "$VALIDATE"
+    assert_status 0 "UPGRADE_TYPE '$type' is a supported value"
+  done
+}
+
+test_validate_rejects_an_unknown_upgrade_type() {
+  validate_env
+  export UPGRADE_TYPE="patsh"
+  run_block "$VALIDATE"
+  assert_status 1
+  assert_output_contains "UPGRADE_TYPE must be"
+}
+
+test_validate_requires_app_version_for_auto() {
+  validate_env
+  export UPGRADE_TYPE="auto"
+  export APP_VERSION=""
+  run_block "$VALIDATE"
+  assert_status 1 "a chart-only release has no appVersion delta to derive from"
+  assert_output_contains "needs APP_VERSION"
 }
 
 run_tests
