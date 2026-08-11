@@ -20,6 +20,7 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 - [**Build Docker**](./build-docker.md) - Build et push (optionnel) d'images Docker multi-architecture
 - [**Attest Docker**](./attest-docker.md) - Génération d'attestations de sécurité (provenance SLSA, SBOM, signature cosign) pour une image construite
 - [**Release App**](./release-app.md) - Gestion automatisée des releases d'application avec release-please
+- [**Release NPM**](./release-npm.md) - Publication de paquets sur un registre NPM (npmjs.org, GitHub Packages, registre privé)
 - [**Release Helm**](./release-helm.md) - Publication de charts Helm sur registres OCI via chart-releaser (dépôt de charts dédié)
 - [**Release Helm (local)**](./release-helm-local.md) - Publication d'un chart Helm hébergé dans un monorepo applicatif
 - [**Update Helm Chart**](./update-helm-chart.md) - Mise à jour automatique des versions de charts Helm
@@ -131,7 +132,6 @@ jobs:
       pull-requests: read
     outputs:
       apps: ${{ steps.filter.outputs.apps }}
-      packages: ${{ steps.filter.outputs.packages }}
       ci: ${{ steps.filter.outputs.ci }}
     steps:
     - name: Checks-out repository
@@ -144,8 +144,6 @@ jobs:
         filters: |
           apps:
             - 'apps/**'
-          packages:
-            - 'packages/**'
           ci:
             - '.github/workflows/**'
 
@@ -172,7 +170,9 @@ jobs:
   scan-sonarqube:
     uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@v0
     needs:
+    - path-filter
     - expose-vars
+    if: ${{ needs.path-filter.outputs.apps == 'true' }}
     permissions:
       issues: write
       pull-requests: write
@@ -202,7 +202,11 @@ jobs:
   build-docker:
     uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
     needs:
+    - path-filter
     - expose-vars
+    # Les changements de workflows rebuildent aussi : ils peuvent changer la
+    # façon dont l'image est produite.
+    if: ${{ needs.path-filter.outputs.apps == 'true' || needs.path-filter.outputs.ci == 'true' }}
     permissions:
       packages: write
       contents: read
@@ -251,6 +255,8 @@ jobs:
       GITHUB_SECURITY_TAB: false
 
   # Workaround for required status check in protection branches (see. https://github.com/orgs/community/discussions/13690)
+  # `needs:` doit lister TOUS les jobs du pipeline : un job absent peut échouer
+  # sans bloquer la pull request, ce qui vide le gate de son sens.
   all-jobs-passed:
     name: Check jobs status
     runs-on: ubuntu-latest
@@ -258,6 +264,8 @@ jobs:
     needs:
     - path-filter
     - expose-vars
+    - lint-commits
+    - scan-sonarqube
     - build-docker
     - scan-trivy-conf
     - scan-trivy-images
@@ -397,7 +405,7 @@ jobs:
     # et n'écrit rien ici.
     permissions: {}
     with:
-      WORKFLOW_NAME: update-chart.yml
+      WORKFLOW_NAME: update-app-version.yml
       CHART_REPO: my-org/helm-charts
       CHART_NAME: my-app
       APP_VERSION: ${{ needs.release.outputs.version }}

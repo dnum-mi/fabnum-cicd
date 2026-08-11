@@ -8,7 +8,7 @@ Lint des charts Helm avec [chart-testing](https://github.com/helm/chart-testing)
 | ----------------- | ------- | -------------------------------------------------------------------------------------- | ------ | ------------------ |
 | CT_CONF_PATH      | string  | Chemin vers le fichier de configuration chart-testing                                  | Oui    | -                  |
 | CHARTS_DIR        | string  | Répertoire scanné par helm-docs pour le job lint-docs (ex: `charts` pour un répertoire dédié, ou le répertoire du chart lui-même dans un monorepo avec un chart unique à sa racine). Doit correspondre au(x) `chart-dirs` configuré(s) dans CT_CONF_PATH, ou les contenir. | Non    | `charts`           |
-| HELM_DOCS_VERSION | string  | Version de helm-docs à utiliser                                                        | Non    | `1.14.2`           |
+| HELM_DOCS_VERSION | string  | Version de helm-docs à utiliser (ex: `v1.14.2` - le préfixe `v` fait partie du tag d'image) | Non    | `v1.14.2`          |
 | LINT_CHARTS       | boolean | Exécuter le lint des charts                                                            | Non    | `true`             |
 | LINT_DOCS         | boolean | Exécuter la validation de la documentation                                             | Non    | `true`             |
 | RUNS_ON           | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`) | Non    | `["ubuntu-24.04"]` |
@@ -84,5 +84,5 @@ jobs:
       contents: read
     with:
       CT_CONF_PATH: .github/ct.yaml
-      HELM_DOCS_VERSION: "1.13.0"
+      HELM_DOCS_VERSION: "v1.13.0"
 ```
