@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.16.0...v0.16.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* **sync-prerelease-branch:** make the bootstrap reachable on a shallow clone ([f367789](https://github.com/dnum-mi/fabnum-cicd/commit/f36778910edbee6c273db59fd047222b364e950c))
+
 ## [0.16.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.15.0...v0.16.0) (2026-08-11)
 
 
