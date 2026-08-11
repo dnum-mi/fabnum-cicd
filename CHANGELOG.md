@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.16.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.15.0...v0.16.0) (2026-08-11)
+
+
+### Features
+
+* **release-npm:** publish packages to NPM-compatible registries ([8d86499](https://github.com/dnum-mi/fabnum-cicd/commit/8d86499c451d9e6c703290764fc2a2306e3d9009))
+
+
+### Bug Fixes
+
+* **security:** route inputs through env and harden credential handling ([e0aa23c](https://github.com/dnum-mi/fabnum-cicd/commit/e0aa23cdcf7d9643614306f919cd5d707fdc0c9d))
+* **sync-cpin:** validate inputs and keep the trigger token out of process arguments ([d01502c](https://github.com/dnum-mi/fabnum-cicd/commit/d01502ce0b956ecca92e4f8bd12a543a54f28c64))
+* **update-helm-chart:** parse back any prerelease identifier the validation accepts ([25d2733](https://github.com/dnum-mi/fabnum-cicd/commit/25d2733af1f0978fade8d158cd95b79ecf075077))
+
 ## [0.15.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.14.0...v0.15.0) (2026-08-10)
 
 
