@@ -94,6 +94,24 @@ jobs:
       run: |
         set -euo pipefail
 
+        # The bootstrap probe comes before every other git command: each one
+        # below names $PRERELEASE_BRANCH - the unshallow fetch included - and
+        # fails hard on a branch that does not exist yet, which would make
+        # the creation path unreachable on the default shallow checkout.
+        if ! git ls-remote --exit-code --heads origin "$PRERELEASE_BRANCH" >/dev/null 2>&1; then
+          if [ "$CREATE_IF_MISSING" != "true" ]; then
+            echo "'$PRERELEASE_BRANCH' branch does not exist and CREATE_IF_MISSING is false, nothing to do"
+            exit 0
+          fi
+
+          echo "'$PRERELEASE_BRANCH' branch does not exist. Creating from $RELEASE_BRANCH..."
+
+          git fetch origin "$RELEASE_BRANCH"
+          git checkout -b "$PRERELEASE_BRANCH" "origin/$RELEASE_BRANCH"
+          git push origin "$PRERELEASE_BRANCH"
+          exit 0
+        fi
+
         # actions/checkout's default fetch-depth (1) leaves this clone
         # shallow, with no history shared between $RELEASE_BRANCH and
         # $PRERELEASE_BRANCH for git to compute a real merge-base from. The
@@ -107,19 +125,6 @@ jobs:
         fi
 
         git fetch origin "$RELEASE_BRANCH" "$PRERELEASE_BRANCH" || true
-
-        if ! git ls-remote --exit-code --heads origin "$PRERELEASE_BRANCH" >/dev/null 2>&1; then
-          if [ "$CREATE_IF_MISSING" != "true" ]; then
-            echo "'$PRERELEASE_BRANCH' branch does not exist and CREATE_IF_MISSING is false, nothing to do"
-            exit 0
-          fi
-
-          echo "'$PRERELEASE_BRANCH' branch does not exist. Creating from $RELEASE_BRANCH..."
-
-          git checkout -b "$PRERELEASE_BRANCH" "origin/$RELEASE_BRANCH"
-          git push origin "$PRERELEASE_BRANCH"
-          exit 0
-        fi
 
         echo "'$PRERELEASE_BRANCH' branch exists. Attempting rebase on $RELEASE_BRANCH..."
 
