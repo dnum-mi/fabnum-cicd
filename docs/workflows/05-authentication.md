@@ -275,7 +275,7 @@ L'automerge se déclenche quand `AUTOMERGE_RELEASE` / `AUTOMERGE_PRERELEASE` vau
 
 ## Dispatch cross-repository (`dispatch-helm-chart`)
 
-[`dispatch-helm-chart.yml`](./dispatch-helm-chart.md) déclenche un workflow dans un dépôt **différent**, donc le token est minté scopé à ce dépôt-là — ce qui veut dire que l'App doit être installée sur le dépôt **chart**, pas sur celui qui exécute ce job.
+[`dispatch-helm-chart.yml`](./54-dispatch-helm-chart.md) déclenche un workflow dans un dépôt **différent**, donc le token est minté scopé à ce dépôt-là — ce qui veut dire que l'App doit être installée sur le dépôt **chart**, pas sur celui qui exécute ce job.
 
 ```yaml
 trigger-chart-update:

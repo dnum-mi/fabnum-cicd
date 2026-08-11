@@ -1,8 +1,8 @@
 # `attest-helm.yml`
 
-Attestations pour les charts Helm publiés sur un registre OCI : signatures cosign keyless et provenance de build SLSA. Consomme la sortie `published-charts` de [`release-helm.yml`](./release-helm.md) et atteste chaque chart par son digest.
+Attestations pour les charts Helm publiés sur un registre OCI : signatures cosign keyless et provenance de build SLSA. Consomme la sortie `published-charts` de [`release-helm.yml`](./51-release-helm.md) et atteste chaque chart par son digest.
 
-Les inputs de capacité reprennent ceux d'[`attest-docker.yml`](./attest-docker.md) : une image et un chart sont attestés de la même façon - les deux flux sont keyless, pilotés par le token OIDC GitHub du job, sans aucune clé au repos.
+Les inputs de capacité reprennent ceux d'[`attest-docker.yml`](./31-attest-docker.md) : une image et un chart sont attestés de la même façon - les deux flux sont keyless, pilotés par le token OIDC GitHub du job, sans aucune clé au repos.
 
 > **Références :** [sigstore/cosign](https://github.com/sigstore/cosign) · [Helm provenance and integrity](https://helm.sh/docs/topics/provenance/)
 
@@ -10,7 +10,7 @@ Les inputs de capacité reprennent ceux d'[`attest-docker.yml`](./attest-docker.
 
 Les deux capacités nécessitent `id-token: write` pour émettre un token OIDC. GitHub valide les permissions demandées par **chaque** job d'un workflow appelé au moment du parsing, indépendamment du `if:` de chacun - intégrer cette logique à `release-helm.yml` obligerait donc tous les appelants à accorder l'émission de tokens OIDC, y compris ceux qui ne signent jamais rien. La séparation garde ce scope avec le workflow qui l'utilise réellement.
 
-C'est le même raisonnement qui sépare [`attest-docker.yml`](./attest-docker.md) de [`build-docker.yml`](./build-docker.md), et [`release-helm-local.yml`](./release-helm-local.md#pourquoi-un-workflow-séparé) de `release-helm.yml`. `ci/tests/permission-union.test.sh` fait respecter l'invariant associé.
+C'est le même raisonnement qui sépare [`attest-docker.yml`](./31-attest-docker.md) de [`build-docker.yml`](./30-build-docker.md), et [`release-helm-local.yml`](./52-release-helm-local.md#pourquoi-un-workflow-séparé) de `release-helm.yml`. `ci/tests/permission-union.test.sh` fait respecter l'invariant associé.
 
 ## Inputs
 
@@ -61,7 +61,7 @@ Une signature dit qui se porte garant des octets. La provenance dit d'où ils vi
 
 ## Relation avec `SIGN_CHART`
 
-`SIGN_CHART` dans [`release-helm.yml`](./release-helm.md#signature) couvre l'*autre* canal de distribution et n'est une alternative à rien de ce qui précède :
+`SIGN_CHART` dans [`release-helm.yml`](./51-release-helm.md#signature) couvre l'*autre* canal de distribution et n'est une alternative à rien de ce qui précède :
 
 | | `release-helm.yml` `SIGN_CHART: true` | `attest-helm.yml` |
 | --- | --- | --- |

@@ -2,7 +2,7 @@
 
 Suppression d'images de conteneurs sur GHCR (GitHub Container Registry) : une version précise désignée par son tag, et/ou les versions devenues orphelines.
 
-Pour les caches GitHub Actions, voir [clean-cache](./clean-cache.md).
+Pour les caches GitHub Actions, voir [clean-cache](./70-clean-cache.md).
 
 ## Inputs
 

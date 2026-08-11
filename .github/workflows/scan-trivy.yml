@@ -90,7 +90,7 @@ on:
           GitHub App Client ID (e.g. Iv23li..., NOT the numeric App ID). Supply
           with APP_PRIVATE_KEY to raise the API budget Trivy uses to fetch its
           vulnerability database from 1,000 to 5,000 requests/hour. The token is
-          minted read-only. See docs/workflows/authentication.md.
+          minted read-only. See docs/workflows/05-authentication.md.
         required: false
       APP_PRIVATE_KEY:
         description: GitHub App private key (PEM). Required alongside APP_CLIENT_ID.

@@ -28,7 +28,7 @@ Ce workflow ne nécessite aucun secret.
 ## Notes
 
 - Le dépôt est checkout avec `fetch-depth: 0` pour que gitleaks scanne **tout l'historique**, pas seulement l'arbre courant. Cela détecte les secrets committés puis supprimés, qui restent exposés dans l'historique git.
-- Complémentaire à [`scan-trivy.yml`](./scan-trivy.md) : Trivy couvre les vulnérabilités d'images et les erreurs de configuration, gitleaks couvre les credentials divulgués dans tout l'historique git.
+- Complémentaire à [`scan-trivy.yml`](./41-scan-trivy.md) : Trivy couvre les vulnérabilités d'images et les erreurs de configuration, gitleaks couvre les credentials divulgués dans tout l'historique git.
 - Exécute directement le CLI gitleaks (licence MIT, téléchargé depuis les releases GitHub avec vérification de checksum) plutôt que le `gitleaks-action` officiel, qui nécessite une clé `GITLEAKS_LICENSE` pour les dépôts d'organisation. Le workflow reste ainsi utilisable gratuitement par tout appelant.
 - Les secrets sont toujours masqués (`--redact`) dans les logs et rapports - les valeurs détectées ne sont jamais exposées dans la sortie du workflow.
 - Un fichier de configuration `.gitleaks.toml` et un fichier `.gitleaksignore` à la racine du dépôt sont pris en compte automatiquement pour ajuster les règles ou ignorer des faux positifs connus.

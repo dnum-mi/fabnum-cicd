@@ -11,7 +11,7 @@ Ce workflow maintient un invariant unique :
 Une release dépose sur la branche de release des commits que la branche de pré-release n'a pas :
 
 - `chore(main): release X.Y.Z` de release-please — modifie le manifeste et `CHANGELOG.md`
-- `chore(chart): release ...` de [`update-helm-chart.yml`](./update-helm-chart.md) en mode `local` — modifie `Chart.yaml` et le README du chart
+- `chore(chart): release ...` de [`update-helm-chart.yml`](./53-update-helm-chart.md) en mode `local` — modifie `Chart.yaml` et le README du chart
 
 La branche de pré-release modifie **ces mêmes fichiers** sur son propre cycle `rc`. Si elle ne les reçoit jamais, les deux branches écrivent des lignes concurrentes depuis un ancêtre commun, et deux choses cassent :
 
@@ -80,7 +80,7 @@ Le seul point de friction possible est un conflit entre le correctif et le trava
 
 ## Filet de sécurité
 
-Oublier ce job, ou oublier une entrée dans son `needs:`, resterait invisible jusqu'à ce qu'une version sorte fausse. [`release-app.yml`](./release-app.md#assertion-de-synchronisation) **assère donc l'invariant** au début de chaque run sur la branche de pré-release, avant tout calcul de version, et échoue en le nommant. Vous n'avez rien à configurer pour cela.
+Oublier ce job, ou oublier une entrée dans son `needs:`, resterait invisible jusqu'à ce qu'une version sorte fausse. [`release-app.yml`](./50-release-app.md#assertion-de-synchronisation) **assère donc l'invariant** au début de chaque run sur la branche de pré-release, avant tout calcul de version, et échoue en le nommant. Vous n'avez rien à configurer pour cela.
 
 ## Notes
 

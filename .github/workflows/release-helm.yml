@@ -20,7 +20,7 @@ on:
           where the git tags belong to the charts and chart-releaser's classic
           output is the channel that repository shape exists for. Turn it off
           (and PUBLISH_OCI on) on a repository with immutable releases - see
-          docs/workflows/release-helm.md.
+          docs/workflows/51-release-helm.md.
         type: boolean
         required: false
         default: true
@@ -101,7 +101,7 @@ on:
           with APP_PRIVATE_KEY to have chart-releaser authenticate as a GitHub
           App. Unlike GITHUB_TOKEN, the releases it creates can then fire
           'release:' triggers.
-          See docs/workflows/authentication.md.
+          See docs/workflows/05-authentication.md.
         required: false
       APP_PRIVATE_KEY:
         description: GitHub App private key (PEM). Required alongside APP_CLIENT_ID.

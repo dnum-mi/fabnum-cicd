@@ -5,7 +5,7 @@ name: Attest chart
 # job graph against what the caller grants - so folding this into release-helm
 # would force OIDC token minting on every caller, including the ones that never
 # attest anything. Same reasoning that splits attest-docker.yml out of
-# build-docker.yml. See docs/workflows/release-helm-local.md#pourquoi-un-workflow-séparé.
+# build-docker.yml. See docs/workflows/52-release-helm-local.md#pourquoi-un-workflow-séparé.
 #
 # The capability inputs mirror attest-docker.yml so an image and a chart are
 # attested the same way. SBOM is deliberately absent: a chart's dependencies

@@ -86,7 +86,7 @@ on:
           with APP_PRIVATE_KEY to authenticate as a GitHub App.
           Takes precedence over GH_PAT. Required (with APP_PRIVATE_KEY) or
           GH_PAT - GITHUB_TOKEN cannot reach another repository.
-          See docs/workflows/authentication.md.
+          See docs/workflows/05-authentication.md.
         required: false
       APP_PRIVATE_KEY:
         description: GitHub App private key (PEM). Required alongside APP_CLIENT_ID.
@@ -252,7 +252,7 @@ jobs:
 
         case "$dispatch_output" in
           *"Unexpected inputs provided"*)
-            echo "::warning::'$WORKFLOW_NAME' in '$CHART_REPO' does not declare an AUTOMERGE_METHOD input, so the chart repository's own default applies instead of '$AUTOMERGE_METHOD'. Add the input to that workflow to control the merge method from here - see docs/workflows/dispatch-helm-chart.md."
+            echo "::warning::'$WORKFLOW_NAME' in '$CHART_REPO' does not declare an AUTOMERGE_METHOD input, so the chart repository's own default applies instead of '$AUTOMERGE_METHOD'. Add the input to that workflow to control the merge method from here - see docs/workflows/54-dispatch-helm-chart.md."
             gh workflow --repo "$CHART_REPO" run "$WORKFLOW_NAME" --ref "$BASE_BRANCH" "${DISPATCH_ARGS[@]}"
             ;;
           *)

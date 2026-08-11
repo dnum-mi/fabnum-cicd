@@ -32,7 +32,7 @@ on:
           afterwards. Left false, a draft release stays a draft for manual
           publication - which is what release-please's own `draft` option is
           for, so this workflow never publishes one unless asked to.
-          See docs/workflows/release-app.md.
+          See docs/workflows/50-release-app.md.
         type: boolean
         required: false
         default: false
@@ -111,7 +111,7 @@ on:
           with APP_PRIVATE_KEY to authenticate as a GitHub App.
           Takes precedence over GH_PAT. Unlike GITHUB_TOKEN, an App token
           lets the release pull request trigger `pull_request` workflows, so its
-          CI actually runs. See docs/workflows/authentication.md.
+          CI actually runs. See docs/workflows/05-authentication.md.
         required: false
       APP_PRIVATE_KEY:
         description: GitHub App private key (PEM). Required alongside APP_CLIENT_ID.
