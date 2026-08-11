@@ -42,51 +42,101 @@ jobs:
   trigger-dso:
     name: Trigger CPiN synchro
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    # Nothing here touches the calling repository: the only call this job makes
+    # goes to the GitLab instance.
+    permissions: {}
     steps:
     - name: Send request to CPiN api
       shell: bash
+      env:
+        GITLAB_URL: ${{ inputs.GITLAB_URL }}
+        GIT_MIRROR_PROJECT_ID: ${{ inputs.GIT_MIRROR_PROJECT_ID }}
+        BRANCH_TO_SYNC: ${{ inputs.BRANCH_TO_SYNC }}
+        SYNC_ALL: ${{ inputs.SYNC_ALL }}
+        REPOSITORY_NAME: ${{ inputs.REPOSITORY_NAME }}
+        ADDITIONAL_VARIABLES: ${{ inputs.ADDITIONAL_VARIABLES }}
+        GIT_MIRROR_TOKEN: ${{ secrets.GIT_MIRROR_TOKEN }}
       run: |
-        # Start building curl command array
+        set -euo pipefail
+
+        # The URL both receives the trigger token and decides where it goes,
+        # so its shape is enforced before anything is sent: an https scheme
+        # and no embedded whitespace. Trailing slashes are tolerated.
+        while [ "${GITLAB_URL%/}" != "$GITLAB_URL" ]; do GITLAB_URL="${GITLAB_URL%/}"; done
+        if [[ ! "$GITLAB_URL" =~ ^https://[^[:space:]]+$ ]]; then
+          echo "::error::GITLAB_URL must be a single https:// URL, got '$GITLAB_URL'. The trigger token is posted to this address, so it is validated rather than used as-is."
+          exit 1
+        fi
+
+        # The project ID becomes a path segment of the API URL. GitLab accepts
+        # a numeric ID or a URL-encoded path; a raw '/' or whitespace would
+        # change which endpoint receives the token.
+        if [[ ! "$GIT_MIRROR_PROJECT_ID" =~ ^[A-Za-z0-9%._-]+$ ]]; then
+          echo "::error::GIT_MIRROR_PROJECT_ID must be a numeric ID or URL-encoded project path, got '$GIT_MIRROR_PROJECT_ID'"
+          exit 1
+        fi
+
+        # --form-string, never -F: -F gives '@' and '<' at the start of a value
+        # file-upload semantics, so a crafted value could attach runner files
+        # to the request. --form-string always sends the literal string.
         CURL_ARGS=(
           -X POST
           -fsSL
-          -F "token=${{ secrets.GIT_MIRROR_TOKEN }}"
-          -F "ref=main"
-          -F "variables[PROJECT_NAME]=${{ inputs.REPOSITORY_NAME }}"
-          -F "variables[GITHUB_COMMIT_SHA]=${{ github.sha }}"
+          --form-string "ref=main"
+          --form-string "variables[PROJECT_NAME]=$REPOSITORY_NAME"
+          --form-string "variables[GITHUB_COMMIT_SHA]=$GITHUB_SHA"
         )
 
         # Handle branch synchronization based on SYNC_ALL
-        if [ "${{ inputs.SYNC_ALL }}" = "true" ]; then
+        if [ "$SYNC_ALL" = "true" ]; then
           echo "Synchronizing all branches..."
-          CURL_ARGS+=(-F "variables[SYNC_ALL]=true")
+          CURL_ARGS+=(--form-string "variables[SYNC_ALL]=true")
         else
-          echo "Synchronizing branch: ${{ inputs.BRANCH_TO_SYNC }}"
-          CURL_ARGS+=(-F "variables[GIT_BRANCH_DEPLOY]=${{ inputs.BRANCH_TO_SYNC }}")
+          echo "Synchronizing branch: $BRANCH_TO_SYNC"
+          CURL_ARGS+=(--form-string "variables[GIT_BRANCH_DEPLOY]=$BRANCH_TO_SYNC")
         fi
 
         # Add additional variables if provided
-        if [ -n "${{ inputs.ADDITIONAL_VARIABLES }}" ]; then
+        if [ -n "$ADDITIONAL_VARIABLES" ]; then
           echo "Processing additional variables..."
 
-          # Read JSON and parse it safely
+          if ! printf '%s' "$ADDITIONAL_VARIABLES" | jq -e 'type == "object"' >/dev/null 2>&1; then
+            echo "::error::ADDITIONAL_VARIABLES must be a JSON object, e.g. '{\"VAR1\":\"value1\"}'"
+            exit 1
+          fi
+
+          # Each key names a GitLab pipeline variable and is embedded in the
+          # form field name, so it is held to variable-name shape; values are
+          # passed through verbatim as data.
           while IFS= read -r key && IFS= read -r value; do
             if [ -n "$key" ]; then
-              CURL_ARGS+=(-F "variables[$key]=$value")
+              if [[ ! "$key" =~ ^[A-Za-z0-9_]+$ ]]; then
+                echo "::error::ADDITIONAL_VARIABLES key '$key' is not a valid pipeline variable name (expected '^[A-Za-z0-9_]+\$')"
+                exit 1
+              fi
+              CURL_ARGS+=(--form-string "variables[$key]=$value")
               echo "Adding variable: $key"
             fi
-          done < <(echo '${{ inputs.ADDITIONAL_VARIABLES }}' | jq -r 'to_entries | .[] | (.key, .value)')
+          done < <(printf '%s' "$ADDITIONAL_VARIABLES" | jq -r 'to_entries | .[] | (.key, .value)')
         fi
 
         # Add the API endpoint URL
-        GITLAB_URL=$(echo '${{ inputs.GITLAB_URL }}' | sed 's:/*$::')
-        CURL_ARGS+=("$GITLAB_URL/api/v4/projects/${{ inputs.GIT_MIRROR_PROJECT_ID }}/trigger/pipeline")
+        CURL_ARGS+=("$GITLAB_URL/api/v4/projects/$GIT_MIRROR_PROJECT_ID/trigger/pipeline")
+
+        # The token travels in a 0600 curl config file, not in argv: process
+        # arguments are world-readable on the runner (`ps`) for as long as the
+        # request runs. Removed as soon as the call returns, so it cannot
+        # outlive the job on a self-hosted runner either.
+        umask 077
+        CURL_CONFIG="$RUNNER_TEMP/cpin-trigger.conf"
+        printf 'form-string = "token=%s"\n' "$GIT_MIRROR_TOKEN" >"$CURL_CONFIG"
+        trap 'rm -f "$CURL_CONFIG"' EXIT
 
         # Execute the curl command
-        curl "${CURL_ARGS[@]}"
+        curl --config "$CURL_CONFIG" "${CURL_ARGS[@]}"
 
-        if [ "${{ inputs.SYNC_ALL }}" = "true" ]; then
-          echo "Syncing all branches of repository '${{ inputs.REPOSITORY_NAME }}' with CPiN."
+        if [ "$SYNC_ALL" = "true" ]; then
+          echo "Syncing all branches of repository '$REPOSITORY_NAME' with CPiN."
         else
-          echo "Syncing repository '${{ inputs.REPOSITORY_NAME }}' (branch ${{ inputs.BRANCH_TO_SYNC }}) with CPiN."
+          echo "Syncing repository '$REPOSITORY_NAME' (branch $BRANCH_TO_SYNC) with CPiN."
         fi
