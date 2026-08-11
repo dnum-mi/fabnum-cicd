@@ -31,25 +31,29 @@ on:
         default: ""
       UPGRADE_TYPE:
         description: >-
-          How the chart version is bumped: 'major', 'minor', 'patch',
-          'prerelease', or 'auto'. Passed through verbatim to the chart
+          How the chart version is bumped: 'auto' (default), 'major', 'minor',
+          'patch' or 'prerelease'. Passed through verbatim to the chart
           repository's workflow; 'auto' lets update-helm-chart.yml derive the
-          level from the appVersion delta there (requires APP_VERSION).
+          level from the appVersion delta there, falling back to a patch bump
+          with a warning when there is no delta to read (APP_VERSION empty or
+          a non-semver current appVersion).
         required: false
         type: string
-        default: patch
+        default: auto
       PRERELEASE_IDENTIFIER:
-        description: Prerelease identifier (only used if UPGRADE_TYPE is 'prerelease')
+        description: >-
+          Prerelease identifier, used when the bump enters the prerelease flow
+          - UPGRADE_TYPE 'prerelease', or 'auto' with a prerelease APP_VERSION
         required: false
         type: string
         default: rc
       AUTOMERGE_PRERELEASE:
-        description: Ask the chart repository to merge its update PR when UPGRADE_TYPE is 'prerelease'
+        description: Ask the chart repository to merge its update PR when the bump is a prerelease
         required: false
         type: boolean
         default: false
       AUTOMERGE_RELEASE:
-        description: Ask the chart repository to merge its update PR when UPGRADE_TYPE is not 'prerelease'
+        description: Ask the chart repository to merge its update PR when the bump is not a prerelease
         required: false
         type: boolean
         default: false

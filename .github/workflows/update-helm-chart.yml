@@ -31,18 +31,22 @@ on:
         default: ""
       UPGRADE_TYPE:
         description: >-
-          How the chart version is bumped: 'major', 'minor', 'patch',
-          'prerelease', or 'auto'. 'auto' mirrors the app's own bump - the
+          How the chart version is bumped: 'auto' (default), 'major', 'minor',
+          'patch' or 'prerelease'. 'auto' mirrors the app's own bump - the
           level is derived from the appVersion delta (what Chart.yaml holds
           now vs APP_VERSION), and APP_VERSION being a prerelease is what
           selects the prerelease flow - so a single value covers both
-          branches of a two-branch pipeline. Requires APP_VERSION, so a
-          chart-only release must pick its level explicitly.
+          branches of a two-branch pipeline. When there is no delta to read
+          (APP_VERSION empty - a chart-only release - or a non-semver current
+          appVersion such as 'latest'), 'auto' falls back to a patch bump
+          with a warning; pick an explicit level to silence it.
         required: false
         type: string
-        default: patch
+        default: auto
       PRERELEASE_IDENTIFIER:
-        description: Prerelease identifier (only used if UPGRADE_TYPE is 'prerelease')
+        description: >-
+          Prerelease identifier, used when the bump enters the prerelease flow
+          - UPGRADE_TYPE 'prerelease', or 'auto' with a prerelease APP_VERSION
         required: false
         type: string
         default: rc
@@ -55,12 +59,12 @@ on:
         type: string
         default: v1.14.2
       AUTOMERGE_PRERELEASE:
-        description: Automatically merge the PR when UPGRADE_TYPE is 'prerelease' (requires APP_CLIENT_ID/APP_PRIVATE_KEY or GH_PAT)
+        description: Automatically merge the PR when the bump is a prerelease (requires APP_CLIENT_ID/APP_PRIVATE_KEY or GH_PAT)
         required: false
         type: boolean
         default: false
       AUTOMERGE_RELEASE:
-        description: Automatically merge the PR when UPGRADE_TYPE is not 'prerelease' (requires APP_CLIENT_ID/APP_PRIVATE_KEY or GH_PAT)
+        description: Automatically merge the PR when the bump is not a prerelease (requires APP_CLIENT_ID/APP_PRIVATE_KEY or GH_PAT)
         required: false
         type: boolean
         default: false
@@ -184,13 +188,6 @@ jobs:
             ;;
         esac
 
-        # 'auto' derives the bump level from the appVersion delta, and a
-        # chart-only release has no delta to derive it from.
-        if [ "$UPGRADE_TYPE" = "auto" ] && [ -z "$APP_VERSION" ]; then
-          echo "::error::UPGRADE_TYPE=auto derives the chart bump from the appVersion delta and needs APP_VERSION. For a chart-only release, pick the level explicitly."
-          exit 1
-        fi
-
         # Both values are written into Chart.yaml, and PRERELEASE_IDENTIFIER
         # additionally becomes part of the chart version and the pull request's
         # branch name. They are written with `yq` + `strenv()` so neither can be
@@ -269,39 +266,56 @@ jobs:
         if [[ "$UPGRADE_TYPE" == "prerelease" ]]; then
           UPGRADE_LEVEL="patch"
         elif [[ "$UPGRADE_TYPE" == "auto" ]]; then
-          CURRENT_APP_VERSION=$(yq '.appVersion' "$CHART_DIR/$CHART_NAME/Chart.yaml")
-
-          # Compared on the base X.Y.Z only: mid-cycle both sides are
-          # prereleases, and their identifiers say nothing about the level.
-          if [[ ! "$CURRENT_APP_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)([-+].*)?$ ]]; then
-            echo "::error::UPGRADE_TYPE=auto derives the bump level from the appVersion delta, but the chart's current appVersion '$CURRENT_APP_VERSION' is not semver. Pick the level explicitly instead."
-            exit 1
-          fi
-          OLD_APP_MAJOR="${BASH_REMATCH[1]}"
-          OLD_APP_MINOR="${BASH_REMATCH[2]}"
-
-          if [[ ! "$APP_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9A-Za-z.-]+))?(\+.*)?$ ]]; then
-            echo "::error::UPGRADE_TYPE=auto derives the bump level from the appVersion delta, but APP_VERSION '$APP_VERSION' is not semver. Pick the level explicitly instead."
-            exit 1
-          fi
-          NEW_APP_MAJOR="${BASH_REMATCH[1]}"
-          NEW_APP_MINOR="${BASH_REMATCH[2]}"
-          NEW_APP_PRERELEASE="${BASH_REMATCH[5]}"
-
-          if [[ "$NEW_APP_MAJOR" != "$OLD_APP_MAJOR" ]]; then
-            UPGRADE_LEVEL="major"
-          elif [[ "$NEW_APP_MINOR" != "$OLD_APP_MINOR" ]]; then
-            UPGRADE_LEVEL="minor"
-          else
+          if [[ -z "$APP_VERSION" ]]; then
+            # 'auto' is the default, and a chart-only release is a legitimate
+            # use of the default: no delta to read means the smallest bump,
+            # stated in the run log rather than failed on.
+            echo "::warning::UPGRADE_TYPE=auto has no APP_VERSION to derive a level from (chart-only release) - falling back to a patch bump. Pick an explicit level to silence this."
             UPGRADE_LEVEL="patch"
-          fi
-
-          if [[ -n "$NEW_APP_PRERELEASE" ]]; then
-            EFFECTIVE_TYPE="prerelease"
+            EFFECTIVE_TYPE="patch"
           else
-            EFFECTIVE_TYPE="$UPGRADE_LEVEL"
+            # APP_VERSION was passed by the caller on this very run, so a
+            # non-semver value is a mistake worth failing on - unlike the
+            # two fallbacks around it, which fault nothing the caller said.
+            if [[ ! "$APP_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-([0-9A-Za-z.-]+))?(\+.*)?$ ]]; then
+              echo "::error::UPGRADE_TYPE=auto derives the bump level from the appVersion delta, but APP_VERSION '$APP_VERSION' is not semver. Pick the level explicitly instead."
+              exit 1
+            fi
+            NEW_APP_MAJOR="${BASH_REMATCH[1]}"
+            NEW_APP_MINOR="${BASH_REMATCH[2]}"
+            NEW_APP_PRERELEASE="${BASH_REMATCH[5]}"
+
+            # Compared on the base X.Y.Z only: mid-cycle both sides are
+            # prereleases, and their identifiers say nothing about the level.
+            CURRENT_APP_VERSION=$(yq '.appVersion' "$CHART_DIR/$CHART_NAME/Chart.yaml")
+            if [[ "$CURRENT_APP_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)([-+].*)?$ ]]; then
+              OLD_APP_MAJOR="${BASH_REMATCH[1]}"
+              OLD_APP_MINOR="${BASH_REMATCH[2]}"
+
+              if [[ "$NEW_APP_MAJOR" != "$OLD_APP_MAJOR" ]]; then
+                UPGRADE_LEVEL="major"
+              elif [[ "$NEW_APP_MINOR" != "$OLD_APP_MINOR" ]]; then
+                UPGRADE_LEVEL="minor"
+              else
+                UPGRADE_LEVEL="patch"
+              fi
+            else
+              # A pre-pipeline chart commonly holds 'latest' here. This run
+              # writes a real version into appVersion, so the level is
+              # derivable from the next run on; this one bumps patch.
+              echo "::warning::the chart's current appVersion '$CURRENT_APP_VERSION' is not semver - no delta to derive a level from, falling back to a patch bump."
+              UPGRADE_LEVEL="patch"
+            fi
+
+            # The flow still follows APP_VERSION's shape, fallback or not: a
+            # prerelease app version must never yield a stable chart version.
+            if [[ -n "$NEW_APP_PRERELEASE" ]]; then
+              EFFECTIVE_TYPE="prerelease"
+            else
+              EFFECTIVE_TYPE="$UPGRADE_LEVEL"
+            fi
+            echo "auto: app '$CURRENT_APP_VERSION' -> '$APP_VERSION' implies a $UPGRADE_LEVEL bump ($EFFECTIVE_TYPE flow)"
           fi
-          echo "auto: app '$CURRENT_APP_VERSION' -> '$APP_VERSION' implies a $UPGRADE_LEVEL bump ($EFFECTIVE_TYPE flow)"
         fi
 
         # Bump version using Release Please compatible logic
@@ -429,6 +443,10 @@ jobs:
           echo "CURRENT_VERSION=$CURRENT_VERSION"
           echo "NEXT_VERSION=$NEXT_VERSION"
           echo "BRANCH_NAME=$CHART_NAME-v$NEXT_VERSION"
+          # The resolved flow, for the automerge gate: under 'auto' the INPUT
+          # never says 'prerelease' even when the bump is one, so gating on
+          # the input would route every rc bump through AUTOMERGE_RELEASE.
+          echo "EFFECTIVE_TYPE=$EFFECTIVE_TYPE"
         } >> "$GITHUB_OUTPUT"
 
     - name: Commit and push chart bump
@@ -493,8 +511,12 @@ jobs:
           ${{ inputs.APP_VERSION != '' && format('- App version has been updated to `{0}`', inputs.APP_VERSION) || '- App version has been left unchanged (chart-only release)' }}
           - Chart documentation has been regenerated
 
+    # Gated on the RESOLVED flow (EFFECTIVE_TYPE), not the UPGRADE_TYPE input:
+    # under 'auto' the input never says 'prerelease', so an input-based gate
+    # would treat every rc bump as a release - inverting the standard
+    # "automerge the noisy rc bumps, review the real releases" configuration.
     - name: Automerge chart update PR
-      if: ${{ ((inputs.AUTOMERGE_PRERELEASE && inputs.UPGRADE_TYPE == 'prerelease') || (inputs.AUTOMERGE_RELEASE && inputs.UPGRADE_TYPE != 'prerelease')) && steps.create-pr.outputs.pull-request-number }}
+      if: ${{ ((inputs.AUTOMERGE_PRERELEASE && steps.update-chart.outputs.EFFECTIVE_TYPE == 'prerelease') || (inputs.AUTOMERGE_RELEASE && steps.update-chart.outputs.EFFECTIVE_TYPE != 'prerelease')) && steps.create-pr.outputs.pull-request-number }}
       env:
         GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_PAT }}
         # Repository metadata is read with the built-in token, which always has

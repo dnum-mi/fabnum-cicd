@@ -199,6 +199,8 @@ test_auto_promotes_by_stripping_the_prerelease() {
 }
 
 test_auto_rejects_a_non_semver_app_version() {
+  # APP_VERSION was passed by the caller on this run - unlike the two
+  # fallback cases below, failing here faults something the caller said.
   chart_at 1.2.3 auto rc 1.0.0
   export APP_VERSION="not-semver"
   run_block "$UPDATE"
@@ -206,12 +208,35 @@ test_auto_rejects_a_non_semver_app_version() {
   assert_output_contains "not semver"
 }
 
-test_auto_rejects_a_non_semver_current_app_version() {
-  chart_at 1.2.3 auto rc latest
-  export APP_VERSION="1.0.1"
+test_auto_without_app_version_falls_back_to_patch() {
+  # 'auto' is the default, and a chart-only release is a legitimate use of
+  # the default: warn and take the smallest bump rather than fail.
+  chart_at 1.2.3 auto
   run_block "$UPDATE"
-  assert_status 1 "auto cannot derive a level from a non-semver appVersion"
-  assert_output_contains "not semver"
+  assert_status 0 "a chart-only release under the default type must not fail"
+  assert_version 1.2.4
+  assert_output_contains "::warning::"
+}
+
+test_auto_falls_back_to_patch_on_a_non_semver_current_app_version() {
+  # A pre-pipeline chart commonly holds 'latest': the first auto run cannot
+  # derive a level, but it writes a real appVersion, so the next one can.
+  chart_at 1.2.3 auto rc latest
+  export APP_VERSION="1.1.0"
+  run_block "$UPDATE"
+  assert_status 0
+  assert_version 1.2.4
+  assert_output_contains "::warning::"
+}
+
+test_auto_keeps_the_prerelease_flow_when_the_level_is_unknown() {
+  # The level falls back, the flow must not: a prerelease APP_VERSION must
+  # never yield a stable chart version, whatever the chart held before.
+  chart_at 1.2.3 auto rc latest
+  export APP_VERSION="1.1.0-rc"
+  run_block "$UPDATE"
+  assert_status 0
+  assert_version 1.2.4-rc
 }
 
 # --- 'Validate inputs' guards specific to the version contract.
@@ -244,13 +269,15 @@ test_validate_rejects_an_unknown_upgrade_type() {
   assert_output_contains "UPGRADE_TYPE must be"
 }
 
-test_validate_requires_app_version_for_auto() {
+test_validate_accepts_auto_without_app_version() {
+  # 'auto' is the default and empty APP_VERSION is the documented chart-only
+  # release: their combination must pass validation (the bump step warns and
+  # falls back to patch - covered above).
   validate_env
   export UPGRADE_TYPE="auto"
   export APP_VERSION=""
   run_block "$VALIDATE"
-  assert_status 1 "a chart-only release has no appVersion delta to derive from"
-  assert_output_contains "needs APP_VERSION"
+  assert_status 0 "the default type with the documented empty APP_VERSION must validate"
 }
 
 run_tests

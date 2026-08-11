@@ -15,10 +15,10 @@ Le dépôt applicatif ne touche à rien : il envoie la version au dépôt chart,
 | WORKFLOW_NAME         | string | Nom du workflow à déclencher dans le dépôt chart (ex: `update-chart.yml`)                                                                                                                       | Non    | `update-app-version.yml` |
 | CHART_DIR             | string | Nom du dossier contenant le chart (dans CHART_REPO)                                                                                                                                             | Non    | `charts`                 |
 | APP_VERSION           | string | Version de l'application à injecter dans `Chart.yaml` (`appVersion`). Laisser vide pour conserver l'`appVersion` actuelle - une release "chart-only".                                           | Non    | `""`                     |
-| UPGRADE_TYPE          | string | Type de mise à jour : `major`, `minor`, `patch`, `prerelease` ou `auto` - transmis tel quel au dépôt chart, où [`update-helm-chart.yml`](./update-helm-chart.md#mode-auto) dérive le niveau du delta d'appVersion                                                                                                                                 | Non    | `patch`                  |
-| PRERELEASE_IDENTIFIER | string | Identifiant de pré-release (utilisé seulement si UPGRADE_TYPE est `prerelease`)                                                                                                                 | Non    | `rc`                     |
-| AUTOMERGE_PRERELEASE  | bool   | Demander au dépôt chart de fusionner sa PR quand `UPGRADE_TYPE` est `prerelease`                                                                                                                | Non    | `false`                  |
-| AUTOMERGE_RELEASE     | bool   | Demander au dépôt chart de fusionner sa PR quand `UPGRADE_TYPE` n'est pas `prerelease`                                                                                                          | Non    | `false`                  |
+| UPGRADE_TYPE          | string | Type de mise à jour : `auto` (défaut), `major`, `minor`, `patch` ou `prerelease` - transmis tel quel au dépôt chart, où [`update-helm-chart.yml`](./update-helm-chart.md#mode-auto) dérive le niveau du delta d'appVersion (repli sur `patch` avec avertissement sans delta à lire)                                                                                                                                 | Non    | `auto`                   |
+| PRERELEASE_IDENTIFIER | string | Identifiant de pré-release, utilisé quand le bump entre dans le flux prerelease - `UPGRADE_TYPE: prerelease`, ou `auto` avec une `APP_VERSION` en pré-release                                                                                                                 | Non    | `rc`                     |
+| AUTOMERGE_PRERELEASE  | bool   | Demander au dépôt chart de fusionner sa PR quand le bump est une pré-release                                                                                                                | Non    | `false`                  |
+| AUTOMERGE_RELEASE     | bool   | Demander au dépôt chart de fusionner sa PR quand le bump n'est pas une pré-release                                                                                                          | Non    | `false`                  |
 | AUTOMERGE_METHOD      | string | Méthode de fusion demandée au dépôt chart : `auto` (file d'attente, nécessite *Allow auto-merge* sur le dépôt chart) ou `admin` (fusion immédiate en contournant la protection de branche)      | Non    | `auto`                   |
 | BASE_BRANCH           | string | Branche de `CHART_REPO` sur laquelle le workflow est dispatché, et base de la Pull Request ouverte par le dépôt chart                                                                            | Non    | `main`                   |
 | RUNS_ON               | string | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                                                                          | Non    | `["ubuntu-24.04"]`       |
@@ -113,8 +113,9 @@ jobs:
     with:
       CHART_REPO: my-org/helm-charts
       CHART_NAME: my-app
+      # UPGRADE_TYPE par défaut ('auto') : le dépôt chart dérive le niveau
+      # du delta d'appVersion.
       APP_VERSION: ${{ needs.release.outputs.version }}
-      UPGRADE_TYPE: minor
       AUTOMERGE_PRERELEASE: true
       AUTOMERGE_RELEASE: false
       AUTOMERGE_METHOD: auto
@@ -185,9 +186,9 @@ on:
         required: false
         default: charts
       UPGRADE_TYPE:
-        description: major, minor, patch, prerelease ou auto
+        description: auto, major, minor, patch ou prerelease
         required: false
-        default: patch
+        default: auto
       PRERELEASE_IDENTIFIER:
         description: Identifiant de pré-release
         required: false

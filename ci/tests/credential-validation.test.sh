@@ -30,10 +30,10 @@ guard_env() {
   export BUILD_SECRET_GITHUB_TOKEN="none"
   # Values match the workflow defaults, so this table stays a stand-in for a
   # default invocation rather than a hand-tuned one: APP_VERSION is optional
-  # and empty by default, UPGRADE_TYPE defaults to 'patch',
+  # and empty by default, UPGRADE_TYPE defaults to 'auto',
   # PRERELEASE_IDENTIFIER to 'rc'.
   export APP_VERSION=""
-  export UPGRADE_TYPE="patch"
+  export UPGRADE_TYPE="auto"
   export PRERELEASE_IDENTIFIER="rc"
   # release-helm.yml is the one deviation from "the defaults": both of its
   # distribution channels default to false, and that combination is rejected
