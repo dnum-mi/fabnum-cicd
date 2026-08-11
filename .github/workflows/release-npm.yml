@@ -1,0 +1,434 @@
+name: Release NPM
+
+on:
+  workflow_call:
+    inputs:
+      RUNTIME:
+        description: JavaScript runtime to use (node or bun). Empty auto-detects from lock files
+        required: false
+        type: string
+        default: ""
+      RUNTIME_VERSION:
+        description: Runtime version to use. Defaults to a sensible version per runtime when left empty (Node.js 24, Bun latest)
+        required: false
+        type: string
+        default: ""
+      PACKAGE_MANAGER:
+        description: Package manager (npm, yarn, pnpm, bun). Empty auto-detects from the packageManager field and lock files
+        required: false
+        type: string
+        default: ""
+      WORKING_DIRECTORY:
+        description: Working directory for build and publish commands
+        required: false
+        type: string
+        default: "."
+      REGISTRY_URL:
+        description: NPM registry URL (e.g., https://registry.npmjs.org or https://npm.pkg.github.com)
+        required: false
+        type: string
+        default: "https://registry.npmjs.org"
+      SCOPE:
+        description: Scope for the NPM registry (e.g., @my-org). Leave empty for unscoped packages.
+        required: false
+        type: string
+      PRE_COMMAND:
+        description: Shell command to run at repo root before build/publish (e.g., build shared deps)
+        required: false
+        type: string
+      BUILD_COMMAND:
+        description: Shell command to build the package (runs in WORKING_DIRECTORY)
+        required: false
+        type: string
+      PUBLISH_COMMAND:
+        description: >-
+          Custom publish command (overrides the default auto-detected publish).
+          Runs in WORKING_DIRECTORY with NODE_AUTH_TOKEN set.
+        required: false
+        type: string
+      TAG:
+        description: NPM dist-tag for the published version (e.g., latest, beta, next)
+        required: false
+        type: string
+        default: "latest"
+      ACCESS:
+        description: Package access level (public or restricted)
+        required: false
+        type: string
+        default: "public"
+      DRY_RUN:
+        description: Perform a dry-run publish (validate without uploading)
+        required: false
+        type: boolean
+        default: false
+      FAIL_ON_ERROR:
+        description: Whether to fail the workflow on publish errors
+        required: false
+        type: boolean
+        default: true
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
+    secrets:
+      NPM_TOKEN:
+        description: >-
+          Authentication token for the NPM registry. Optional when the registry
+          has a trusted publisher (OIDC) configured for this workflow - the
+          caller job's id-token: write permission is used instead. Required
+          otherwise, e.g. for GitHub Packages or a registry without OIDC support.
+        required: false
+
+jobs:
+  publish:
+    name: Publish to NPM
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # The 'secrets' context is not available in step-level 'if' expressions,
+      # so the token's presence is exposed as a job-level flag instead
+      NPM_TOKEN_PROVIDED: ${{ secrets.NPM_TOKEN != '' }}
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        # No step after checkout runs git against the remote, so the job's
+        # token has no reason to stay readable in .git/config while installs
+        # and caller commands execute.
+        persist-credentials: false
+
+    - name: Detect project configuration
+      id: detect
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      env:
+        PM_INPUT: ${{ inputs.PACKAGE_MANAGER }}
+        RUNTIME_INPUT: ${{ inputs.RUNTIME }}
+        VERSION_INPUT: ${{ inputs.RUNTIME_VERSION }}
+      run: |
+        set -euo pipefail
+
+        # Find the package manager by walking from the working directory up
+        # to the checkout root - the same resolution npm/pnpm/yarn/bun
+        # workspaces (and @antfu/ni) use, so a job scoped to a sub-package
+        # still finds the workspace root's lock file or 'packageManager'
+        # field. The closest directory with a signal wins.
+        detect_pm_at() {
+          local dir="$1"
+          if [ -f "$dir/package.json" ]; then
+            local field
+            field=$(jq -r 'if (.packageManager? | type) == "string" then (.packageManager | gsub("^\\s+|\\s+$"; "")) else empty end' "$dir/package.json" 2>/dev/null | cut -d@ -f1 || true)
+            if [ -n "$field" ]; then echo "$field"; return 0; fi
+          fi
+          if [ -f "$dir/bun.lockb" ] || [ -f "$dir/bun.lock" ]; then echo "bun"; return 0; fi
+          if [ -f "$dir/pnpm-lock.yaml" ]; then echo "pnpm"; return 0; fi
+          if [ -f "$dir/yarn.lock" ]; then echo "yarn"; return 0; fi
+          if [ -f "$dir/package-lock.json" ]; then echo "npm"; return 0; fi
+          return 1
+        }
+
+        walk_pm() {
+          local dir root depth found
+          dir=$(pwd -P)
+          root=$(cd "${GITHUB_WORKSPACE:-/}" 2>/dev/null && pwd -P || echo /)
+          depth=0
+          while [ "$depth" -lt 30 ]; do
+            if found=$(detect_pm_at "$dir"); then
+              echo "$found"
+              return 0
+            fi
+            if [ "$dir" = "$root" ] || [ "$dir" = "/" ]; then
+              break
+            fi
+            dir=$(dirname "$dir")
+            depth=$((depth + 1))
+          done
+          echo "npm"
+        }
+
+        # Resolve package manager: an explicit input wins, otherwise walk_pm
+        if [ -n "$PM_INPUT" ]; then
+          PM="$PM_INPUT"
+        else
+          PM=$(walk_pm)
+        fi
+        # The detected value can come from the repository's own package.json,
+        # so on a pull request it is attacker-controlled - and it selects
+        # which commands the steps below run. Pinning it to an allowlist means
+        # they can only ever receive one of four literals.
+        case "$PM" in
+          npm|pnpm|yarn|bun) ;;
+          *)
+            echo "::error::Unsupported package manager '$PM'. Expected one of npm, pnpm, yarn, bun - check the 'packageManager' field in package.json, or set the PACKAGE_MANAGER input."
+            exit 1
+            ;;
+        esac
+
+        echo "Package manager: $PM"
+        echo "package-manager=${PM}" >> "$GITHUB_OUTPUT"
+
+        # Resolve runtime: explicit input wins, else Bun when the resolved
+        # package manager is bun, otherwise Node.js.
+        if [ -n "$RUNTIME_INPUT" ]; then RUNTIME="$RUNTIME_INPUT"
+        elif [ "$PM" = "bun" ]; then RUNTIME="bun"
+        else RUNTIME="node"; fi
+        echo "Runtime: $RUNTIME"
+        echo "runtime=${RUNTIME}" >> "$GITHUB_OUTPUT"
+
+        # Resolve runtime version: explicit input wins, else a per-runtime
+        # default (avoids defaulting Bun to a Node version).
+        if [ -n "$VERSION_INPUT" ]; then VERSION="$VERSION_INPUT"
+        elif [ "$RUNTIME" = "bun" ]; then VERSION="latest"
+        else VERSION="24"; fi
+        echo "Runtime version: $VERSION"
+        echo "runtime-version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+    - name: Setup Node.js
+      # Also runs for bun-only projects publishing via trusted publishing (empty
+      # NPM_TOKEN), which needs the npm CLI - see the dedicated publish step below
+      if: ${{ steps.detect.outputs.runtime == 'node' || steps.detect.outputs.package-manager != 'bun' || env.NPM_TOKEN_PROVIDED != 'true' }}
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+      with:
+        node-version: ${{ steps.detect.outputs.runtime == 'node' && steps.detect.outputs.runtime-version || '24' }}
+        registry-url: ${{ inputs.REGISTRY_URL }}
+        scope: ${{ inputs.SCOPE }}
+
+    - name: Setup Bun
+      # Also set up Bun when it is only the package manager (RUNTIME=node),
+      # otherwise the install/publish steps would call a missing 'bun' binary
+      if: ${{ steps.detect.outputs.runtime == 'bun' || steps.detect.outputs.package-manager == 'bun' }}
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2.2.0
+      with:
+        bun-version: ${{ steps.detect.outputs.runtime == 'bun' && steps.detect.outputs.runtime-version || 'latest' }}
+
+    - name: Setup Corepack
+      if: ${{ steps.detect.outputs.package-manager == 'pnpm' || steps.detect.outputs.package-manager == 'yarn' }}
+      run: |
+        # Exact version: 'latest' would let a new upstream release change
+        # what runs here without any change on our side.
+        npm install -g corepack@0.34.0
+        corepack enable
+
+    - name: Configure registry for Bun
+      if: ${{ steps.detect.outputs.runtime == 'bun' }}
+      run: |
+        REGISTRY_HOST=$(echo "$REGISTRY_URL" | sed 's|https://||g' | sed 's|http://||g' | sed 's|/$||')
+        npm config set registry "$REGISTRY_URL"
+        # An empty _authToken entry would shadow the OIDC flow used by the
+        # trusted-publishing step below, so it is only written when a token is
+        # set. Appended to the userconfig directly rather than through
+        # `npm config set`, whose argv - token included - is world-readable in
+        # `ps` while it runs. The cleanup step at the end of the job removes it.
+        # setup-node runs for a non-bun package manager and points npm at
+        # its own userconfig via NPM_CONFIG_USERCONFIG - write where the
+        # tools will actually read.
+        NPMRC="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+        if [ -n "$NODE_AUTH_TOKEN" ]; then
+          touch "$NPMRC"
+          chmod 600 "$NPMRC"
+          printf '//%s/:_authToken=%s\n' "$REGISTRY_HOST" "$NODE_AUTH_TOKEN" >> "$NPMRC"
+        fi
+        if [ -n "$SCOPE" ]; then
+          npm config set "${SCOPE}:registry" "$REGISTRY_URL"
+        fi
+      env:
+        REGISTRY_URL: ${{ inputs.REGISTRY_URL }}
+        SCOPE: ${{ inputs.SCOPE }}
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+    - name: Get cache directory
+      id: cache-dir
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      env:
+        PKG_MANAGER: ${{ steps.detect.outputs.package-manager }}
+      run: |
+        case "$PKG_MANAGER" in
+          npm)  echo "CACHE_DIR=$(npm config get cache)" >> "$GITHUB_OUTPUT" ;;
+          yarn)
+            # `yarn cache dir` is Yarn 1 only; Berry (.yarnrc.yml) errors on
+            # it inside the $( ), which would leave CACHE_DIR empty and fail
+            # the cache step. Same Berry/classic branch as the install step.
+            if [ -f .yarnrc.yml ]; then
+              echo "CACHE_DIR=$(yarn config get cacheFolder)" >> "$GITHUB_OUTPUT"
+            else
+              echo "CACHE_DIR=$(yarn cache dir)" >> "$GITHUB_OUTPUT"
+            fi ;;
+          pnpm) echo "CACHE_DIR=$(pnpm store path)" >> "$GITHUB_OUTPUT" ;;
+          bun)  echo "CACHE_DIR=$(bun pm cache)" >> "$GITHUB_OUTPUT" ;;
+        esac
+
+    - name: Cache dependencies
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      with:
+        path: ${{ steps.cache-dir.outputs.CACHE_DIR }}
+        key: ${{ steps.detect.outputs.package-manager }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/package-lock.json', '**/yarn.lock', '**/pnpm-lock.yaml', '**/bun.lock', '**/bun.lockb') }}
+        restore-keys: |
+          ${{ steps.detect.outputs.package-manager }}-${{ runner.os }}-${{ runner.arch }}-
+
+    - name: Install dependencies
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      env:
+        PKG_MANAGER: ${{ steps.detect.outputs.package-manager }}
+      # Yarn Berry (.yarnrc.yml) uses --immutable; classic uses --frozen-lockfile
+      run: |
+        case "$PKG_MANAGER" in
+          npm)  npm ci ;;
+          yarn)
+            if [ -f .yarnrc.yml ]; then yarn install --immutable; else yarn install --frozen-lockfile; fi ;;
+          pnpm) pnpm install --frozen-lockfile ;;
+          bun)  bun install --frozen-lockfile ;;
+        esac
+
+    - name: Run pre-command
+      if: ${{ inputs.PRE_COMMAND != '' }}
+      run: ${{ inputs.PRE_COMMAND }}
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+    - name: Build package
+      if: ${{ inputs.BUILD_COMMAND != '' }}
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      run: ${{ inputs.BUILD_COMMAND }}
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+    - name: Publish package (custom command)
+      id: publish-custom
+      if: ${{ inputs.PUBLISH_COMMAND != '' }}
+      # Constant, never an expression. `continue-on-error: ${{ !inputs.FAIL_ON_ERROR }}`
+      # silently resolves to true even with FAIL_ON_ERROR set, so the gate never
+      # gated. The gating decision is an explicit step at the end of the job.
+      continue-on-error: true
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      run: ${{ inputs.PUBLISH_COMMAND }}
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+    - name: Publish package (npm)
+      id: publish-npm
+      if: ${{ inputs.PUBLISH_COMMAND == '' && steps.detect.outputs.package-manager == 'npm' }}
+      # Constant, never an expression. `continue-on-error: ${{ !inputs.FAIL_ON_ERROR }}`
+      # silently resolves to true even with FAIL_ON_ERROR set, so the gate never
+      # gated. The gating decision is an explicit step at the end of the job.
+      continue-on-error: true
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      run: |
+        ARGS=(--tag "$TAG" --access "$ACCESS")
+        if [ "$DRY_RUN" = "true" ]; then
+          ARGS+=(--dry-run)
+        fi
+        npm publish "${ARGS[@]}"
+      env:
+        TAG: ${{ inputs.TAG }}
+        ACCESS: ${{ inputs.ACCESS }}
+        DRY_RUN: ${{ inputs.DRY_RUN }}
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+    - name: Publish package (yarn)
+      id: publish-yarn
+      if: ${{ inputs.PUBLISH_COMMAND == '' && steps.detect.outputs.package-manager == 'yarn' }}
+      # Constant, never an expression. `continue-on-error: ${{ !inputs.FAIL_ON_ERROR }}`
+      # silently resolves to true even with FAIL_ON_ERROR set, so the gate never
+      # gated. The gating decision is an explicit step at the end of the job.
+      continue-on-error: true
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      run: |
+        ARGS=(--tag "$TAG" --access "$ACCESS")
+        if [ "$DRY_RUN" = "true" ]; then
+          ARGS+=(--dry-run)
+        fi
+        yarn npm publish "${ARGS[@]}"
+      env:
+        TAG: ${{ inputs.TAG }}
+        ACCESS: ${{ inputs.ACCESS }}
+        DRY_RUN: ${{ inputs.DRY_RUN }}
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+    - name: Publish package (pnpm)
+      id: publish-pnpm
+      if: ${{ inputs.PUBLISH_COMMAND == '' && steps.detect.outputs.package-manager == 'pnpm' }}
+      # Constant, never an expression. `continue-on-error: ${{ !inputs.FAIL_ON_ERROR }}`
+      # silently resolves to true even with FAIL_ON_ERROR set, so the gate never
+      # gated. The gating decision is an explicit step at the end of the job.
+      continue-on-error: true
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      run: |
+        ARGS=(--tag "$TAG" --access "$ACCESS" --no-git-checks)
+        if [ "$DRY_RUN" = "true" ]; then
+          ARGS+=(--dry-run)
+        fi
+        pnpm publish "${ARGS[@]}"
+      env:
+        TAG: ${{ inputs.TAG }}
+        ACCESS: ${{ inputs.ACCESS }}
+        DRY_RUN: ${{ inputs.DRY_RUN }}
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+    - name: Publish package (bun)
+      id: publish-bun
+      if: ${{ inputs.PUBLISH_COMMAND == '' && steps.detect.outputs.package-manager == 'bun' && env.NPM_TOKEN_PROVIDED == 'true' }}
+      # Constant, never an expression. `continue-on-error: ${{ !inputs.FAIL_ON_ERROR }}`
+      # silently resolves to true even with FAIL_ON_ERROR set, so the gate never
+      # gated. The gating decision is an explicit step at the end of the job.
+      continue-on-error: true
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      run: |
+        ARGS=(--tag "$TAG" --access "$ACCESS")
+        if [ "$DRY_RUN" = "true" ]; then
+          ARGS+=(--dry-run)
+        fi
+        bun publish "${ARGS[@]}"
+      env:
+        TAG: ${{ inputs.TAG }}
+        ACCESS: ${{ inputs.ACCESS }}
+        DRY_RUN: ${{ inputs.DRY_RUN }}
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # bun publish does not read the '_authToken' written to .npmrc by the
+        # 'Configure registry for Bun' step above (confirmed: it works with
+        # plain 'npm publish' against the same .npmrc, but bun reports
+        # "missing authentication" regardless) - it only picks up auth from
+        # this env var (or BUN_CONFIG_TOKEN)
+        NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+    - name: Publish package (bun, trusted publishing)
+      id: publish-bun-oidc
+      # bun publish has no OIDC/trusted-publishing support, so when no token is
+      # provided the npm CLI (>= 11.5.1, set up above with Node.js 24) publishes
+      # instead - it mints the short-lived OIDC token automatically
+      if: ${{ inputs.PUBLISH_COMMAND == '' && steps.detect.outputs.package-manager == 'bun' && env.NPM_TOKEN_PROVIDED != 'true' }}
+      # Constant, never an expression. `continue-on-error: ${{ !inputs.FAIL_ON_ERROR }}`
+      # silently resolves to true even with FAIL_ON_ERROR set, so the gate never
+      # gated. The gating decision is an explicit step at the end of the job.
+      continue-on-error: true
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      run: |
+        echo "Publishing with npm $(npm --version) via trusted publishing (OIDC)"
+        ARGS=(--tag "$TAG" --access "$ACCESS")
+        if [ "$DRY_RUN" = "true" ]; then
+          ARGS+=(--dry-run)
+        fi
+        npm publish "${ARGS[@]}"
+      env:
+        TAG: ${{ inputs.TAG }}
+        ACCESS: ${{ inputs.ACCESS }}
+        DRY_RUN: ${{ inputs.DRY_RUN }}
+        # Set (empty) so npm can expand the .npmrc placeholder written by
+        # setup-node; the real credential comes from the OIDC exchange
+        NODE_AUTH_TOKEN: ''
+
+    # The bun path above wrote the registry token into the npm userconfig,
+    # which on a self-hosted runner (supported through RUNS_ON) outlives the
+    # job. `always()` so a failed publish still clears it; setup-node's own
+    # post action cleans up the node path's .npmrc placeholder.
+    - name: Remove registry credentials
+      if: ${{ always() && steps.detect.outputs.runtime == 'bun' && env.NPM_TOKEN_PROVIDED == 'true' }}
+      run: rm -f "${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+
+    - name: Fail on publish errors
+      # Runs last so reports, artifacts and cleanup all happen first
+      if: ${{ !cancelled() && inputs.FAIL_ON_ERROR && (steps.publish-custom.outcome == 'failure' || steps.publish-npm.outcome == 'failure' || steps.publish-yarn.outcome == 'failure' || steps.publish-pnpm.outcome == 'failure' || steps.publish-bun.outcome == 'failure' || steps.publish-bun-oidc.outcome == 'failure') }}
+      run: |
+        echo "::error::Package publication failed."
+        exit 1
