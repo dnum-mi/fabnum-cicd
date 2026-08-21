@@ -232,7 +232,7 @@ jobs:
 
     - name: Upload Trivy scan results to GitHub Security tab
       id: upload
-      uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3  # v4.37.6
+      uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4.37.8
       if: ${{ !cancelled() && inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif' && steps.scan.outcome != 'skipped' }}
       with:
         sarif_file: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
@@ -362,7 +362,7 @@ jobs:
 
     - name: Upload Trivy scan results to GitHub Security tab
       id: upload
-      uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3  # v4.37.6
+      uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4.37.8
       if: ${{ !cancelled() && inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif' && steps.scan.outcome != 'skipped' }}
       with:
         sarif_file: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
