@@ -164,7 +164,7 @@ case "$args" in
   # write against those same paths and must stay a no-op, not return a body.
   "api --method DELETE"*)
     if [ -n "${STUB_GH_DELETE_FAIL_ON:-}" ] && [[ "$args" == *"${STUB_GH_DELETE_FAIL_ON}"* ]]; then
-      printf 'stub gh: forced delete failure\n' >&2
+      printf '%s\n' "${STUB_GH_DELETE_FAIL_MESSAGE:-stub gh: forced delete failure}" >&2
       exit 1
     fi
     ;;

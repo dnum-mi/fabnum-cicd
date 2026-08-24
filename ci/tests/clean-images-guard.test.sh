@@ -122,6 +122,35 @@ test_deletes_platform_children_before_their_parent() {
   assert_called_before "versions/6" "versions/4"
 }
 
+test_leaves_the_last_tagged_version_in_place_on_a_registry_refusal() {
+  image_env
+  # The registry hides a package once it has no tagged version left, so it
+  # refuses to delete the sole survivor - this fires on a package with no
+  # release/dev/latest tag of its own, once every other pull request sharing
+  # it has already been swept.
+  export STUB_GH_DELETE_FAIL_ON="versions/4"
+  export STUB_GH_DELETE_FAIL_MESSAGE='gh: You cannot delete the last tagged version of a package. You must delete the package instead. (HTTP 400)'
+
+  run_block "$BLOCK"
+
+  assert_status 0 "the registry's own restriction is a normal outcome, not a job failure"
+  assert_called "versions/4"
+  assert_output_contains "last tagged version"
+}
+
+test_still_fails_on_an_unrelated_delete_error() {
+  image_env
+  # Only the specific "last tagged version" refusal is swallowed - anything
+  # else (a revoked token, a rate limit) must still fail the job loudly.
+  export STUB_GH_DELETE_FAIL_ON="versions/4"
+  export STUB_GH_DELETE_FAIL_MESSAGE='gh: server error (HTTP 500)'
+
+  run_block "$BLOCK"
+
+  assert_status 1
+  assert_output_contains "server error"
+}
+
 test_fails_when_image_carries_no_tag() {
   image_env
   # CLEAN_ORPHANED callers pass the package name alone, so an untagged IMAGE

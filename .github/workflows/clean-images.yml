@@ -135,6 +135,16 @@ jobs:
 
         echo "Found image ID: $MAIN_IMAGE_ID"
 
+        # A version is the ONLY thing keeping a package visible in the UI, so
+        # the registry refuses to delete the last tagged version of a package
+        # outright - you would have to delete the whole package instead. That
+        # is routinely hit here: a package with a single active PR build (no
+        # release, dev or latest tag pushed to it yet) has nothing else to
+        # fall back to once that PR closes. Deleting the package is too
+        # destructive for an unattended daily sweep, so this is left in place
+        # - the next PR to build into the same package adds a second tagged
+        # version, and this one is swept normally from then on.
+
         # Delete multi-arch manifests
         if MANIFEST_OUTPUT=$(docker buildx imagetools inspect "ghcr.io/$OWNER/$IMAGE_NAME:$IMAGE_TAG" --raw 2>/dev/null); then
           if MANIFESTS=$(echo "$MANIFEST_OUTPUT" | jq -r '.manifests[]? | .digest' 2>/dev/null); then
@@ -159,10 +169,15 @@ jobs:
 
         # Delete main image
         echo "Deleting main image: $IMAGE_NAME:$IMAGE_TAG"
-        gh api --method DELETE -H "Accept: application/vnd.github+json" \
-          "/$API_MODE/$OWNER/packages/container/$IMAGE_NAME_URL_ENCODED/versions/$MAIN_IMAGE_ID"
-
-        echo "Image deletion completed"
+        if DELETE_ERROR=$(gh api --method DELETE -H "Accept: application/vnd.github+json" \
+          "/$API_MODE/$OWNER/packages/container/$IMAGE_NAME_URL_ENCODED/versions/$MAIN_IMAGE_ID" 2>&1 1>/dev/null); then
+          echo "Image deletion completed"
+        elif printf '%s' "$DELETE_ERROR" | grep -qi "cannot delete the last tagged version"; then
+          echo "::warning::Cannot delete $IMAGE_NAME:$IMAGE_TAG - it is the last tagged version left in this package, and the registry refuses to delete that. Leaving it in place; it will be swept once another tagged version exists in $IMAGE_NAME."
+        else
+          echo "$DELETE_ERROR" >&2
+          exit 1
+        fi
 
   cleanup-orphaned-image:
     name: Delete orphaned images from ghcr.io
