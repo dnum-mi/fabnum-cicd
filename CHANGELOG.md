@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.18.0...v0.19.0) (2026-08-24)
+
+
+### Features
+
+* **update-helm-chart:** let local mode push as the configured App ([e6407be](https://github.com/dnum-mi/fabnum-cicd/commit/e6407beffe09b52e7994b59d8b242671731959b0))
+
 ## [0.18.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.17.0...v0.18.0) (2026-08-24)
 
 
