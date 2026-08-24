@@ -41,6 +41,7 @@ Ce garde-fou porte sur le **contenu de la version**, pas sur l'état de la pull 
 - Si la version supprimée est une manifest list multi-arch, les images par plateforme qu'elle référence — jamais taguées elles-mêmes — sont supprimées avec elle, sinon plus rien ne permettrait de les retrouver.
 - Les versions sans aucun tag ne sont jamais supprimées directement : ce sont les images par plateforme d'une manifest list, et les supprimer isolément casserait l'image qui les référence.
 - Une suppression qui échoue — version déjà supprimée, par exemple — est journalisée sans faire échouer le job.
+- Si la version ciblée par `CLEAN_TAGGED` est la dernière version taguée du package, GitHub refuse la suppression plutôt que de supprimer le package entier (`cannot delete the last tagged version of a package`, HTTP 400). Ce cas est routinier pour un package sans tag `latest`/`main`/`develop` propre, une fois que les autres pull requests qui le partageaient ont déjà été balayées. Journalisé comme un avertissement sans faire échouer le job - la version sera balayée normalement dès qu'une autre version taguée existera dans le même package.
 
 ## Exemples
 
