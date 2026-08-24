@@ -41,6 +41,17 @@ on:
         required: false
         default: false
         type: boolean
+      TAG_SHORT_SHA:
+        description: >-
+          Whether to tag with the short commit SHA. Defaults on to keep every
+          existing caller's tags unchanged; a caller whose branches get
+          rebased/force-pushed (so unrelated commits keep rebuilding the same
+          unchanged image content) should turn it off - the SHA tag would
+          otherwise pile up new tags on that one still-live version forever,
+          since only a whole version can be deleted, never a single tag.
+        required: false
+        default: true
+        type: boolean
       BUILD_AMD64:
         description: Build for amd64
         required: false
@@ -407,7 +418,7 @@ jobs:
         images: ${{ needs.infos.outputs.normalized-image }}
         tags: |
           type=raw,value=${{ needs.infos.outputs.lower-branch }},enable=${{ needs.infos.outputs.lower-branch != 'main' && needs.infos.outputs.lower-branch != 'develop' }}
-          type=raw,value=${{ needs.infos.outputs.short-sha }},enable=${{ needs.infos.outputs.short-sha != '' }}
+          type=raw,value=${{ needs.infos.outputs.short-sha }},enable=${{ inputs.TAG_SHORT_SHA && needs.infos.outputs.short-sha != '' }}
           type=raw,value=${{ inputs.IMAGE_TAG }},enable=${{ inputs.IMAGE_TAG != '' }}
           type=raw,value=${{ format('{0}.{1}', needs.infos.outputs.major-tag, needs.infos.outputs.minor-tag) }},enable=${{ inputs.TAG_MAJOR_AND_MINOR && needs.infos.outputs.major-tag != '' && needs.infos.outputs.minor-tag != '' && needs.infos.outputs.prerelease-tag == '' }}
           type=raw,value=${{ needs.infos.outputs.major-tag }},enable=${{ inputs.TAG_MAJOR_AND_MINOR && needs.infos.outputs.major-tag != '' && needs.infos.outputs.prerelease-tag == '' }}
