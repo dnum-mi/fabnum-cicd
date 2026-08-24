@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.18.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.17.0...v0.18.0) (2026-08-24)
+
+
+### Features
+
+* **build-docker:** default TAG_SHORT_SHA to false ([63d65c3](https://github.com/dnum-mi/fabnum-cicd/commit/63d65c335dfca155ed756a0abe40cbfeb083be78))
+* **build-docker:** make the short-sha tag optional ([aaeaa52](https://github.com/dnum-mi/fabnum-cicd/commit/aaeaa5208117e8fecf53b440ff4474989bb5b8c5))
+
+
+### Bug Fixes
+
+* **clean-images:** don't fail when a package's last tagged version can't be deleted ([17cbca9](https://github.com/dnum-mi/fabnum-cicd/commit/17cbca9d6c3f61b060de0fc09794e17c4ad20d2a))
+
+
+### Dependencies
+
+* **deps:** update docker/setup-buildx-action to v4.3.0 ([b6cfd1a](https://github.com/dnum-mi/fabnum-cicd/commit/b6cfd1aeeea53f5a3f2a29fc8dfb3903a730e944))
+* **deps:** update github/codeql-action to v4.37.8 ([496aeab](https://github.com/dnum-mi/fabnum-cicd/commit/496aeab4dbb220c72faaab6252618636c3c99546))
+
 ## [0.17.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.16.1...v0.17.0) (2026-08-11)
 
 
