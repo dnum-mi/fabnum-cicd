@@ -43,14 +43,15 @@ on:
         type: boolean
       TAG_SHORT_SHA:
         description: >-
-          Whether to tag with the short commit SHA. Defaults on to keep every
-          existing caller's tags unchanged; a caller whose branches get
-          rebased/force-pushed (so unrelated commits keep rebuilding the same
-          unchanged image content) should turn it off - the SHA tag would
-          otherwise pile up new tags on that one still-live version forever,
-          since only a whole version can be deleted, never a single tag.
+          Whether to tag with the short commit SHA. Defaults off: a caller
+          whose branches get rebased/force-pushed can rebuild the same
+          unchanged image content on an unrelated commit, which reuses the
+          previous digest - the SHA tag would then pile up new tags on that
+          one still-live version forever, since only a whole version can be
+          deleted, never a single tag. Turn it on for the per-commit
+          provenance when that risk does not apply to your branches.
         required: false
-        default: true
+        default: false
         type: boolean
       BUILD_AMD64:
         description: Build for amd64
