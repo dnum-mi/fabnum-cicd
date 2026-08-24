@@ -209,15 +209,15 @@ jobs:
           exit 1
         fi
 
-    # Only 'called' mode consumes this token, for the pull request and the
-    # merge. 'local' mode pushes with the checkout credential on purpose (see
-    # the checkout step below), so minting here would hand the job a
-    # write-capable credential nothing uses.
+    # Minted whenever App auth is configured, for either mode: 'called' needs
+    # it for the pull request and the merge, and 'local' needs it for the
+    # push below - same precedence as every other credential in this catalog
+    # (App, then GITHUB_TOKEN), not a separate opt-in.
     # Scoped to this repository only: passing `owner:` without `repositories:`
     # would widen the token to every repo in the installation.
     - name: Generate GitHub App token
       id: app-token
-      if: ${{ env.HAS_APP_AUTH == 'true' && inputs.RUN_MODE == 'called' }}
+      if: ${{ env.HAS_APP_AUTH == 'true' }}
       uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
       with:
         client-id: ${{ secrets.APP_CLIENT_ID }}
@@ -225,14 +225,25 @@ jobs:
         permission-contents: write
         permission-pull-requests: write
 
-    # Deliberately NOT given the App token. The 'local'/'called' push below
-    # targets the branch the caller's CD pipeline triggers on; a credential that
-    # can trigger workflows would re-enter that pipeline. Staying on
-    # GITHUB_TOKEN is what actually prevents that - see the push step for why
-    # [skip ci] is not used for the same purpose. Do NOT add `token:` to this
-    # step.
+    # Follows the App token when one was minted above, GITHUB_TOKEN otherwise
+    # - the same precedence used everywhere else credentials are chosen in
+    # this catalog. For 'called' mode this is inert: that push goes out
+    # through create-pull-request's own token, not this checkout's credential.
+    # For 'local' mode it is the credential the push below actually uses -
+    # which means a caller that supplies APP_CLIENT_ID/APP_PRIVATE_KEY to this
+    # job changes that push's behavior: GITHUB_TOKEN cannot trigger a new
+    # workflow run, which is what stops the push from re-entering the
+    # caller's CD pipeline (e.g. a caller triggering on `push: branches:
+    # [main]`); the App token can. Supply App credentials to a 'local'-mode
+    # call only once you have confirmed that re-entry is safe for your
+    # pipeline - typically because you need the App identity for another
+    # reason, such as a branch ruleset that requires a pull request for every
+    # push with no exception for GITHUB_TOKEN, which cannot be named in a
+    # bypass list the way a GitHub App can.
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        token: ${{ steps.app-token.outputs.token || github.token }}
 
     - name: update chart version
       id: update-chart
@@ -464,20 +475,25 @@ jobs:
         git config user.email 'github-actions[bot]@users.noreply.github.com'
 
         git add "$CHART_DIR/$CHART_NAME"
-        # No [skip ci] here on purpose. This push already cannot trigger a new
-        # workflow run - on push OR pull_request - because it goes out on the
-        # checkout's own GITHUB_TOKEN (see "Deliberately NOT given the App
-        # token" above): GitHub never lets GITHUB_TOKEN-authenticated activity
-        # create a new run, which is what actually prevents the CD loop.
-        # [skip ci] would add nothing to that here, while silently breaking
-        # something else: it is matched on the commit MESSAGE alone,
-        # regardless of which credential wrote it, so it would also suppress
-        # pull_request checks for any pull request a human later opens FROM
-        # this branch (e.g. a manual develop -> main promotion) - the tip is
-        # exactly this commit until the next one lands. That pull request
-        # opening is a human action authenticated with the human's own
-        # credentials, not GITHUB_TOKEN, so nothing else would stop it from
-        # getting real checks - don't reintroduce [skip ci] here.
+        # No [skip ci] here on purpose. Without App credentials supplied to
+        # this job, this push cannot trigger a new workflow run - on push OR
+        # pull_request - because it goes out on the checkout's own
+        # GITHUB_TOKEN (see the checkout step above): GitHub never lets
+        # GITHUB_TOKEN-authenticated activity create a new run, which is what
+        # actually prevents the CD loop. Supplying
+        # APP_CLIENT_ID/APP_PRIVATE_KEY trades that protection away by the
+        # caller's own choice - re-entry is then a risk they have already
+        # accepted, not one [skip ci] should paper over here.
+        # [skip ci] would add nothing on the GITHUB_TOKEN path either way,
+        # while silently breaking something else: it is matched on the commit
+        # MESSAGE alone, regardless of which credential wrote it, so it would
+        # also suppress pull_request checks for any pull request a human
+        # later opens FROM this branch (e.g. a manual develop -> main
+        # promotion) - the tip is exactly this commit until the next one
+        # lands. That pull request opening is a human action authenticated
+        # with the human's own credentials, not GITHUB_TOKEN, so nothing else
+        # would stop it from getting real checks - don't reintroduce
+        # [skip ci] here.
         # The `chore(chart):` prefix is the other guard: release-please does
         # not cut a release from it.
         git commit -m "chore(chart): release $CHART_NAME $NEXT_VERSION"

@@ -59,6 +59,8 @@ Une valeur de `RUN_MODE` non reconnue fait échouer le job explicitement.
 
 > **Quand utiliser `local` ?** Lorsque le chart Helm est hébergé dans le même dépôt que l'application, généralement enchaîné après [`release-app.yml`](./50-release-app.md) pour committer le bump de version directement sur la branche qui vient d'être libérée, avant d'appeler [`release-helm-local.yml`](./52-release-helm-local.md) avec les outputs `chart-version` et `commit-sha`.
 
+> **Credential du push (mode `local`)** : suit la même précédence que partout ailleurs dans ce catalogue - le token de la App s'il est configuré (`APP_CLIENT_ID`/`APP_PRIVATE_KEY`), sinon `GITHUB_TOKEN`. Ce n'est pas un simple détail d'authentification : `GITHUB_TOKEN` ne peut redéclencher aucun workflow, ce qui évite au pipeline appelant de se re-déclencher lui-même, alors qu'un token de App le peut. Fournir `APP_CLIENT_ID`/`APP_PRIVATE_KEY` à un appel en mode `local` change donc ce comportement - à ne faire qu'après avoir vérifié que ce re-déclenchement est sans danger pour votre pipeline (ex : votre job de release est idempotent sur un re-run sans changement), typiquement parce que vous avez besoin de l'identité App pour une autre raison - par exemple un ruleset de branche qui exige une Pull Request pour tout push, sans exception pour `GITHUB_TOKEN` : ce dernier ne peut pas être nommé dans une liste de bypass, contrairement à une GitHub App (`actor_type: Integration`).
+
 ### Autres comportements
 
 - **Release "chart-only"** : si `APP_VERSION` est laissé vide, l'`appVersion` du chart n'est pas modifiée - seule la version du chart est incrémentée. Utile pour publier un changement du chart lui-même (templates, values...) sans changement applicatif.
