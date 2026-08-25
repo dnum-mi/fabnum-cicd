@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.19.0...v0.19.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **workflows:** drop the branch filter from the security tab link ([043d559](https://github.com/dnum-mi/fabnum-cicd/commit/043d559607a5bb80c9529d92accdd5d59b42d087))
+
 ## [0.19.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.18.0...v0.19.0) (2026-08-24)
 
 
