@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.2](https://github.com/dnum-mi/fabnum-cicd/compare/v0.19.1...v0.19.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* **scan-gitleaks:** bound the scan to the checked-out ref ([8f2f48f](https://github.com/dnum-mi/fabnum-cicd/commit/8f2f48f832f353268fc51c02fa78ec3ebd0f8659))
+
 ## [0.19.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.19.0...v0.19.1) (2026-08-25)
 
 
