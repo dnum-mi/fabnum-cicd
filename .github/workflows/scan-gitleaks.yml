@@ -14,6 +14,13 @@ on:
         required: false
         type: string
         default: sarif
+      LOG_OPTS:
+        description: >-
+          Revision range handed to `git log` for the scan. Defaults to the
+          checked-out ref only; widen it (e.g. `--all`) to scan every branch.
+        required: false
+        type: string
+        default: HEAD
       FAIL_ON_LEAKS:
         description: Whether to fail the workflow when leaks are detected
         required: false
@@ -76,12 +83,21 @@ jobs:
       id: scan
       env:
         FORMAT: ${{ inputs.FORMAT }}
+        LOG_OPTS: ${{ inputs.LOG_OPTS }}
       # Exit code 1 means leaks were found, anything else above 0 is a scan error.
       # Leaks are reported but only fail the workflow in the last step, so the
       # report upload and the PR comment always run first.
+      #
+      # `--log-opts` is not optional here: `gitleaks git .` defaults to walking
+      # every ref, and the checkout above fetches all of them (fetch-depth: 0).
+      # Without it a secret on any unmerged branch fails this job on every pull
+      # request in the repository, and a force-push there changes the finding's
+      # commit - and therefore its fingerprint - breaking whatever allowlist was
+      # keeping it quiet.
       run: |
         EXIT_CODE=0
         gitleaks git . \
+          --log-opts "${LOG_OPTS}" \
           --report-format "${FORMAT}" \
           --report-path "gitleaks-results.${FORMAT}" \
           --redact \
