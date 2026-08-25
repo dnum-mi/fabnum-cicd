@@ -131,10 +131,14 @@ jobs:
     - name: Comment PR
       uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88  # v3.0.5
       with:
+        # Only `pr:` here: on a pull_request event `github.ref_name` is
+        # `<N>/merge`, which the code scanning search does not resolve to a
+        # branch - ANDed with `pr:` it matches nothing and hides the very
+        # alerts the link points at.
         message: |
           🤖 Hey !
 
-          ${{ needs.secrets-scan.outputs.leaks == 'true' && '🚨 Gitleaks detected potential leaked secrets in the git history.' || '✅ Gitleaks found no leaked secrets in the git history.' }} The secret scan report for the current pull request is available in ${{ (inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif') && format('[the GitHub Security Tab](https://github.com/{0}/security/code-scanning?query=is%3Aopen+branch%3A{1}+pr%3A{2})', github.repository, github.ref_name, (github.event.pull_request.number || github.event.number)) || format('[the GitHub Workflow Summary](https://github.com/{0}/actions/runs/{1})', github.repository, github.run_id) }}.
+          ${{ needs.secrets-scan.outputs.leaks == 'true' && '🚨 Gitleaks detected potential leaked secrets in the git history.' || '✅ Gitleaks found no leaked secrets in the git history.' }} The secret scan report for the current pull request is available in ${{ (inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif') && format('[the GitHub Security Tab](https://github.com/{0}/security/code-scanning?query=is%3Aopen+pr%3A{1})', github.repository, inputs.PR_NUMBER) || format('[the GitHub Workflow Summary](https://github.com/{0}/actions/runs/{1})', github.repository, github.run_id) }}.
         header: secret-scan
         # Not `number`: that one is only a fallback the event payload overrides,
         # and the caller naming a pull request has to be what decides.
