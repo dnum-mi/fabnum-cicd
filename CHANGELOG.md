@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.19.3](https://github.com/dnum-mi/fabnum-cicd/compare/v0.19.2...v0.19.3) (2026-09-14)
+
+
+### Dependencies
+
+* **deps:** update docker/setup-qemu-action to v4.3.0 ([d778283](https://github.com/dnum-mi/fabnum-cicd/commit/d7782837433571b592d861381bf55d0da518b60d))
+* **deps:** update github/codeql-action to v4.38.0 ([1d2b119](https://github.com/dnum-mi/fabnum-cicd/commit/1d2b1191fc5b908bf2cecdf2e49c070d9952efc2))
+* **deps:** update helm/kind-action to v1.15.0 ([0b8291d](https://github.com/dnum-mi/fabnum-cicd/commit/0b8291d3a3e027de656a1df17a540d918629326b))
+
 ## [0.19.2](https://github.com/dnum-mi/fabnum-cicd/compare/v0.19.1...v0.19.2) (2026-08-25)
 
 
