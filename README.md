@@ -17,6 +17,9 @@ jobs:
 > [!TIP]
 > Consultez l'[introduction](./docs/workflows/01-introduction.md) pour un guide complet avec des exemples de pipelines CI, CD et Helm.
 
+> [!NOTE]
+> Un agent (assistant de code, skill) qui met en place ces workflows dans un autre dépôt commence par [`AGENTS.md`](./AGENTS.md).
+
 ## Workflows
 
 ### Linting & Validation
