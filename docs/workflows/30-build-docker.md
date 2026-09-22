@@ -12,8 +12,9 @@ Build d'images Docker multi-architecture (amd64/arm64) avec Docker Buildx, et pu
 | IMAGE_DOCKERFILE    | string  | Chemin vers le Dockerfile                                                                                                                                                                                                                           | Oui    | -                  |
 | IMAGE_CONTEXT       | string  | Chemin du contexte de build                                                                                                                                                                                                                         | Oui    | -                  |
 | IMAGE_TARGET        | string  | Étape cible à construire dans le Dockerfile (optionnel, construit la dernière étape si non défini)                                                                                                                                                  | Non    | -                  |
-| IMAGE_LABELS        | string  | Labels OCI personnalisés séparés par des sauts de ligne, au format `KEY=VALUE` (ex: `com.example.team=platform`), ajoutés aux labels standards `org.opencontainers.image.*` que ce workflow définit toujours sur la configuration de l'image (title, description, url, source, revision, version, created, licenses - voir [Labels et annotations OCI](#labels-et-annotations-oci) ci-dessous). Une clé ici qui correspond à l'une des clés standards l'écrase. Jamais de secret ici : valeurs gravées dans l'image, lisibles par quiconque peut la pull ou l'inspecter. | Non    | -                  |
-| IMAGE_ANNOTATIONS   | string  | Annotations OCI personnalisées séparées par des sauts de ligne, au format `KEY=VALUE`, ajoutées aux annotations standards `org.opencontainers.image.*` que ce workflow définit toujours sur la manifest list (niveau index). Une clé ici qui correspond à l'une des clés standards l'écrase. Contrairement à `IMAGE_LABELS`, ne peut pas être défini depuis le Dockerfile - les annotations vivent sur la manifest list, pas sur la configuration de l'image. Même mise en garde que `IMAGE_LABELS` : texte en clair, jamais de secret. | Non    | -                  |
+| IMAGE_METADATA      | boolean | Poser le jeu standard `org.opencontainers.image.*` (title, description, url, source, revision, version, created, licenses) en labels sur chaque image et en annotations `index:` sur la manifest list. Voir [Labels et annotations OCI](#labels-et-annotations-oci). Désactiver quand les `LABEL` du Dockerfile doivent l'emporter, ou quand un rebuild inchangé doit continuer à retomber sur le même digest. `IMAGE_LABELS`/`IMAGE_ANNOTATIONS` s'appliquent dans les deux cas. | Non    | `true`             |
+| IMAGE_LABELS        | string  | Labels OCI personnalisés séparés par des sauts de ligne, au format `KEY=VALUE` (ex: `com.example.team=platform`). Appliqués après le jeu d'`IMAGE_METADATA` : une clé donnée ici écrase la valeur standard sans avoir à désactiver tout le jeu. Jamais de secret ici : valeurs gravées dans l'image, lisibles par quiconque peut la pull ou l'inspecter. | Non    | -                  |
+| IMAGE_ANNOTATIONS   | string  | Annotations OCI personnalisées séparées par des sauts de ligne, au format `KEY=VALUE` (sans préfixe de niveau : elles sont posées au niveau `index`). Mêmes ordre et précédence qu'`IMAGE_LABELS`. Contrairement à `IMAGE_LABELS`, ne peut pas être défini depuis le Dockerfile, et n'existe que si `PUSH` est `true` - un build non poussé n'a pas de manifest list. Même mise en garde : texte en clair, jamais de secret. | Non    | -                  |
 | PUSH                | boolean | Pousser l'image construite vers le registre. Si `false`, l'image est exportée sous forme d'artefact tarball (un par architecture) au lieu d'être poussée, pour qu'un job en aval puisse la charger avec `docker load` et exécuter des tests dessus. | Non    | `true`             |
 | TAG_MAJOR_AND_MINOR | boolean | Créer des tags pour les versions majeure et mineure (ex: `1.2.3` → `1.2` et `1`)                                                                                                                                                                    | Non    | `false`            |
 | TAG_SHORT_SHA       | boolean | Taguer avec le SHA court du commit                                                                                                                                                                                                                  | Non    | `false`            |
@@ -93,19 +94,25 @@ Par défaut, l'image est poussée vers le registre (par digest, puis assemblée 
 
 ## Labels et annotations OCI
 
-Ce workflow définit toujours le jeu standard de labels et annotations `org.opencontainers.image.*` (`title`, `description`, `url`, `source`, `revision`, `version`, `created`, `licenses`, calculés par [`docker/metadata-action`](https://github.com/docker/metadata-action)) - aucune option ne permet de désactiver ce comportement.
+Par défaut (`IMAGE_METADATA: true`), ce workflow pose le jeu standard `org.opencontainers.image.*` (`title`, `description`, `url`, `source`, `revision`, `version`, `created`, `licenses`, calculés par [`docker/metadata-action`](https://github.com/docker/metadata-action)). C'est lui qui permet à ce qui ne voit que l'image - une interface de registre, un scanner, un inventaire côté cluster - de relier une étiquette en service au dépôt et au commit dont elle provient.
 
 - **Labels** (config de l'image) : gravés au moment du build, dans le job `build`, car ils font partie de la configuration de chaque image par architecture. Calculés une seule fois dans le job `infos` (plutôt que dupliqués dans chaque leg de la matrice) pour que `org.opencontainers.image.created` reste identique entre les builds amd64 et arm64 d'une même image logique.
 - **Annotations** (manifest list) : ce sont les mêmes valeurs, au niveau `index`, issues du **même** appel à `docker/metadata-action` que les labels, dans le job `infos`. Un second appel prendrait sa propre heure pour `org.opencontainers.image.created`, et l'index contredirait alors sur leur date de build les images qu'il référence. Elles ne peuvent en revanche être *posées* qu'au moment où le job `merge` assemble la manifest list multi-arch, avec `docker buildx imagetools create --annotation`. `imagetools create` n'accepte que les niveaux `index`/`descriptor`, jamais `manifest` - `index` est aussi la cible sémantiquement correcte ici, puisque c'est la seule manifest list qu'un appelant pull réellement par tag.
-- `IMAGE_LABELS` / `IMAGE_ANNOTATIONS` permettent d'ajouter des clés personnalisées ou d'écraser une clé du jeu standard (même clé = la valeur personnalisée gagne).
+- `IMAGE_LABELS` / `IMAGE_ANNOTATIONS` ajoutent des clés personnalisées. Elles sont appliquées **après** le jeu standard, et le dernier `--label`/`--annotation` posé pour une clé est celui qui subsiste : une clé standard peut donc être écrasée individuellement, sans désactiver le reste du jeu. Elles s'appliquent aussi quand `IMAGE_METADATA` est `false`.
+- Avec `PUSH: false`, seuls les labels sont posés : il n'y a pas de manifest list à annoter (le job `merge` est ignoré).
+- `org.opencontainers.image.revision` vaut le `github.sha` du run. Sur un événement `pull_request`, c'est le commit de fusion éphémère de la PR, pas la tête de la branche - ce commit disparaît une fois la PR fermée.
 
 ### Compromis : `org.opencontainers.image.created` et reproductibilité du digest
 
-Le label/annotation `created` embarque l'horodatage réel du build. Deux builds strictement identiques (même Dockerfile, même contexte) ne produisent donc plus le même digest d'une exécution à l'autre - le dédoublonnage incident que permettait le content-addressing de BuildKit sur des rebuilds inchangés est perdu. C'est un choix assumé : la traçabilité (savoir précisément quand une image a été construite) prime ici sur la réutilisation de digest.
+Le label/annotation `created` embarque l'horodatage réel du build. Deux builds strictement identiques (même Dockerfile, même contexte) ne produisent donc plus le même digest d'une exécution à l'autre - le dédoublonnage incident que permettait le content-addressing de BuildKit sur des rebuilds inchangés est perdu. C'est le compromis assumé par défaut : la traçabilité (savoir précisément quand une image a été construite) prime sur la réutilisation de digest. Un appelant pour qui ce dédoublonnage compte passe `IMAGE_METADATA: false`.
 
 ### Labels du Dockerfile
 
-Une instruction `LABEL` dans le Dockerfile reste la façon normale d'ajouter des labels propres à l'image, y compris des valeurs dynamiques par run via le `BUILD_ARGS` déjà existant (`ARG X` + `LABEL foo=$X`) - `IMAGE_LABELS` n'est utile que pour des labels décidés côté appelant du workflow plutôt que dans le Dockerfile. En cas de collision de clé avec le jeu standard que ce workflow applique, la documentation de Buildx ne garantit pas explicitement quelle source l'emporte : vérifier le résultat réel avec la commande d'inspection ci-dessous plutôt que de supposer un ordre de priorité. Les annotations, elles, ne peuvent jamais venir du Dockerfile - ce n'est pas un concept qu'une instruction `LABEL` peut exprimer.
+Une instruction `LABEL` dans le Dockerfile reste la façon normale d'ajouter des labels propres à l'image, y compris des valeurs dynamiques par run via le `BUILD_ARGS` déjà existant (`ARG X` + `LABEL foo=$X`) - `IMAGE_LABELS` n'est utile que pour des labels décidés côté appelant du workflow plutôt que dans le Dockerfile.
+
+En cas de collision de clé, **c'est le workflow qui l'emporte** : un `--label` de build écrase le `LABEL` du Dockerfile portant la même clé (vérifié : un `LABEL org.opencontainers.image.version` du Dockerfile ressort avec la valeur du `--label`). Les clés qui n'entrent pas en collision, des deux côtés, sont conservées. Pour garder la valeur du Dockerfile sur une clé standard, la redonner via `IMAGE_LABELS` (appliqué en dernier) ou désactiver le jeu avec `IMAGE_METADATA: false`.
+
+Les annotations, elles, ne peuvent jamais venir du Dockerfile - ce n'est pas un concept qu'une instruction `LABEL` peut exprimer.
 
 ### Sécurité et traçabilité
 
@@ -320,6 +327,19 @@ jobs:
         com.example.cost-center=1234
       IMAGE_ANNOTATIONS: |
         org.opencontainers.image.description=Service de paiement interne
+```
+
+Pour laisser les `LABEL` du Dockerfile seuls maîtres, ou garder un digest stable entre deux rebuilds inchangés, désactiver le jeu standard - les clés personnalisées, elles, continuent de s'appliquer :
+
+```yaml
+    with:
+      IMAGE_NAME: ghcr.io/my-org/my-app
+      IMAGE_TAG: 1.0.0
+      IMAGE_CONTEXT: ./
+      IMAGE_DOCKERFILE: ./Dockerfile
+      IMAGE_METADATA: false
+      IMAGE_LABELS: |
+        com.example.team=platform
 ```
 
 ### Build avec registre personnalisé
