@@ -113,6 +113,24 @@ on:
         required: false
         default: max
         type: string
+      OCI_LABELS:
+        description: >-
+          Stamp the standard OCI metadata on the image: labels
+          org.opencontainers.image.source, .revision and .version on every
+          platform image, and the same keys as index annotations on the
+          pushed manifest list. They are what lets anything reading the image
+          - a registry UI, a scanner, a cluster-side inventory - tie a running
+          tag back to the repository and commit it was built from. Disable
+          only if the Dockerfile already sets these keys and must win.
+        required: false
+        default: true
+        type: boolean
+      LABELS:
+        description: >-
+          Additional image labels, one KEY=VALUE per line. Applied after the
+          OCI_LABELS defaults, so a key given here overrides them.
+        required: false
+        type: string
       RUNS_ON:
         description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
         required: false
@@ -344,6 +362,15 @@ jobs:
         cache-to: ${{ inputs.CACHE && format('type=gha,mode={0},scope={1}-{2}', inputs.CACHE_MODE, needs.infos.outputs.lower-image, matrix.runners) || '' }}
         build-args: |
           ${{ inputs.BUILD_ARGS }}
+        # build-push-action parses this list with skipEmptyLines, so the
+        # defaults render as blank lines when OCI_LABELS is false. On a
+        # duplicate key the last --label wins, hence LABELS last: a caller can
+        # override a default without switching all of them off.
+        labels: |
+          ${{ inputs.OCI_LABELS && format('org.opencontainers.image.source={0}/{1}', github.server_url, github.repository) || '' }}
+          ${{ inputs.OCI_LABELS && format('org.opencontainers.image.revision={0}', github.sha) || '' }}
+          ${{ inputs.OCI_LABELS && format('org.opencontainers.image.version={0}', inputs.IMAGE_TAG) || '' }}
+          ${{ inputs.LABELS }}
         # Composed inline rather than through GITHUB_ENV/GITHUB_OUTPUT so the
         # token is never written to a file on the runner. When
         # BUILD_SECRET_GITHUB_TOKEN is 'none' the second line renders empty;
@@ -437,6 +464,10 @@ jobs:
       working-directory: /tmp/digests/${{ needs.infos.outputs.lower-image }}
       env:
         NORMALIZED_IMAGE: ${{ needs.infos.outputs.normalized-image }}
+        OCI_LABELS: ${{ inputs.OCI_LABELS }}
+        OCI_SOURCE: ${{ github.server_url }}/${{ github.repository }}
+        OCI_REVISION: ${{ github.sha }}
+        OCI_VERSION: ${{ inputs.IMAGE_TAG }}
       run: |
         # Both lists have to reach imagetools as separate arguments: one
         # `-t <tag>` pair per tag, then one reference per digest file in the
@@ -464,7 +495,19 @@ jobs:
           exit 1
         fi
 
-        docker buildx imagetools create "${TAG_ARGS[@]}" "${DIGEST_REFS[@]}"
+        # The labels live in each platform image's config; a client that only
+        # reads the manifest list (imagetools inspect, most registry UIs) sees
+        # the index annotations instead - so the same three keys go on both.
+        ANNOTATION_ARGS=()
+        if [ "$OCI_LABELS" = "true" ]; then
+          ANNOTATION_ARGS=(
+            --annotation "index:org.opencontainers.image.source=$OCI_SOURCE"
+            --annotation "index:org.opencontainers.image.revision=$OCI_REVISION"
+            --annotation "index:org.opencontainers.image.version=$OCI_VERSION"
+          )
+        fi
+
+        docker buildx imagetools create "${ANNOTATION_ARGS[@]}" "${TAG_ARGS[@]}" "${DIGEST_REFS[@]}"
 
     - name: Get image digest
       id: digest

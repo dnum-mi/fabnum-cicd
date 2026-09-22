@@ -22,6 +22,8 @@ Build d'images Docker multi-architecture (amd64/arm64) avec Docker Buildx, et pu
 | BUILD_SECRET_GITHUB_TOKEN | string | Credential à exposer comme secret de build `github_token=<token>` (lisible dans le Dockerfile à `/run/secrets/github_token`), pour relever la limite d'API GitHub des outils qui résolvent des releases pendant le build (mise, aqua, ubi). `none` (défaut) n'injecte rien. `app` mint un token App réduit à `contents:read` + `metadata:read` sur ce dépôt, échoue si absent. `pat` utilise le token App si disponible sinon `GH_PAT`, échoue si aucun des deux. `job-token` retombe en plus sur le `GITHUB_TOKEN` du job, qui ne peut pas être réduit et porte tout le bloc `permissions:` de l'appelant. Voir [`authentication.md`](./05-authentication.md#ce-que-build-docker-injecte-réellement). | Non    | `none`             |
 | CACHE               | boolean | Activer le cache de build Docker (utilise le backend de cache GitHub Actions)                                                                                                                                                                       | Non    | `false`            |
 | CACHE_MODE          | string  | Mode d'export du cache Buildx : `max` (toutes les couches intermédiaires) ou `min` (uniquement l'image finale)                                                                                                                                      | Non    | `max`              |
+| OCI_LABELS          | boolean | Poser les métadonnées OCI standard : labels `org.opencontainers.image.source`, `.revision` et `.version` sur chaque image, et les mêmes clés en annotations sur la manifest list poussée. Voir [Métadonnées OCI](#métadonnées-oci). | Non    | `true`             |
+| LABELS              | string  | Labels supplémentaires, un `KEY=VALUE` par ligne. Appliqués après ceux d'`OCI_LABELS` : une clé donnée ici les remplace. | Non    | -                  |
 | RUNS_ON             | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                                                                                                                              | Non    | `["ubuntu-24.04"]` |
 
 ## Secrets
@@ -392,3 +394,19 @@ jobs:
       IMAGE_DOCKERFILE: ./Dockerfile
       CACHE: true
 ```
+
+## Métadonnées OCI
+
+Avec `OCI_LABELS: true` (défaut), chaque image porte trois labels, et la manifest list poussée les mêmes clés en annotations `index:` :
+
+| Clé | Valeur |
+| --- | --- |
+| `org.opencontainers.image.source` | `https://github.com/<owner>/<repo>` |
+| `org.opencontainers.image.revision` | `github.sha` du run |
+| `org.opencontainers.image.version` | `IMAGE_TAG` |
+
+Ce sont elles qui permettent à ce qui lit l'image - une interface de registre, un scanner, un inventaire côté cluster - de relier une étiquette en service au dépôt et au commit dont elle provient, sans accès au dépôt lui-même. Les labels vivent dans la configuration de chaque image de plateforme ; un client qui ne lit que la manifest list (`docker buildx imagetools inspect`, la plupart des interfaces de registre) voit les annotations.
+
+- Un `LABEL` du Dockerfile portant la même clé est remplacé par celui du workflow (un `--label` de build l'emporte). Pour garder la valeur du Dockerfile, passer `OCI_LABELS: false`, ou redonner la clé dans `LABELS`.
+- Avec `PUSH: false`, seuls les labels sont posés : il n'y a pas de manifest list à annoter.
+- `revision` est le `github.sha` du run : sur un `pull_request`, c'est le commit de fusion éphémère de la PR, pas la tête de la branche.
