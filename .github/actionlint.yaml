@@ -1,0 +1,21 @@
+---
+
+# actionlint checks `runs-on` against a list of GitHub-hosted runner labels
+# baked into the binary at build time, so any label GitHub ships after a
+# release is reported as unknown even though the runner exists and works.
+# 1.7.12 - the digest pinned in the 'Lint workflows' step of ci.yml, and
+# actionlint's newest release - was cut before GitHub's ubuntu-26.04 runner
+# images went live, so it rejects a runner that exists and works.
+#
+# 'self-hosted-runner.labels' is the only knob actionlint offers here, and
+# the unknown-label error points at it: despite the key name, it is an
+# allowlist of extra labels, not a claim that they are self-hosted.
+# Declaring them keeps the 'runner-label' rule on, so a typo such as
+# 'ubunut-26.04' is still caught.
+#
+# Drop these entries once the pinned actionlint version knows the labels
+# natively - tracked upstream in https://github.com/rhysd/actionlint/issues/682.
+self-hosted-runner:
+  labels:
+  - ubuntu-26.04
+  - ubuntu-26.04-arm
