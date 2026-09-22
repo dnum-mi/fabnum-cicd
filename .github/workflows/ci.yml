@@ -51,7 +51,7 @@ jobs:
 
   test-workflows:
     name: Test workflows
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     if: ${{ needs.path-filter.outputs.workflows == 'true' || needs.path-filter.outputs.tests == 'true' }}
     needs:
     - path-filter
