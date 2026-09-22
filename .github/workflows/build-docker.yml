@@ -28,27 +28,40 @@ on:
         description: Target stage to build in the Dockerfile (optional, builds the last stage if not set)
         required: false
         type: string
+      IMAGE_METADATA:
+        description: >-
+          Stamp the standard org.opencontainers.image.* set (title,
+          description, url, source, revision, version, created, licenses) as
+          labels on every platform image and as index annotations on the
+          manifest list. They are what lets anything reading only the image -
+          a registry UI, a scanner, a cluster-side inventory - tie a running
+          tag back to the repository and commit it was built from, so this
+          defaults on. Turn it off when the Dockerfile's own LABELs must win,
+          or when an unchanged rebuild has to keep landing on the same digest
+          (org.opencontainers.image.created carries the build timestamp, so it
+          cannot). IMAGE_LABELS/IMAGE_ANNOTATIONS still apply either way.
+        required: false
+        default: true
+        type: boolean
       IMAGE_LABELS:
         description: >-
           Newline-separated custom OCI labels in 'KEY=VALUE' form (e.g.
-          'com.example.team=platform'), added on top of the standard
-          org.opencontainers.image.* labels this workflow always sets on the
-          image config (title, description, url, source, revision, version,
-          created, licenses - see docs/workflows/30-build-docker.md). A key
-          here that matches one of the standard ones overrides it. Baked into
-          the image and readable by anyone who can pull or inspect it, same as
-          a Dockerfile LABEL - never pass secrets here.
+          'com.example.team=platform'). Applied after the IMAGE_METADATA set, so
+          a key given here overrides the standard value without having to
+          switch the whole set off, and applied even when IMAGE_METADATA is
+          false. Baked into the image and readable by anyone who can pull or
+          inspect it, same as a Dockerfile LABEL - never pass secrets here.
         required: false
         type: string
       IMAGE_ANNOTATIONS:
         description: >-
-          Newline-separated custom OCI annotations in 'KEY=VALUE' form, added
-          on top of the standard org.opencontainers.image.* annotations this
-          workflow always sets on the manifest list (index level). A key here
-          that matches one of the standard ones overrides it. Unlike
-          IMAGE_LABELS these cannot be set from the Dockerfile - annotations
-          live on the manifest list, not the image config. Same visibility
-          caveat as IMAGE_LABELS: plain text, never secrets.
+          Newline-separated custom OCI annotations in 'KEY=VALUE' form,
+          attached to the manifest list at index level. Same ordering and
+          precedence as IMAGE_LABELS. Unlike IMAGE_LABELS these cannot be set
+          from the Dockerfile - annotations live on the manifest list, not the
+          image config - and they only exist when PUSH is true, since an
+          unpushed build has no manifest list. Same visibility caveat as
+          IMAGE_LABELS: plain text, never secrets.
         required: false
         type: string
       PUSH:
@@ -267,8 +280,13 @@ jobs:
     # run would take its own - later - clock reading for
     # org.opencontainers.image.created, leaving the index disagreeing with the
     # images underneath it about when they were built.
+    #
+    # Skipped entirely when IMAGE_METADATA is false: both outputs are then
+    # empty, leaving the build and the manifest list with the caller's own
+    # IMAGE_LABELS/IMAGE_ANNOTATIONS alone.
     - name: Docker meta (labels and annotations)
       id: meta
+      if: ${{ inputs.IMAGE_METADATA }}
       env:
         # 'imagetools create' in the 'merge' job only accepts index/descriptor
         # level annotations, never manifest - index is also the right semantic
@@ -279,10 +297,8 @@ jobs:
         images: ${{ steps.infos.outputs.NORMALIZED_IMAGE }}
         labels: |
           org.opencontainers.image.version=${{ inputs.IMAGE_TAG }}
-          ${{ inputs.IMAGE_LABELS }}
         annotations: |
           org.opencontainers.image.version=${{ inputs.IMAGE_TAG }}
-          ${{ inputs.IMAGE_ANNOTATIONS }}
 
   build:
     name: Build application
@@ -390,9 +406,14 @@ jobs:
         context: ${{ inputs.IMAGE_CONTEXT }}
         file: ${{ inputs.IMAGE_DOCKERFILE }}
         target: ${{ inputs.IMAGE_TARGET || '' }}
-        # Computed in the 'infos' job, not here - see the
-        # 'Docker meta (labels and annotations)' step there.
-        labels: ${{ needs.infos.outputs.docker-labels }}
+        # The standard set is computed in the 'infos' job, not here - see the
+        # 'Docker meta (labels and annotations)' step there - and is empty when
+        # IMAGE_METADATA is false. IMAGE_LABELS comes last because the last
+        # '--label' for a key is the one that survives, so a caller can override
+        # a single standard value without switching the whole set off.
+        labels: |
+          ${{ needs.infos.outputs.docker-labels }}
+          ${{ inputs.IMAGE_LABELS }}
         provenance: false
         sbom: false
         platforms: ${{ (inputs.USE_QEMU && ((inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && 'linux/amd64,linux/arm64') || (inputs.BUILD_ARM64 && 'linux/arm64') || 'linux/amd64')) || (matrix.runners == 'ubuntu-24.04-arm' && 'linux/arm64') || 'linux/amd64' }}
@@ -495,6 +516,7 @@ jobs:
       env:
         NORMALIZED_IMAGE: ${{ needs.infos.outputs.normalized-image }}
         DOCKER_ANNOTATIONS: ${{ needs.infos.outputs.docker-annotations }}
+        IMAGE_ANNOTATIONS: ${{ inputs.IMAGE_ANNOTATIONS }}
       run: |
         # Both lists have to reach imagetools as separate arguments: one
         # `-t <tag>` pair per tag, then one reference per digest file in the
@@ -502,23 +524,36 @@ jobs:
         # instead of leaning on word-splitting.
         mapfile -t TAG_ARGS < <(jq -r '.tags[] | "-t", .' <<< "$DOCKER_METADATA_OUTPUT_JSON")
 
-        # One '--annotation' per line of DOCKER_ANNOTATIONS - already
-        # 'index:key=value', levelled by DOCKER_METADATA_ANNOTATIONS_LEVELS on
-        # the metadata-action run in 'infos', the same run that produced the
-        # image labels, so the index and the images agree on
-        # org.opencontainers.image.created.
+        # One '--annotation' per line, standard set first and the caller's own
+        # last: the last flag for a key is the one that survives, so a caller
+        # can override a single standard value without switching the set off.
         #
-        # `read` without IFS= trims the surrounding whitespace, and blank lines
-        # contribute no flag rather than a stray '--annotation ""'. Skipping
-        # them with `continue` rather than `&&` is what keeps the loop's exit
-        # status zero when the last line is blank: this step has no `set -e` of
-        # its own and so runs under the runner's default `bash -e`, which would
-        # otherwise abort it here, before the push.
+        # `read` without IFS= trims the surrounding whitespace, so a line
+        # indented inside a YAML block scalar still yields a bare KEY=VALUE, and
+        # blank lines contribute no flag rather than a stray '--annotation ""'.
+        # Skipping them with `continue` rather than `&&` is what keeps the loop's
+        # exit status zero when the last line is blank: this step has no `set -e`
+        # of its own and so runs under the runner's default `bash -e`, which
+        # would otherwise abort it here, before the push.
         ANNOTATION_ARGS=()
-        while read -r annotation; do
-          [ -n "$annotation" ] || continue
-          ANNOTATION_ARGS+=(--annotation "$annotation")
-        done <<< "$DOCKER_ANNOTATIONS"
+        add_annotations() {
+          local prefix="$1" annotation
+          while read -r annotation; do
+            [ -n "$annotation" ] || continue
+            ANNOTATION_ARGS+=(--annotation "$prefix$annotation")
+          done <<< "$2"
+        }
+
+        # Already 'index:key=value', levelled by DOCKER_METADATA_ANNOTATIONS_LEVELS
+        # on the metadata-action run in 'infos' - the same run that produced the
+        # image labels, so the index and the images agree on
+        # org.opencontainers.image.created. Empty when IMAGE_METADATA is false,
+        # since that step is then skipped.
+        add_annotations "" "$DOCKER_ANNOTATIONS"
+
+        # Levelled here, since these bypass metadata-action: the input takes
+        # bare 'KEY=VALUE' so a caller never has to know about index levels.
+        add_annotations "index:" "$IMAGE_ANNOTATIONS"
 
         # One reference per digest file in this directory. Built with a loop
         # rather than `printf` with two placeholders - printf reuses its format
