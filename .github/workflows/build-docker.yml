@@ -28,6 +28,29 @@ on:
         description: Target stage to build in the Dockerfile (optional, builds the last stage if not set)
         required: false
         type: string
+      IMAGE_LABELS:
+        description: >-
+          Newline-separated custom OCI labels in 'KEY=VALUE' form (e.g.
+          'com.example.team=platform'), added on top of the standard
+          org.opencontainers.image.* labels this workflow always sets on the
+          image config (title, description, url, source, revision, version,
+          created, licenses - see docs/workflows/30-build-docker.md). A key
+          here that matches one of the standard ones overrides it. Baked into
+          the image and readable by anyone who can pull or inspect it, same as
+          a Dockerfile LABEL - never pass secrets here.
+        required: false
+        type: string
+      IMAGE_ANNOTATIONS:
+        description: >-
+          Newline-separated custom OCI annotations in 'KEY=VALUE' form, added
+          on top of the standard org.opencontainers.image.* annotations this
+          workflow always sets on the manifest list (index level). A key here
+          that matches one of the standard ones overrides it. Unlike
+          IMAGE_LABELS these cannot be set from the Dockerfile - annotations
+          live on the manifest list, not the image config. Same visibility
+          caveat as IMAGE_LABELS: plain text, never secrets.
+        required: false
+        type: string
       PUSH:
         description: >-
           Whether to push the built image to the registry. When false, the image is exported
@@ -182,6 +205,8 @@ jobs:
       short-sha: ${{ steps.infos.outputs.SHORT_SHA }}
       lower-branch: ${{ steps.infos.outputs.LOWER_BRANCH }}
       artifact-prefix: image-${{ steps.infos.outputs.LOWER_IMAGE }}
+      docker-labels: ${{ steps.meta.outputs.labels }}
+      docker-annotations: ${{ steps.meta.outputs.annotations }}
     steps:
     - name: Validate inputs
       env:
@@ -229,6 +254,35 @@ jobs:
           echo "SHORT_SHA=$(git rev-parse --short HEAD)"
           echo "LOWER_BRANCH=$(echo "$INPUT_HEAD_REF" | sed 's/\//-/g' | tr '[:upper:]' '[:lower:]')"
         } >> "$GITHUB_OUTPUT"
+
+    # Labels are baked into the image config at build time, so they have to be
+    # known before the 'build' job runs - metadata-action cannot wait until
+    # 'merge' the way the tag computation does. Computed once here rather than
+    # duplicated in each 'build' matrix leg, so org.opencontainers.image.created
+    # (and everything else) is identical across the amd64/arm64 builds of what
+    # is meant to be the same image.
+    #
+    # The manifest list annotations come off this same run rather than a second
+    # metadata-action in 'merge': the two sets are the same values, and a second
+    # run would take its own - later - clock reading for
+    # org.opencontainers.image.created, leaving the index disagreeing with the
+    # images underneath it about when they were built.
+    - name: Docker meta (labels and annotations)
+      id: meta
+      env:
+        # 'imagetools create' in the 'merge' job only accepts index/descriptor
+        # level annotations, never manifest - index is also the right semantic
+        # target here, since it is the one manifest list a caller pulls by tag.
+        DOCKER_METADATA_ANNOTATIONS_LEVELS: index
+      uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302  # v6.2.0
+      with:
+        images: ${{ steps.infos.outputs.NORMALIZED_IMAGE }}
+        labels: |
+          org.opencontainers.image.version=${{ inputs.IMAGE_TAG }}
+          ${{ inputs.IMAGE_LABELS }}
+        annotations: |
+          org.opencontainers.image.version=${{ inputs.IMAGE_TAG }}
+          ${{ inputs.IMAGE_ANNOTATIONS }}
 
   build:
     name: Build application
@@ -336,6 +390,9 @@ jobs:
         context: ${{ inputs.IMAGE_CONTEXT }}
         file: ${{ inputs.IMAGE_DOCKERFILE }}
         target: ${{ inputs.IMAGE_TARGET || '' }}
+        # Computed in the 'infos' job, not here - see the
+        # 'Docker meta (labels and annotations)' step there.
+        labels: ${{ needs.infos.outputs.docker-labels }}
         provenance: false
         sbom: false
         platforms: ${{ (inputs.USE_QEMU && ((inputs.BUILD_AMD64 && inputs.BUILD_ARM64 && 'linux/amd64,linux/arm64') || (inputs.BUILD_ARM64 && 'linux/arm64') || 'linux/amd64')) || (matrix.runners == 'ubuntu-24.04-arm' && 'linux/arm64') || 'linux/amd64' }}
@@ -437,12 +494,31 @@ jobs:
       working-directory: /tmp/digests/${{ needs.infos.outputs.lower-image }}
       env:
         NORMALIZED_IMAGE: ${{ needs.infos.outputs.normalized-image }}
+        DOCKER_ANNOTATIONS: ${{ needs.infos.outputs.docker-annotations }}
       run: |
         # Both lists have to reach imagetools as separate arguments: one
         # `-t <tag>` pair per tag, then one reference per digest file in the
         # working directory. Building them as arrays keeps that explicit
         # instead of leaning on word-splitting.
         mapfile -t TAG_ARGS < <(jq -r '.tags[] | "-t", .' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+
+        # One '--annotation' per line of DOCKER_ANNOTATIONS - already
+        # 'index:key=value', levelled by DOCKER_METADATA_ANNOTATIONS_LEVELS on
+        # the metadata-action run in 'infos', the same run that produced the
+        # image labels, so the index and the images agree on
+        # org.opencontainers.image.created.
+        #
+        # `read` without IFS= trims the surrounding whitespace, and blank lines
+        # contribute no flag rather than a stray '--annotation ""'. Skipping
+        # them with `continue` rather than `&&` is what keeps the loop's exit
+        # status zero when the last line is blank: this step has no `set -e` of
+        # its own and so runs under the runner's default `bash -e`, which would
+        # otherwise abort it here, before the push.
+        ANNOTATION_ARGS=()
+        while read -r annotation; do
+          [ -n "$annotation" ] || continue
+          ANNOTATION_ARGS+=(--annotation "$annotation")
+        done <<< "$DOCKER_ANNOTATIONS"
 
         # One reference per digest file in this directory. Built with a loop
         # rather than `printf` with two placeholders - printf reuses its format
@@ -464,7 +540,7 @@ jobs:
           exit 1
         fi
 
-        docker buildx imagetools create "${TAG_ARGS[@]}" "${DIGEST_REFS[@]}"
+        docker buildx imagetools create "${TAG_ARGS[@]}" "${ANNOTATION_ARGS[@]}" "${DIGEST_REFS[@]}"
 
     - name: Get image digest
       id: digest

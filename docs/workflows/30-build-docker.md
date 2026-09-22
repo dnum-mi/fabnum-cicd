@@ -12,6 +12,8 @@ Build d'images Docker multi-architecture (amd64/arm64) avec Docker Buildx, et pu
 | IMAGE_DOCKERFILE    | string  | Chemin vers le Dockerfile                                                                                                                                                                                                                           | Oui    | -                  |
 | IMAGE_CONTEXT       | string  | Chemin du contexte de build                                                                                                                                                                                                                         | Oui    | -                  |
 | IMAGE_TARGET        | string  | Étape cible à construire dans le Dockerfile (optionnel, construit la dernière étape si non défini)                                                                                                                                                  | Non    | -                  |
+| IMAGE_LABELS        | string  | Labels OCI personnalisés séparés par des sauts de ligne, au format `KEY=VALUE` (ex: `com.example.team=platform`), ajoutés aux labels standards `org.opencontainers.image.*` que ce workflow définit toujours sur la configuration de l'image (title, description, url, source, revision, version, created, licenses - voir [Labels et annotations OCI](#labels-et-annotations-oci) ci-dessous). Une clé ici qui correspond à l'une des clés standards l'écrase. Jamais de secret ici : valeurs gravées dans l'image, lisibles par quiconque peut la pull ou l'inspecter. | Non    | -                  |
+| IMAGE_ANNOTATIONS   | string  | Annotations OCI personnalisées séparées par des sauts de ligne, au format `KEY=VALUE`, ajoutées aux annotations standards `org.opencontainers.image.*` que ce workflow définit toujours sur la manifest list (niveau index). Une clé ici qui correspond à l'une des clés standards l'écrase. Contrairement à `IMAGE_LABELS`, ne peut pas être défini depuis le Dockerfile - les annotations vivent sur la manifest list, pas sur la configuration de l'image. Même mise en garde que `IMAGE_LABELS` : texte en clair, jamais de secret. | Non    | -                  |
 | PUSH                | boolean | Pousser l'image construite vers le registre. Si `false`, l'image est exportée sous forme d'artefact tarball (un par architecture) au lieu d'être poussée, pour qu'un job en aval puisse la charger avec `docker load` et exécuter des tests dessus. | Non    | `true`             |
 | TAG_MAJOR_AND_MINOR | boolean | Créer des tags pour les versions majeure et mineure (ex: `1.2.3` → `1.2` et `1`)                                                                                                                                                                    | Non    | `false`            |
 | TAG_SHORT_SHA       | boolean | Taguer avec le SHA court du commit                                                                                                                                                                                                                  | Non    | `false`            |
@@ -88,6 +90,37 @@ Par défaut, l'image est poussée vers le registre (par digest, puis assemblée 
 - Injecté via un montage BuildKit (`/run/secrets/github_token`), jamais écrit dans un fichier sur le runner ni dans les layers de l'image.
 - `app`/`pat` échouent explicitement si le credential demandé est absent, plutôt que de retomber silencieusement sur un mode plus large. `job-token` émet un `::warning::` s'il retombe effectivement sur le `GITHUB_TOKEN` du job.
 - Voir [`authentication.md`](./05-authentication.md#ce-que-build-docker-injecte-réellement) pour le détail des quatre modes et un exemple câblé.
+
+## Labels et annotations OCI
+
+Ce workflow définit toujours le jeu standard de labels et annotations `org.opencontainers.image.*` (`title`, `description`, `url`, `source`, `revision`, `version`, `created`, `licenses`, calculés par [`docker/metadata-action`](https://github.com/docker/metadata-action)) - aucune option ne permet de désactiver ce comportement.
+
+- **Labels** (config de l'image) : gravés au moment du build, dans le job `build`, car ils font partie de la configuration de chaque image par architecture. Calculés une seule fois dans le job `infos` (plutôt que dupliqués dans chaque leg de la matrice) pour que `org.opencontainers.image.created` reste identique entre les builds amd64 et arm64 d'une même image logique.
+- **Annotations** (manifest list) : ce sont les mêmes valeurs, au niveau `index`, issues du **même** appel à `docker/metadata-action` que les labels, dans le job `infos`. Un second appel prendrait sa propre heure pour `org.opencontainers.image.created`, et l'index contredirait alors sur leur date de build les images qu'il référence. Elles ne peuvent en revanche être *posées* qu'au moment où le job `merge` assemble la manifest list multi-arch, avec `docker buildx imagetools create --annotation`. `imagetools create` n'accepte que les niveaux `index`/`descriptor`, jamais `manifest` - `index` est aussi la cible sémantiquement correcte ici, puisque c'est la seule manifest list qu'un appelant pull réellement par tag.
+- `IMAGE_LABELS` / `IMAGE_ANNOTATIONS` permettent d'ajouter des clés personnalisées ou d'écraser une clé du jeu standard (même clé = la valeur personnalisée gagne).
+
+### Compromis : `org.opencontainers.image.created` et reproductibilité du digest
+
+Le label/annotation `created` embarque l'horodatage réel du build. Deux builds strictement identiques (même Dockerfile, même contexte) ne produisent donc plus le même digest d'une exécution à l'autre - le dédoublonnage incident que permettait le content-addressing de BuildKit sur des rebuilds inchangés est perdu. C'est un choix assumé : la traçabilité (savoir précisément quand une image a été construite) prime ici sur la réutilisation de digest.
+
+### Labels du Dockerfile
+
+Une instruction `LABEL` dans le Dockerfile reste la façon normale d'ajouter des labels propres à l'image, y compris des valeurs dynamiques par run via le `BUILD_ARGS` déjà existant (`ARG X` + `LABEL foo=$X`) - `IMAGE_LABELS` n'est utile que pour des labels décidés côté appelant du workflow plutôt que dans le Dockerfile. En cas de collision de clé avec le jeu standard que ce workflow applique, la documentation de Buildx ne garantit pas explicitement quelle source l'emporte : vérifier le résultat réel avec la commande d'inspection ci-dessous plutôt que de supposer un ordre de priorité. Les annotations, elles, ne peuvent jamais venir du Dockerfile - ce n'est pas un concept qu'une instruction `LABEL` peut exprimer.
+
+### Sécurité et traçabilité
+
+- `org.opencontainers.image.source` correctement positionné est ce que GitHub utilise pour rattacher un package GHCR à son dépôt d'origine (lien "View repository", héritage de la visibilité du dépôt) - un bénéfice qui dépasse la simple documentation de l'image.
+- Ces labels/annotations sont du texte en clair, non signé et non vérifiable cryptographiquement - n'importe qui disposant d'un accès en écriture au registre peut les réécrire. Ils servent la découvrabilité et le diagnostic, pas la preuve. Pour une traçabilité qui doit résister à falsification (provenance SLSA, SBOM, signature), utiliser [`attest-docker.yml`](./31-attest-docker.md) (`PROVENANCE`/`SIGN`) - voir [Attestation et signature](#attestation-et-signature-attest-dockeryml) ci-dessous.
+
+### Vérifier labels et annotations sur une image construite
+
+```bash
+# Annotations (niveau index) de la manifest list poussée
+docker buildx imagetools inspect ghcr.io/my-org/my-image:1.2.3
+
+# Labels de la configuration image (n'importe quelle plateforme, ils sont identiques)
+docker buildx imagetools inspect ghcr.io/my-org/my-image:1.2.3 --format '{{json .Image.Config.Labels}}'
+```
 
 ## Attestation et signature (`attest-docker.yml`)
 
@@ -264,6 +297,29 @@ jobs:
       BUILD_ARGS: |
         NODE_ENV=production
         API_URL=https://api.example.com
+```
+
+### Labels et annotations personnalisés
+
+Le jeu standard `org.opencontainers.image.*` est déjà appliqué par défaut (voir [Labels et annotations OCI](#labels-et-annotations-oci)) ; `IMAGE_LABELS`/`IMAGE_ANNOTATIONS` ne sont nécessaires que pour des clés supplémentaires ou pour écraser une valeur générée.
+
+```yaml
+jobs:
+  build:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/build-docker.yml@v0
+    permissions:
+      contents: read
+      packages: write
+    with:
+      IMAGE_NAME: ghcr.io/my-org/my-app
+      IMAGE_TAG: 1.0.0
+      IMAGE_CONTEXT: ./
+      IMAGE_DOCKERFILE: ./Dockerfile
+      IMAGE_LABELS: |
+        com.example.team=platform
+        com.example.cost-center=1234
+      IMAGE_ANNOTATIONS: |
+        org.opencontainers.image.description=Service de paiement interne
 ```
 
 ### Build avec registre personnalisé
