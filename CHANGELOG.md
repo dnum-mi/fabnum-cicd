@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.20.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.19.3...v0.20.0) (2026-09-22)
+
+
+### Features
+
+* **build-docker:** add standard OCI labels and annotations ([92fd81b](https://github.com/dnum-mi/fabnum-cicd/commit/92fd81b5a65cac2758c4a87ce44bb76f5ebca1e5))
+* **build-docker:** let callers switch the standard OCI set off ([a15d5ac](https://github.com/dnum-mi/fabnum-cicd/commit/a15d5ac6796cb532fb0d03bef56ff7269f987897))
+
+
+### Bug Fixes
+
+* **tests:** run extracted blocks under the runner's shell ([225bdf4](https://github.com/dnum-mi/fabnum-cicd/commit/225bdf4090ba7af93b166d963314d66929576e4c))
+
+
+### Dependencies
+
+* **deps:** update docker/build-push-action to v7.4.0 ([48732a3](https://github.com/dnum-mi/fabnum-cicd/commit/48732a3320d62995de5c1f5b6c7535dbf21ca5b2))
+* **deps:** update docker/setup-buildx-action to v4.4.1 ([cb87bed](https://github.com/dnum-mi/fabnum-cicd/commit/cb87bed9df5e2510ce81d36293e52e3bea77f63e))
+* **deps:** update docker/setup-qemu-action to v4.4.0 ([c065d26](https://github.com/dnum-mi/fabnum-cicd/commit/c065d269821fd338dcc92a56a8ea11e07a810333))
+* **deps:** update github/codeql-action to v4.38.1 ([5d3163d](https://github.com/dnum-mi/fabnum-cicd/commit/5d3163d94b65adca6a7458db23924a75362f17ef))
+* **deps:** update sonarsource/sonarqube-scan-action to v8.2.2 ([65bfe15](https://github.com/dnum-mi/fabnum-cicd/commit/65bfe15260dd3b9963c447b65fb3d6df76e47e14))
+
 ## [0.19.3](https://github.com/dnum-mi/fabnum-cicd/compare/v0.19.2...v0.19.3) (2026-09-14)
 
 
