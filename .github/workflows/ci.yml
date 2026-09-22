@@ -25,6 +25,10 @@ jobs:
         filters: |
           workflows:
             - '.github/workflows/**'
+            # actionlint's config sits outside 'workflows/', but it decides what
+            # the 'Test workflows' job accepts, so editing it has to re-run that
+            # job the same way editing a workflow does.
+            - '.github/actionlint.yaml'
           tests:
             - 'ci/tests/**'
 
