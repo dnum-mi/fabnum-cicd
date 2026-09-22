@@ -217,8 +217,13 @@ sandbox_teardown() {
 
 # Runs an extracted block. Environment comes from the caller's exports, matching
 # how Actions passes a step's `env:` block.
+#
+# `-e` because that is the shell Actions runs a step under: with no `shell:` key
+# the default is `bash -e {0}`. Without it a block whose last command returns
+# non-zero - a `while` loop ending on a skipped line, say - passes here and
+# aborts the step in CI.
 run_block() {
-  RUN_OUTPUT=$(bash -c "$1" 2>&1)
+  RUN_OUTPUT=$(bash -e -c "$1" 2>&1)
   RUN_STATUS=$?
   export RUN_OUTPUT RUN_STATUS
 }
