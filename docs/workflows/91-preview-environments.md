@@ -18,7 +18,42 @@ Référence vivante : `IA-Generative/mirai-api` est le premier dépôt onboardé
 
 Rien de tout ça n'est à réimplémenter par votre projet : uniquement les étapes 2 et 5 (build, push, commentaire, nettoyage) sont dans votre dépôt — et elles s'appuient sur les workflows réutilisables [`build-docker.yml`](./30-build-docker.md) et [`clean-images.yml`](./71-clean-images.md) plutôt que sur du code à écrire de zéro. Le reste (3 et 4) est déjà générique côté infra.
 
-Ce pattern repose sur l'`ApplicationSet` ArgoCD (générateur `pullRequest`) qui crée et supprime lui-même l'Application par PR : votre workflow n'appelle jamais l'API ArgoCD directement, et n'a besoin d'aucun token ArgoCD. Un pattern alternatif existe, où c'est la CI qui déclenche explicitement un `sync` sur une Application ArgoCD déjà provisionnée via son API ([exemple](https://github.com/this-is-tobi/github-workflows/blob/main/.github/workflows/argocd-preview.yml)) — utile si vos Applications de preview ne sont pas créées par un générateur `pullRequest`, mais ce n'est pas le modèle décrit ici : les deux ne se combinent pas sans changer la façon dont les Applications de preview sont provisionnées côté infra.
+## Deux modèles pour déclencher le redéploiement
+
+### Générateur `pullRequest` (ce que documente ce guide)
+
+C'est le modèle utilisé par AI-Generative : l'`ApplicationSet` ArgoCD (générateur `pullRequest`) crée et supprime lui-même l'Application par PR, en pollant GitHub. Votre workflow n'appelle jamais l'API ArgoCD et n'a besoin d'aucun token ArgoCD — il pousse une image, ArgoCD fait le reste.
+
+Point d'attention avec un **tag d'image stable** (`pr-<n>`, réécrit à chaque push) : ArgoCD ne resynchronise que lorsque le manifest rendu change. Le tag étant identique d'un commit à l'autre, rien ne change dans le manifest, donc rien ne force le Pod à être recréé — même avec `pullPolicy: Always`, qui ne joue qu'au moment où un Pod est (re)créé, pas sur un Pod déjà en cours d'exécution. La correction est déclarative et ne nécessite aucun appel API : faire porter au chart une annotation de Pod qui, elle, change à chaque commit — par exemple `podAnnotations: {"preview/commit": "<head_short_sha>"}`, injectée par l'ApplicationSet. Changer une annotation du **template** de Pod (`spec.template.metadata.annotations`, pas seulement les metadata de l'objet Deployment) force Kubernetes à recréer les Pods, qui re-tirent alors l'image `pr-<n>` à jour grâce à `pullPolicy: Always` — c'est le même principe que l'annotation `checksum/config` classique en Helm pour forcer un rollout sur un changement de configuration. Voir [Ce que votre dépôt doit fournir](#1-un-chart-helm) pour l'exigence côté chart.
+
+### Alternative : sync explicite via l'API ArgoCD
+
+Si vos Applications de preview ne sont pas créées par un générateur `pullRequest` (par exemple une seule Application par dépôt, dont les manifests ciblés changent par PR), la CI peut déclencher elle-même un `sync` ArgoCD après chaque push, via [`argocd-preview.yml`](https://github.com/this-is-tobi/github-workflows/blob/main/docs/60-argocd-preview.md) (`this-is-tobi/github-workflows`) :
+
+```yaml
+jobs:
+  preview:
+    uses: this-is-tobi/github-workflows/.github/workflows/argocd-preview.yml@v0
+    permissions:
+      pull-requests: write
+    with:
+      APP_URL_TEMPLATE: https://<votre-clé>-pr-<pr_number>.preview.<domaine-cluster>
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      ARGOCD_APP_NAME_TEMPLATE: <votre-clé>-pr-<pr_number>
+      ARGOCD_SYNC_PAYLOAD_TEMPLATE: '{"appNamespace":"argocd","prune":true,"dryRun":false,"strategy":{"hook":{"force":true}},"syncOptions":{"items":["Replace=true"]}}'
+      ARGOCD_URL: https://argo-cd.example.com
+    secrets:
+      ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
+```
+
+Différences avec le générateur `pullRequest` :
+
+- L'Application `<votre-clé>-pr-<pr_number>` doit déjà exister au moment du `sync` — ce workflow ne la crée pas, il la resynchronise. Sa création (et sa suppression à la fermeture de la PR) reste à assurer par ailleurs.
+- La CI a besoin d'un accès réseau au serveur ArgoCD et d'un token (`ARGOCD_TOKEN`) avec droit de `sync` — un couplage que le générateur `pullRequest` évite entièrement.
+- En contrepartie, le redéploiement est immédiat après le push (pas de dépendance au polling GitHub d'ArgoCD, ni au détour par une annotation de Pod) : `syncOptions: ["Replace=true"]` force le remplacement des ressources même sans changement de manifest détecté.
+- Le même dépôt fournit aussi [`preview-comment.yml`](https://github.com/this-is-tobi/github-workflows/blob/main/docs/61-preview-comment.md), équivalent à `sticky-pull-request-comment` utilisé ci-dessous.
+
+Les deux modèles ne se combinent pas sans changer la façon dont les Applications de preview sont provisionnées côté infra — choisissez-en un.
 
 ## Ce que votre dépôt doit fournir
 
@@ -36,8 +71,9 @@ Par défaut, le chart est attendu au chemin **`helm/`** à la racine du dépôt 
   ```
 
 - **`image.pullPolicy: Always`** pour le déploiement de preview (le tag `pr-<n>` est stable et réutilisé à chaque commit ; avec `IfNotPresent`, un nouveau commit ne serait pas re-tiré).
+- **Un `podAnnotations` (ou équivalent) propagé au template du Pod** (`spec.template.metadata.annotations`, pas seulement les metadata du Deployment), surchargeable dans les values — c'est ce qui force un rollout à chaque commit avec un tag stable. Voir [Générateur `pullRequest`](#générateur-pullrequest-ce-que-documente-ce-guide) pour le détail.
 
-Le reste (ingress, service, resources…) suit vos conventions habituelles ; seuls les champs `image` et `ingress.hosts`/`ingress.tls` seront surchargés par PR.
+Le reste (ingress, service, resources…) suit vos conventions habituelles ; seuls les champs `image`, `ingress.hosts`/`ingress.tls` et `podAnnotations` seront surchargés par PR.
 
 ### 2. Une image publiée sur ghcr.io (privé)
 
@@ -187,7 +223,7 @@ L'équipe plateforme s'occupe du reste : entrée dans l'ApplicationSet, autorisa
 
 ## Checklist d'onboarding
 
-- [ ] Chart Helm accessible au chemin déclaré (`helm/` par défaut), avec `imagePullSecrets` (`registry-pull-secret`) et `image.pullPolicy: Always` en valeurs par défaut
+- [ ] Chart Helm accessible au chemin déclaré (`helm/` par défaut), avec `imagePullSecrets` (`registry-pull-secret`), `image.pullPolicy: Always` et un `podAnnotations` propagé au template du Pod, en valeurs par défaut
 - [ ] Image buildable et poussable en local vers `ghcr.io/<org>/<image>`
 - [ ] Label `preview` créé sur le dépôt GitHub
 - [ ] `preview.yml` (build + commentaire) et `clean-preview-images.yml` (nettoyage planifié) ajoutés, basés sur les workflows réutilisables ci-dessus, testés sur une PR labellisée
