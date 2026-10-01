@@ -51,6 +51,7 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 ### Guides
 
 - [**Release d'un monorepo**](./90-monorepo-release.md) - Pipeline complet publiant plusieurs applications et un chart Helm unique depuis un même dépôt
+- [**Environnements de preview par Pull Request**](./91-preview-environments.md) - Onboarder un dépôt sur le système de preview par PR (build, commentaire, nettoyage planifié)
 
 ## Utilisation rapide
 
