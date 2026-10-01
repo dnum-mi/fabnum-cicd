@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.20.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.20.0...v0.20.1) (2026-10-01)
+
+
+### Dependencies
+
+* **deps:** update github/codeql-action to v4.38.2 ([935a0ac](https://github.com/dnum-mi/fabnum-cicd/commit/935a0ac45b04eed8a3e6e2e63bb970137b3a6893))
+* **deps:** update sonarsource/sonarqube-scan-action to v8.3.0 ([4d522b6](https://github.com/dnum-mi/fabnum-cicd/commit/4d522b6c910bdedb09586f097d42af92e7710b09))
+
 ## [0.20.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.19.3...v0.20.0) (2026-09-22)
 
 
