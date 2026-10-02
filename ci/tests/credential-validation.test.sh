@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Every job that mints a GitHub App token guards against half-configured
-# credentials. The guard is duplicated across seven jobs by necessity - reusable
+# credentials. The guard is duplicated across eight jobs by necessity - reusable
 # workflows cannot share a script - so it is verified in one place instead.
 
 # shellcheck source=ci/tests/lib.sh
@@ -14,6 +14,7 @@ GUARDED_JOBS=(
   "scan-trivy.yml:images-scan:Validate credentials"
   "scan-trivy.yml:config-scan:Validate credentials"
   "dispatch-helm-chart.yml:dispatch:Validate inputs"
+  "sync-prerelease-branch.yml:sync:Validate inputs"
   "update-helm-chart.yml:update:Validate inputs"
 )
 
@@ -23,6 +24,8 @@ guard_env() {
   export HAS_PARTIAL_APP_AUTH="false"
   export HAS_APP_AUTH="false"
   export HAS_PAT="false"
+  export RELEASE_BRANCH="main"
+  export PRERELEASE_BRANCH="develop"
   export CHART_REPO="my-org/helm-charts"
   export RUN_MODE="called"
   export AUTOMERGE_METHOD="auto"
