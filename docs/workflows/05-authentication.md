@@ -88,6 +88,7 @@ Chaque workflow mint ensuite son propre token, réduit à ce dont ce job a besoi
 | -------------------------------------------- | ------------------------------------------------ | ---------------------------- |
 | `release-app.yml`                            | `contents`, `pull-requests`, `issues` = write   | dépôt courant                |
 | `update-helm-chart.yml`                      | `contents`, `pull-requests` = write             | dépôt courant                |
+| `sync-prerelease-branch.yml`                 | `contents: write`                               | dépôt courant                |
 | `dispatch-helm-chart.yml`                    | `actions: write`                                | dépôt du chart uniquement    |
 | `release-helm.yml`                           | `contents: write`                               | dépôt courant                |
 | `build-docker.yml`                           | `contents`, `metadata` = read                   | dépôt courant                |
@@ -225,6 +226,8 @@ Accepté par tous les workflows qui prennent un credential, aux mêmes endroits 
 | Contents       | Read and write | `release-app`, `release-helm`, `update-helm-chart` — push de commits, tags, releases   |
 | Pull requests  | Read and write | Automerge dans `release-app` et `update-helm-chart`                                    |
 | Actions        | Read and write | `dispatch-helm-chart` uniquement — à accorder sur le dépôt **chart**                   |
+
+`sync-prerelease-branch` n'accepte pas de PAT : seule une App peut figurer dans la liste de bypass d'un ruleset.
 
 > **Utiliser un token en lecture seule pour `build-docker`.** Sa valeur est montée dans le build Docker, lisible par tout ce que le Dockerfile exécute. `BUILD_SECRET_GITHUB_TOKEN: pat` accepte un `GH_PAT` mais refuse toujours de retomber sur le `GITHUB_TOKEN` du job — scoper le PAT à `Contents: read` et rien de plus.
 

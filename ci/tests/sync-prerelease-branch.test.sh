@@ -12,6 +12,7 @@ rebase_env() {
   export RELEASE_BRANCH="main"
   export PRERELEASE_BRANCH="develop"
   export CREATE_IF_MISSING="true"
+  export HAS_PARTIAL_APP_AUTH="false"
 }
 
 test_unshallows_before_fetching_when_the_clone_is_shallow() {
@@ -142,6 +143,34 @@ test_validate_rejects_an_empty_branch_name() {
 
   assert_status 1
   assert_output_contains "must both be set"
+}
+
+# Which credential the push goes out on. Without App credentials it must stay
+# GITHUB_TOKEN: that is what stops moving the prerelease branch from starting the
+# caller's CD pipeline. The App token is only ever an explicit opt-in.
+test_checkout_pushes_with_the_app_token_when_minted_and_github_token_otherwise() {
+  local token
+  token=$(yq '.jobs.sync.steps[] | select(.name == "Checks-out repository") | .with.token' \
+    "$WORKFLOWS_DIR/sync-prerelease-branch.yml")
+
+  # shellcheck disable=SC2016 # the Actions expression is meant to stay literal
+  if [ "$token" != '${{ steps.app-token.outputs.token || github.token }}' ]; then
+    # shellcheck disable=SC2016
+    printf 'FAIL: checkout token is %q, expected the App token with a GITHUB_TOKEN fallback\n' "$token" >&2
+    exit 1
+  fi
+}
+
+test_the_app_token_is_only_minted_when_both_credentials_are_present() {
+  local condition
+  condition=$(yq '.jobs.sync.steps[] | select(.name == "Generate GitHub App token") | .if' \
+    "$WORKFLOWS_DIR/sync-prerelease-branch.yml")
+
+  # shellcheck disable=SC2016 # the Actions expression is meant to stay literal
+  if [ "$condition" != '${{ env.HAS_APP_AUTH == '"'true'"' }}' ]; then
+    printf 'FAIL: mint step condition is %q\n' "$condition" >&2
+    exit 1
+  fi
 }
 
 run_tests

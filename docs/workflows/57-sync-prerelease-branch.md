@@ -29,11 +29,41 @@ La seule chose qui détermine le bon moment pour resynchroniser est « la branch
 | CREATE_IF_MISSING | boolean | Créer `PRERELEASE_BRANCH` depuis `RELEASE_BRANCH` si elle n'existe pas encore, plutôt que de ne rien faire. Amorce un dépôt adoptant le flux à deux branches. | Non    | `true`             |
 | RUNS_ON           | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                             | Non    | `["ubuntu-24.04"]` |
 
+## Secrets
+
+Aucun n'est requis : par défaut le push part avec le `GITHUB_TOKEN` du job.
+
+| Secret          | Description                                                                                                           | Requis |
+| --------------- | --------------------------------------------------------------------------------------------------------------------- | ------ |
+| APP_CLIENT_ID   | Client ID de la GitHub App (`Iv23li...`, pas l'App ID numérique). À fournir avec `APP_PRIVATE_KEY`                     | Non    |
+| APP_PRIVATE_KEY | Clé privée de la GitHub App (PEM). Requise avec `APP_CLIENT_ID`                                                       | Non    |
+
+Les fournir fait partir le push avec un token App, voir [Quand les rulesets rejettent `GITHUB_TOKEN`](#quand-les-rulesets-rejettent-github_token). N'en fournir qu'un seul des deux fait échouer le job plutôt que de retomber silencieusement sur `GITHUB_TOKEN`.
+
 ## Permissions
 
 | Scope    | Accès | Description                                    |
 | -------- | ----- | ---------------------------------------------- |
 | contents | write | Pousser la branche de pré-release rebasée      |
+
+Avec une App, le token minté est réduit à `contents: write` sur le dépôt courant.
+
+## Quand les rulesets rejettent `GITHUB_TOKEN`
+
+Le push (création de la branche de pré-release, ou `--force-with-lease` après le rebase) est soumis aux rulesets de cette branche. Un ruleset qui exige une pull request pour tout push, interdit les push non fast-forward, impose un historique linéaire ou des checks requis — y compris à la création — rejette `GITHUB_TOKEN`, qui ne peut pas être nommé dans une liste de bypass. Seule une GitHub App peut l'être.
+
+Dans ce cas, fournissez `APP_CLIENT_ID` / `APP_PRIVATE_KEY` d'une App présente dans la liste de bypass :
+
+```yaml
+  sync-prerelease-branch:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/sync-prerelease-branch.yml@v0
+    # needs, if, permissions, with: comme ci-dessus
+    secrets:
+      APP_CLIENT_ID: ${{ secrets.APP_CLIENT_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+```
+
+**Contrepartie : le push peut déclencher la CD de l'appelant.** Un token App, contrairement à `GITHUB_TOKEN`, déclenche les workflows. Déplacer la branche de pré-release démarre donc les workflows qui s'exécutent sur elle. Ne le faites que si un run de la CD sur cette branche, qui ne trouve rien de nouveau à publier, est sans danger pour votre pipeline — ce qui est le cas de release-please, idempotent.
 
 ## Où le placer
 
@@ -88,5 +118,5 @@ Oublier ce job, ou oublier une entrée dans son `needs:`, resterait invisible ju
 - **En régime établi, le rebase est un simple fast-forward.** La promotion ayant versé les commits de la branche de pré-release dans la branche de release, `RELEASE_BRANCH..PRERELEASE_BRANCH` est vide et rien n'est rejoué. Le rebase ne fait un vrai travail que si la branche de pré-release a bougé pendant la release — possible dès que le `concurrency` de l'appelant est indexé sur la branche — et c'est précisément le cas qu'un `git push` simple rejetterait.
 - **Cela suppose que la promotion préserve les commits** — comme ancêtres (merge) ou comme copies patch-identiques (rebase-merge, où le rebase reconnaît chaque commit déjà appliqué et l'écarte). Un **squash** de `PRERELEASE_BRANCH` → `RELEASE_BRANCH` casse cette propriété : les N commits d'origine sont fondus en un seul dont aucun n'est patch-identique, le rebase les rejoue tous, et les conflits deviennent la norme.
 - **Un conflit fait échouer le job** plutôt que de laisser la branche périmée : la régression de version serait sinon silencieuse.
-- **Le push utilise le `GITHUB_TOKEN` du checkout**, qui ne peut pas déclencher de workflow. Déplacer la branche de pré-release ne relance donc pas la CD de l'appelant. Ne fournissez pas de token App ni de PAT à ce workflow.
+- **Le push utilise par défaut le `GITHUB_TOKEN` du checkout**, qui ne peut pas déclencher de workflow. Déplacer la branche de pré-release ne relance donc pas la CD de l'appelant. Ne fournissez de token App que si un ruleset rejette ce push (voir plus haut). Les PAT ne sont pas acceptés.
 - `RELEASE_BRANCH` et `PRERELEASE_BRANCH` doivent différer — sinon le job échoue plutôt que de rebaser une branche sur elle-même sans jamais rien synchroniser.
