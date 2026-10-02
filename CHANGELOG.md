@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.20.1...v0.21.0) (2026-10-02)
+
+
+### Features
+
+* **sync-prerelease-branch:** push with a GitHub App token when one is supplied ([8e7c553](https://github.com/dnum-mi/fabnum-cicd/commit/8e7c5532aa85a19d65ba08711055e38a788fb0b5))
+
 ## [0.20.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.20.0...v0.20.1) (2026-10-01)
 
 
