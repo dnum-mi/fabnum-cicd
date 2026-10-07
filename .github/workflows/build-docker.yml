@@ -449,7 +449,7 @@ jobs:
 
     - name: Upload digest
       if: ${{ inputs.PUSH }}
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
       with:
         name: digests-${{ needs.infos.outputs.lower-image }}-${{ (inputs.USE_QEMU && 'multiarch') || (matrix.runners == 'ubuntu-24.04-arm' && 'arm64') || 'amd64' }}
         path: /tmp/digests/${{ needs.infos.outputs.lower-image }}/*
@@ -458,7 +458,7 @@ jobs:
 
     - name: Upload image tarball
       if: ${{ !inputs.PUSH }}
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
       with:
         name: ${{ needs.infos.outputs.artifact-prefix }}-${{ (matrix.runners == 'ubuntu-24.04-arm' && 'arm64') || (inputs.USE_QEMU && inputs.BUILD_ARM64 && 'arm64') || 'amd64' }}
         path: /tmp/image.tar
