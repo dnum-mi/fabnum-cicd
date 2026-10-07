@@ -161,6 +161,12 @@ jobs:
     with:
       RELEASE_BRANCH: main
       PRERELEASE_BRANCH: develop
+      # Le bump du chart réécrit ces fichiers sur `main` et `develop` les
+      # réécrit aussi : un conflit limité à eux est résolu côté `develop`, tout
+      # autre conflit fait échouer le job. Adaptez le chemin du chart.
+      MANAGED_FILES: |
+        charts/my-app/Chart.yaml
+        charts/my-app/README.md
 ```
 
 ### Fonctionnement

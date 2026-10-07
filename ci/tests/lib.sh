@@ -92,7 +92,9 @@ STUB
 # `rev-parse --is-shallow-repository` answers from STUB_GIT_IS_SHALLOW
 # (defaulting to a shallow clone, matching actions/checkout's own default),
 # and `diff --no-index` reports files as differing unless
-# STUB_GIT_FILES_MATCH is set.
+# STUB_GIT_FILES_MATCH is set. `ls-remote --tags` answers from STUB_GIT_TAGS, in
+# `ls-remote` format ("<sha><TAB>refs/tags/<name>" per line, an annotated tag
+# listed a second time as "refs/tags/<name>^{}").
 install_git_stub() {
   cat >"$SANDBOX/bin/git" <<'STUB'
 #!/usr/bin/env bash
@@ -113,6 +115,12 @@ case "$args" in
     ;;
   "diff --no-index --quiet"*)
     [ "${STUB_GIT_FILES_MATCH:-false}" = "true" ] || exit 1
+    ;;
+  "ls-remote --tags"*)
+    printf '%s' "${STUB_GIT_TAGS:-}"
+    ;;
+  "rev-parse origin/"*)
+    printf '%s\n' "${STUB_GIT_REMOTE_TIP:-0123456789abcdef0123456789abcdef01234567}"
     ;;
 esac
 exit 0
@@ -192,9 +200,31 @@ case "$args" in
     ;;
   # Ordered before the generic "api repos/" case: a compare call matches both,
   # and answering it with the repository metadata fixture would make every
-  # status look valid.
+  # status look valid. The base commit picks the answer when a test needs
+  # several: STUB_GH_COMPARE_JSON_<base> (non-alphanumerics in <base> become
+# `_`) overrides STUB_GH_COMPARE_JSON, STUB_GH_COMPARE_FAIL_<base> makes the
+# call fail the way the API does for a commit it does not know (404), and
+# STUB_GH_COMPARE_ERROR_<base> the way it does when it is down (502).
   *"/compare/"*)
-    printf '%s' "${STUB_GH_COMPARE_JSON:-{\"status\":\"identical\",\"ahead_by\":0,\"behind_by\":0\}}" | apply_filter
+    compare_base="${args##*/compare/}"
+    compare_base="${compare_base%%...*}"
+    compare_key="${compare_base//[^A-Za-z0-9_]/_}"
+    compare_fail="STUB_GH_COMPARE_FAIL_${compare_key}"
+    compare_error="STUB_GH_COMPARE_ERROR_${compare_key}"
+    compare_json="STUB_GH_COMPARE_JSON_${compare_key}"
+    if [ -n "${!compare_fail:-}" ]; then
+      printf 'gh: Not Found (HTTP 404)\n' >&2
+      exit 1
+    fi
+    if [ -n "${!compare_error:-}" ]; then
+      printf 'gh: Bad Gateway (HTTP 502)\n' >&2
+      exit 1
+    fi
+    if [ -n "${!compare_json:-}" ]; then
+      printf '%s' "${!compare_json}" | apply_filter
+    else
+      printf '%s' "${STUB_GH_COMPARE_JSON:-{\"status\":\"identical\",\"ahead_by\":0,\"behind_by\":0\}}" | apply_filter
+    fi
     ;;
   "api repos/"*)
     printf '%s' "${STUB_GH_REPO_JSON:-{\"allow_auto_merge\":true\}}" | apply_filter
