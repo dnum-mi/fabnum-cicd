@@ -63,6 +63,8 @@ Gestion automatisée des releases d'application avec [release-please](https://gi
 - La PR de release est recherchée via l'API (`gh pr list`) plutôt que par nom de branche, ce qui fonctionne aussi pour les monorepos où release-please ouvre une PR par composant. `RELEASE_PR_AUTHOR` permet de restreindre cette recherche à un auteur précis ; laissé vide, l'auteur est dérivé automatiquement du credential utilisé (App, `github-actions[bot]`, ou désactivé sous PAT).
 - Fournir `APP_CLIENT_ID`/`APP_PRIVATE_KEY` (ou `GH_PAT`) permet à la PR de release de déclencher les workflows `pull_request`, ce que `GITHUB_TOKEN` ne peut jamais faire. Voir [`authentication.md`](./05-authentication.md).
 - **Assère** que `PRERELEASE_BRANCH` contient tout ce qui est publié sur `RELEASE_BRANCH`, avant tout calcul de version — voir [Assertion de synchronisation](#assertion-de-synchronisation). Le rebase lui-même appartient à [`sync-prerelease-branch.yml`](./57-sync-prerelease-branch.md).
+- **Assère** que le point de départ de release-please sur `PRERELEASE_BRANCH` est dans la branche — voir [Ancre de release-please](#ancre-de-release-please).
+- **N'exécute pas release-please** quand `PRERELEASE_BRANCH` est identique à `RELEASE_BRANCH` — voir [Branche de pré-release identique](#branche-de-pré-release-identique-à-la-branche-de-release).
 
 ## Assertion de synchronisation
 
@@ -80,6 +82,32 @@ En échec, le run s'arrête avec le nombre de commits manquants et la marche à 
 > L'assertion repose sur un appel `compare` de l'API GitHub plutôt que sur `git merge-base --is-ancestor` : l'ascendance exige un historique réel, et `actions/checkout` laisse le clone superficiel — la forme git imposerait un `--unshallow` du dépôt à chaque run de pré-release.
 
 > Un dépôt qui n'a pas encore créé `RELEASE_BRANCH` n'a rien à comparer : l'assertion ne fait rien plutôt que de bloquer les premières pré-releases.
+
+## Ancre de release-please
+
+Sur la branche de pré-release, release-please part de la release nommée d'après la version du manifeste de pré-release, retrouvée par son tag, et lit l'historique de la branche jusqu'au commit de ce tag. Après un rebase (typiquement un hotfix sur la branche de release, puis [`sync-prerelease-branch.yml`](./57-sync-prerelease-branch.md)), les commits sont rejoués sous de nouveaux SHA : le tag pointe toujours vers l'ancien commit, qui n'est plus dans la branche. release-please ne trouve plus son point d'arrêt, relit les 500 derniers commits et propose une version fausse — un majeur issu d'un vieux commit cassant, `4.0.0-rc.4` au lieu de `3.5.0-rc.5` — avec un changelog qui répète tout ce qui est déjà publié. Il ne dit rien avant d'ouvrir la PR.
+
+Le workflow vérifie donc, avant release-please, que **l'un des deux** est dans l'historique de la branche :
+
+- le tag de la version du manifeste de pré-release ;
+- le commit `last-release-sha` de `PRERELEASE_CONFIG_FILE`, que [`sync-prerelease-branch.yml`](./57-sync-prerelease-branch.md#ancre-de-release-please-après-un-rebase) pose après chaque rebase.
+
+Sinon le run échoue en nommant le tag et le fichier de config. Il y a deux sorties : vérifier que le job `sync-prerelease-branch` de l'appelant reçoit les mêmes `PRERELEASE_CONFIG_FILE` et `PRERELEASE_MANIFEST_FILE` que ce workflow et qu'il a tourné depuis le rebase, ou fixer `last-release-sha` à la main sur le commit de release rejoué. Ne fusionnez jamais la PR de release qu'aurait ouverte un run non asserté, et ne déplacez pas le tag : les registres et miroirs construisent des versions à partir des tags.
+
+Rien à configurer — `PRERELEASE_CONFIG_FILE` et `PRERELEASE_MANIFEST_FILE` sont déjà des inputs. L'assertion ne fait rien quand :
+
+- le manifeste de pré-release n'existe pas encore ;
+- le manifeste suit plusieurs packages (`last-release-sha` est un commit pour tout le dépôt) : un avertissement le signale, car le problème reste entier pour eux ;
+- aucun tag ne correspond à sa version, ou plusieurs en sont candidats (versions alignées entre chart et application) : un avertissement, release-please a alors sa propre résolution ;
+- la branche est identique à la branche de release (voir ci-dessous).
+
+Le commit est vérifié par l'API (`compare`), pour la même raison que la synchronisation : le clone est superficiel. Le tag est `v<version>` ou `<version>`, sinon l'unique tag qui se termine par la version (préfixe de composant), comme dans le job de synchronisation. Si l'API ne répond pas (5xx, limite de débit), le run échoue avec un message distinct plutôt que d'accuser le rebase : relancez-le.
+
+## Branche de pré-release identique à la branche de release
+
+Quand `PRERELEASE_BRANCH` est identique à `RELEASE_BRANCH`, elle ne porte aucun travail propre : il n'y a pas de pré-release à créer, et l'étape release-please est ignorée (ses sorties sont vides, donc "aucune release créée").
+
+C'est l'état d'une synchronisation qui n'a pas eu de commit d'ancre à ajouter (voir [l'ancre](#ancre-de-release-please)). Le push du job de synchronisation, fait avec un token App, démarre un run de la CD sur cette branche ; sans cette règle, release-please y compte comme non publiés sur la ligne de pré-release tous les commits arrivés directement sur la branche de release (un hotfix, un correctif porté à la main) et ouvre une PR `chore(develop): release X.Y.Z-rc` pour du code déjà publié — une PR à ne jamais fusionner, qui devient périmée et conflictuelle dès la release stable. Dès que la branche de pré-release reçoit son premier commit propre, le calcul reprend normalement. L'étape d'automerge est ignorée elle aussi : elle mettrait en file une PR de release périmée que ce run n'a pas rafraîchie.
 
 ## Configuration
 

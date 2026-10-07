@@ -48,6 +48,31 @@ test_passes_when_the_prerelease_branch_is_ahead() {
   assert_status 0
 }
 
+test_flags_an_identical_branch_so_that_release_please_is_skipped() {
+  assert_env
+  compare_status identical 0
+
+  run_block "$BLOCK"
+
+  # No work of its own, so nothing to cut a prerelease from: whatever
+  # release-please would propose here is code already on the release branch.
+  assert_status 0
+  assert_file_contains "$GITHUB_OUTPUT" "identical=true"
+}
+
+test_does_not_flag_a_branch_that_has_work_of_its_own() {
+  assert_env
+  compare_status behind 0
+
+  run_block "$BLOCK"
+
+  assert_status 0
+  if grep -q "identical" "$GITHUB_OUTPUT"; then
+    printf 'FAIL: a branch with unreleased work must not be flagged as identical\n' >&2
+    exit 1
+  fi
+}
+
 test_fails_when_the_prerelease_branch_is_missing_released_commits() {
   assert_env
   compare_status ahead 1
