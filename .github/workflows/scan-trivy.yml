@@ -223,7 +223,7 @@ jobs:
       # Only when the summary could not hold it - otherwise the summary already
       # is the report and an artifact is a second copy nobody opens
       if: ${{ !cancelled() && steps.report.outputs.truncated == 'true' }}
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
       with:
         name: trivy-report-${{ steps.report.outputs.slug }}
         path: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
@@ -353,7 +353,7 @@ jobs:
     - name: Upload the complete Trivy report
       # See the image scan above
       if: ${{ !cancelled() && steps.report.outputs.truncated == 'true' }}
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
       with:
         name: trivy-report-${{ steps.report.outputs.slug }}
         path: ${{ format('trivy-results.{0}', inputs.FORMAT) }}
