@@ -231,6 +231,7 @@ jobs:
     # real history, and actions/checkout leaves this clone shallow, so the git
     # form would have to unshallow the repository on every prerelease run.
     - name: Assert ${{ inputs.PRERELEASE_BRANCH }} is in sync with ${{ inputs.RELEASE_BRANCH }}
+      id: sync-state
       if: ${{ inputs.ENABLE_PRERELEASE && github.ref_name == inputs.PRERELEASE_BRANCH }}
       env:
         GH_TOKEN: ${{ github.token }}
@@ -258,7 +259,11 @@ jobs:
         ahead_by="${comparison##* }"
 
         case "$status" in
-          identical|behind)
+          identical)
+            echo "'$PRERELEASE_BRANCH' contains everything released on '$RELEASE_BRANCH' and holds no work of its own, so there is no prerelease to cut"
+            echo "identical=true" >>"$GITHUB_OUTPUT"
+            ;;
+          behind)
             echo "'$PRERELEASE_BRANCH' contains everything released on '$RELEASE_BRANCH'"
             ;;
           ahead|diverged)
@@ -271,9 +276,152 @@ jobs:
             ;;
         esac
 
+    # What release-please starts from on the prerelease branch: the release
+    # named after the version in the prerelease manifest, by its tag, and the
+    # branch history down to that tag's commit. When the branch was rebased
+    # the tag still points at the commit as it was before, which is no longer
+    # in the branch: release-please never finds its stop, falls back to the
+    # 500 most recent commits, and proposes a wrong version (a major bump from
+    # an old breaking commit) with a changelog repeating what is already
+    # released. Nothing in the logs says so before the pull request is opened.
+    #
+    # `last-release-sha` in the prerelease config is the supported way to start
+    # from another commit, and sync-prerelease-branch.yml sets it after each
+    # rebase. Asserted here, like the sync itself, because a caller that never
+    # wired that job - or runs an older version of it - cannot be told apart
+    # from one that did.
+    #
+    # Reachability by API for the same reason as above: the clone is shallow.
+    # Skipped when the branch is identical to the release branch, where
+    # release-please is not run either.
+    - name: Assert the ${{ inputs.PRERELEASE_BRANCH }} release anchor is reachable
+      if: ${{ inputs.ENABLE_PRERELEASE && github.ref_name == inputs.PRERELEASE_BRANCH && steps.sync-state.outputs.identical != 'true' }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        PRERELEASE_BRANCH: ${{ inputs.PRERELEASE_BRANCH }}
+        PRERELEASE_CONFIG_FILE: ${{ inputs.PRERELEASE_CONFIG_FILE }}
+        PRERELEASE_MANIFEST_FILE: ${{ inputs.PRERELEASE_MANIFEST_FILE }}
+      run: |
+        set -euo pipefail
+
+        if [ ! -f "$PRERELEASE_MANIFEST_FILE" ]; then
+          echo "$PRERELEASE_MANIFEST_FILE does not exist yet, nothing to anchor"
+          exit 0
+        fi
+
+        # `last-release-sha` is one commit for the whole repository, so this
+        # is only defined for a manifest tracking a single package.
+        version=$(jq -r 'if length == 1 then to_entries[0].value else empty end' "$PRERELEASE_MANIFEST_FILE")
+        if [ -z "$version" ]; then
+          echo "::warning::$PRERELEASE_MANIFEST_FILE does not track exactly one package: the release anchor can be neither checked nor maintained, so after a rebase of the prerelease branch release-please can propose a wrong version."
+          exit 0
+        fi
+
+        # The tag of the version, by name: `v<version>` or `<version>`, else
+        # the one tag ending in it (a component prefix). Several suffix
+        # matches (lockstep chart and app tags) are ambiguous, and checking
+        # the wrong one would fail a healthy branch. Kept identical to
+        # sync-prerelease-branch.yml, which has to pick the same tag.
+        # An annotated tag is listed twice, the second time peeled to its
+        # commit (`^{}`): the SHA is read from the later line, so it is always
+        # a commit.
+        tags=$(git ls-remote --tags origin)
+        names=$(awk '{ sub("^refs/tags/", "", $2); sub(/\^\{\}$/, "", $2); print $2 }' <<<"$tags" | sort -u)
+        exact=""
+        suffix=""
+        suffixes=0
+        while IFS= read -r name; do
+          case "$name" in
+            "v$version" | "$version")
+              [ -n "$exact" ] || exact="$name"
+              ;;
+            *[!0-9A-Za-z.]"$version" | *[!0-9A-Za-z.]"v$version")
+              suffix="$name"
+              suffixes=$((suffixes + 1))
+              ;;
+          esac
+        done <<<"$names"
+
+        if [ -n "$exact" ]; then
+          tag="$exact"
+        elif [ "$suffixes" -eq 1 ]; then
+          tag="$suffix"
+        elif [ "$suffixes" -gt 1 ]; then
+          echo "::warning::Several tags end with the version $version of $PRERELEASE_MANIFEST_FILE, so the release anchor is not checked."
+          exit 0
+        else
+          echo "::warning::No tag for the version $version of $PRERELEASE_MANIFEST_FILE. release-please falls back on its own lookup; nothing to check here."
+          exit 0
+        fi
+
+        tag_sha=""
+        while read -r sha ref; do
+          case "$ref" in
+            "refs/tags/$tag" | "refs/tags/$tag^{}") tag_sha="$sha" ;;
+          esac
+        done <<<"$tags"
+
+        # `compare/BASE...HEAD` with the commit as BASE: 'ahead' or 'identical'
+        # means it is in the history of the branch. 0 reachable, 1 not: the
+        # API answers 404 for a commit it does not know and 422 for histories
+        # without a common ancestor. 2 when the API could not be queried at
+        # all, which says nothing about the history.
+        reachable() {
+          local out
+          if ! out=$(gh api "repos/$GITHUB_REPOSITORY/compare/$1...$PRERELEASE_BRANCH" --jq '.status' 2>&1); then
+            case "$out" in
+              *"HTTP 404"* | *"HTTP 422"*) return 1 ;;
+              *)
+                printf '%s\n' "$out" >&2
+                return 2
+                ;;
+            esac
+          fi
+          [ "$out" = "ahead" ] || [ "$out" = "identical" ]
+        }
+
+        api_failed() {
+          echo "::error::Could not ask the GitHub API whether $1 is in the history of '$PRERELEASE_BRANCH' (see above): the release anchor was not checked. Re-run the job."
+          exit 1
+        }
+
+        status=0
+        reachable "$tag_sha" || status=$?
+        [ "$status" -ne 2 ] || api_failed "$tag"
+        if [ "$status" -eq 0 ]; then
+          echo "release-please starts from $tag, which is in the history of '$PRERELEASE_BRANCH'"
+          exit 0
+        fi
+
+        anchor=$(jq -r '.["last-release-sha"] // empty' "$PRERELEASE_CONFIG_FILE" 2>/dev/null || true)
+        if [ -n "$anchor" ]; then
+          status=0
+          reachable "$anchor" || status=$?
+          [ "$status" -ne 2 ] || api_failed "last-release-sha $anchor"
+          if [ "$status" -eq 0 ]; then
+            echo "release-please starts from last-release-sha $anchor, in the history of '$PRERELEASE_BRANCH' ($tag is not)"
+            exit 0
+          fi
+        fi
+
+        echo "::error::release-please would start from '$tag', the release of $version, which is not in the history of '$PRERELEASE_BRANCH' (the branch was rebased and its commits replayed under new SHAs), and $PRERELEASE_CONFIG_FILE has no 'last-release-sha' in that history. It would read the 500 most recent commits and open a release pull request with a wrong version (a major bump from an old breaking commit) and a changelog repeating what is already released. The sync-prerelease-branch job sets 'last-release-sha' after each rebase: check that the caller passes it the same PRERELEASE_CONFIG_FILE and PRERELEASE_MANIFEST_FILE as this workflow and that it ran since the rebase. Or set 'last-release-sha' by hand to the replayed release commit of $version. Do not merge such a release pull request, and do not move the tag."
+        exit 1
+
+    # Not run when the prerelease branch is identical to the release branch:
+    # it holds no work of its own, and the commits released or about to be
+    # released on the release branch would otherwise be proposed again as a
+    # prerelease of code that is already out. That is what happens right after
+    # the sync job moves the branch: the push starts this run, release-please
+    # counts every commit that reached the release branch directly (a hotfix)
+    # as unreleased on this line, and opens a release pull request nobody
+    # should merge. Empty step outputs on a skip read as no release created;
+    # the automerge step below is gated on the skip as well, or it would queue
+    # a stale release pull request this run did not refresh.
     - name: Release new version
-      uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5.0.0
       id: release
+      if: ${{ steps.sync-state.outputs.identical != 'true' }}
+      uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5.0.0
       with:
         # App token, then GH_PAT, then GITHUB_TOKEN. The first two can trigger
         # workflows, so the release pull request opened here actually runs its
@@ -553,7 +701,7 @@ jobs:
         done
 
     - name: Automerge release PR
-      if: ${{ ((inputs.ENABLE_PRERELEASE && inputs.AUTOMERGE_PRERELEASE && github.ref_name == inputs.PRERELEASE_BRANCH) || (inputs.AUTOMERGE_RELEASE && github.ref_name == inputs.RELEASE_BRANCH)) && !steps.release.outputs.release_created }}
+      if: ${{ ((inputs.ENABLE_PRERELEASE && inputs.AUTOMERGE_PRERELEASE && github.ref_name == inputs.PRERELEASE_BRANCH) || (inputs.AUTOMERGE_RELEASE && github.ref_name == inputs.RELEASE_BRANCH)) && !steps.release.outputs.release_created && steps.sync-state.outputs.identical != 'true' }}
       env:
         GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GH_PAT }}
         # Repository metadata is read with the built-in token, which always has
