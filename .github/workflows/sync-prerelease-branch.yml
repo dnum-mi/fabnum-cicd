@@ -62,10 +62,11 @@ on:
           Files a release rewrites on RELEASE_BRANCH that PRERELEASE_BRANCH
           also rewrites on its own cycle, one path or glob per line, beyond
           what the release-please config already lists (manifests, changelogs,
-          extra-files): typically Chart.yaml and the chart README when the
-          chart lives in the repository. A rebase conflict confined to these
-          files is resolved in favour of the prerelease branch instead of
-          failing the job.
+          extra-files): the version file the release-type itself bumps
+          (version.txt for simple, package.json for node, Chart.yaml for helm),
+          and Chart.yaml and the chart README when the chart lives in the
+          repository. A rebase conflict confined to these files is resolved in
+          favour of the prerelease branch instead of failing the job.
         type: string
         required: false
         default: ''
@@ -86,6 +87,14 @@ on:
       APP_PRIVATE_KEY:
         description: GitHub App private key (PEM). Required alongside APP_CLIENT_ID.
         required: false
+
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
 
 jobs:
   sync:
@@ -145,7 +154,7 @@ jobs:
     - name: Generate GitHub App token
       id: app-token
       if: ${{ env.HAS_APP_AUTH == 'true' }}
-      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
       with:
         client-id: ${{ secrets.APP_CLIENT_ID }}
         private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -223,15 +232,18 @@ jobs:
         # The files a release rewrites on $RELEASE_BRANCH and the prerelease
         # branch rewrites on its own cycle: both manifests, the changelog and
         # extra-files release-please is configured to touch, and whatever the
-        # caller adds (Chart.yaml and the chart README for a chart that lives
-        # in the repository). What they hold is bookkeeping derived from the
-        # release history, not work, so a conflict confined to them has one
-        # right answer; any other conflicting file is real work and still fails
-        # the job.
-        managed_paths() {
-          printf '%s\n' "$PRERELEASE_MANIFEST_FILE" "$RELEASE_MANIFEST_FILE" "$MANAGED_FILES"
+        # caller adds (the version file of the release-type, Chart.yaml and the
+        # chart README for a chart that lives in the repository: release-please
+        # rewrites those without the config naming them). What they hold is
+        # bookkeeping derived from the release history, not work, so a conflict
+        # confined to them has one right answer; any other conflicting file is
+        # real work and still fails the job.
+        #
+        # `changelog` lists the changelog of each package, `file` its
+        # extra-files, as paths from the repository root.
+        config_paths() {
           [ -f "$PRERELEASE_CONFIG_FILE" ] || return 0
-          jq -r '
+          jq -r --arg kind "$1" '
             def under($dir; $path):
               if ($path | startswith("/")) then $path[1:]
               elif $dir == "." then $path
@@ -239,19 +251,30 @@ jobs:
             . as $top
             | (.packages // {} | to_entries[]) as $pkg
             | $pkg.key as $dir
-            | under($dir; $pkg.value["changelog-path"] // $top["changelog-path"] // "CHANGELOG.md"),
-              (($pkg.value["extra-files"] // $top["extra-files"] // [])[]
-                | (if type == "string" then . else .path end)
-                | under($dir; .))
+            | if $kind == "changelog" then
+                under($dir; $pkg.value["changelog-path"] // $top["changelog-path"] // "CHANGELOG.md")
+              else
+                (($pkg.value["extra-files"] // $top["extra-files"] // [])[]
+                  | (if type == "string" then . else .path end)
+                  | under($dir; .))
+              end
           ' "$PRERELEASE_CONFIG_FILE"
         }
 
-        if ! managed=$(managed_paths); then
+        managed_paths() {
+          printf '%s\n' "$PRERELEASE_MANIFEST_FILE" "$RELEASE_MANIFEST_FILE" "$MANAGED_FILES"
+          config_paths changelog || return 1
+          config_paths file
+        }
+
+        if ! changelogs=$(config_paths changelog) || ! managed=$(managed_paths); then
           echo "::warning::Could not read the files release-please manages from $PRERELEASE_CONFIG_FILE; any rebase conflict will fail the job."
+          changelogs=""
           managed=""
         fi
 
-        is_managed() {
+        # Whether $1 is one of the paths or globs listed in $2, one per line.
+        matches_any() {
           local file="$1" pattern
           while IFS= read -r pattern; do
             pattern="${pattern%$'\r'}"
@@ -263,27 +286,90 @@ jobs:
             if [[ "$file" == "$pattern" || "$file" == $pattern ]]; then
               return 0
             fi
-          done <<<"$managed"
+          done <<<"$2"
           return 1
+        }
+
+        is_managed() {
+          matches_any "$1" "$managed"
         }
 
         # Which side wins the conflicting hunks of such a file. The prerelease
         # branch, whose next versions are computed from that state. Except
         # the release manifest, which on both branches records what the release
         # branch published, and changelogs, which record history: both sides.
+        # A changelog is the one the config names, whatever its name, or any
+        # listed file called after one.
         resolution_for() {
-          case "${1##*/}" in
-            *[Cc][Hh][Aa][Nn][Gg][Ee][Ll][Oo][Gg]*)
-              echo "--union"
-              ;;
-            *)
-              if [ "$1" = "${RELEASE_MANIFEST_FILE#./}" ]; then
-                echo "--ours"
-              else
-                echo "--theirs"
-              fi
-              ;;
+          if matches_any "$1" "$changelogs" || [[ "${1##*/}" == *[Cc][Hh][Aa][Nn][Gg][Ee][Ll][Oo][Gg]* ]]; then
+            echo "union"
+          elif [ "$1" = "${RELEASE_MANIFEST_FILE#./}" ]; then
+            echo "ours"
+          else
+            echo "theirs"
+          fi
+        }
+
+        side_name() {
+          case "$1" in
+            ours) echo "the release branch" ;;
+            theirs) echo "the prerelease branch" ;;
+            *) echo "both sides" ;;
           esac
+        }
+
+        # Every conflicting hunk settled by taking a side is written here, with
+        # the lines it dropped: what the release branch had on those lines is
+        # the one thing nobody can recover from the result, and a hotfix edit on
+        # the very line the prerelease branch also changed would otherwise
+        # vanish without a trace. Printed once the rebase is through. Anyone who
+        # can read these logs can read the same files in the repository.
+        audit=$(mktemp)
+        MARKER_SIZE=29
+
+        # Reads a three-way merge written with conflict markers (the labels
+        # `ours` and `theirs`, a marker size no line of a real file can be
+        # mistaken for: a Setext heading underline is a run of `=`) and settles
+        # each conflicting hunk. `ours` and `theirs` keep that side. `union`
+        # keeps both, the prerelease side (`theirs`) first because a changelog
+        # lists the newest section on top and the prerelease series is newer
+        # than anything the release branch gained since, with the blank line the
+        # merge trims off between them: two sections inserted at the same place
+        # share their trailing blank line, which git leaves after the pair, so
+        # the first would run into the heading of the second.
+        # $2 is the file the dropped lines are appended to. The names reach awk
+        # through the environment, which -v would unescape.
+        settle_hunks() {
+          FILE_NAME="$3" REPLAYED="$4" awk -v mode="$1" -v audit="$2" -v size="$MARKER_SIZE" '
+            BEGIN {
+              for (i = 0; i < size; i++) { lt = lt "<"; eq = eq "="; gt = gt ">" }
+              opening = lt " ours"; separator = eq; closing = gt " theirs"
+              dropped_from["theirs"] = "the release branch"; dropped_from["ours"] = "the prerelease branch"
+            }
+            function emit(text) { print text; written++ }
+            function keep(lines, count,   i) { for (i = 1; i <= count; i++) emit(lines[i]) }
+            function lose(lost, lostCount, kept, keptCount, side,   i) {
+              if (lostCount == 0) return
+              printf "@@ %s:%d, dropped from %s while replaying \"%s\" @@\n", ENVIRON["FILE_NAME"], written + 1, dropped_from[side], ENVIRON["REPLAYED"] >> audit
+              for (i = 1; i <= lostCount; i++) print "- " lost[i] >> audit
+              for (i = 1; i <= keptCount; i++) print "+ " kept[i] >> audit
+            }
+            $0 == opening && !inside { inside = 1; side = "ours"; ours_n = 0; theirs_n = 0; next }
+            inside && $0 == separator { side = "theirs"; next }
+            inside && $0 == closing {
+              if (mode == "theirs") { lose(ours, ours_n, theirs, theirs_n, "theirs"); keep(theirs, theirs_n) }
+              else if (mode == "ours") { lose(theirs, theirs_n, ours, ours_n, "ours"); keep(ours, ours_n) }
+              else {
+                keep(theirs, theirs_n)
+                if (theirs_n > 0 && ours_n > 0 && theirs[theirs_n] != "" && ours[1] != "") emit("")
+                keep(ours, ours_n)
+              }
+              inside = 0; next
+            }
+            inside { if (side == "ours") ours[++ours_n] = $0; else theirs[++theirs_n] = $0; next }
+            { emit($0) }
+            END { if (inside) exit 3 }
+          '
         }
 
         # Merges the three stages of a conflicted file hunk by hunk, so what
@@ -293,7 +379,7 @@ jobs:
         # pinned in the same file, a changelog section). In a rebase `ours`
         # is the release branch and `theirs` the commit being replayed.
         resolve_conflict() {
-          local file="$1" stages work
+          local file="$1" stages work status resolution replayed
 
           stages=$(git ls-files -u -- "$file" | awk '{ print $3 }' | sort -u | tr '\n' ' ')
           case "$stages" in
@@ -314,8 +400,21 @@ jobs:
             : >"$work/base"
           fi
 
-          if ! git merge-file -p "$(resolution_for "$file")" "$work/ours" "$work/base" "$work/theirs" >"$work/merged"; then
+          # Zero when it merged clean, the number of conflicting hunks when it
+          # did not, above 127 when it could not merge at all (a binary file).
+          status=0
+          git merge-file -p -L ours -L base -L theirs --marker-size="$MARKER_SIZE" \
+            "$work/ours" "$work/base" "$work/theirs" >"$work/markers" || status=$?
+          if [ "$status" -gt 127 ]; then
             echo "::error::Could not merge '$file' (a binary file?)."
+            rm -rf "$work"
+            return 1
+          fi
+
+          resolution=$(resolution_for "$file")
+          replayed=$(git log -1 --format=%s REBASE_HEAD 2>/dev/null || true)
+          if ! settle_hunks "$resolution" "$audit" "$file" "$replayed" <"$work/markers" >"$work/merged"; then
+            echo "::error::Could not settle the conflicting hunks of '$file'."
             rm -rf "$work"
             return 1
           fi
@@ -348,13 +447,13 @@ jobs:
 
             for file in "${conflicted[@]}"; do
               if ! is_managed "$file"; then
-                echo "::error::'$file' conflicts between '$PRERELEASE_BRANCH' and '$RELEASE_BRANCH' and is not a file a release rewrites, so it is real work to reconcile by hand."
+                echo "::error::'$file' conflicts between '$PRERELEASE_BRANCH' and '$RELEASE_BRANCH' and is not a file a release rewrites, so it is real work to reconcile by hand. If a release does rewrite it - the version file of the release-type (version.txt, package.json, Chart.yaml...) is not named in the release-please config - list it in MANAGED_FILES."
                 return 1
               fi
             done
 
             for file in "${conflicted[@]}"; do
-              echo "Conflict in '$file', which a release rewrites: merged hunk by hunk, conflicting hunks resolved with $(resolution_for "$file")."
+              echo "Conflict in '$file', which a release rewrites: merged hunk by hunk, conflicting hunks resolved in favour of $(side_name "$(resolution_for "$file")")."
               resolve_conflict "$file" || return 1
             done
 
@@ -372,6 +471,35 @@ jobs:
           return 1
         }
 
+        # What the rebase settled by taking a side, in the log, as an annotation
+        # on the run and in the job summary: `-` lines were dropped, `+` lines
+        # kept in their place. A changelog keeps both sides and drops nothing.
+        report_settled_hunks() {
+          local hunks
+          [ -s "$audit" ] || return 0
+          hunks=$(grep -c '^@@ ' "$audit" || true)
+
+          echo "::group::Conflicting hunks settled during the rebase ($hunks): - dropped, + kept"
+          cat "$audit"
+          echo "::endgroup::"
+          echo "::notice title=Rebase conflicts settled::$hunks conflicting hunk(s) of release-managed files were settled by taking a side. The lines dropped are in the job summary and the log."
+
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            {
+              echo "### Conflicting hunks settled while rebasing \`$PRERELEASE_BRANCH\` onto \`$RELEASE_BRANCH\`"
+              echo
+              echo "Lines starting with \`-\` were dropped, lines starting with \`+\` kept in their place. Read them before the next promotion."
+              echo
+              echo '```diff'
+              head -n 400 "$audit"
+              if [ "$(wc -l <"$audit")" -gt 400 ]; then
+                echo "... truncated here, the whole list is in the job log"
+              fi
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+          fi
+        }
+
         # The newest commit of a range with subject $2 and author date $3. A
         # rebase, a cherry-pick and a rebase-merge keep both, so a commit that
         # merely shares a common subject ("fix: typo") is not taken for it.
@@ -379,6 +507,42 @@ jobs:
           local log
           log=$(git log --format='%H%x09%at%x09%s' "$1")
           SUBJECT="$2" AUTHORED="$3" awk -F '\t' '$3 == ENVIRON["SUBJECT"] && $2 == ENVIRON["AUTHORED"] { print $1; exit }' <<<"$log"
+        }
+
+        # Sets `last-release-sha` in the prerelease config with the smallest
+        # edit that leaves the rest of the file as it was: the key is replaced
+        # on its line, or inserted as the first property of an object that
+        # opens on a line of its own. Re-serialising with jq would turn every
+        # compact line of a formatted file (changelog-sections, extra-files)
+        # into several, and a repository that lints its JSON would fail on a
+        # commit nobody wrote. The edit is checked against the parsed document
+        # and gives way to jq whenever it is not the one change expected.
+        set_last_release_sha() {
+          local sha="$1" file="$PRERELEASE_CONFIG_FILE" edited
+          edited=$(mktemp)
+
+          if jq -e 'has("last-release-sha")' "$file" >/dev/null; then
+            sed -E "s/(\"last-release-sha\"[[:space:]]*:[[:space:]]*)\"[^\"]*\"/\1\"$sha\"/" "$file" >"$edited"
+          else
+            awk -v sha="$sha" '
+              !done && !opened && /^[[:space:]]*\{[[:space:]]*$/ { opened = 1; print; next }
+              opened && !done && NF {
+                match($0, /^[[:space:]]*/)
+                printf "%s\"last-release-sha\": \"%s\",\n", substr($0, 1, RLENGTH), sha
+                done = 1
+              }
+              { print }
+            ' "$file" >"$edited"
+          fi
+
+          if jq -e --arg sha "$sha" '.["last-release-sha"] == $sha' "$edited" >/dev/null 2>&1 &&
+            [ "$(jq -cS 'del(.["last-release-sha"])' "$edited")" = "$(jq -cS 'del(.["last-release-sha"])' "$file")" ]; then
+            cat "$edited" >"$file"
+          else
+            jq --indent 2 --arg sha "$sha" '.["last-release-sha"] = $sha' "$file" >"$edited"
+            cat "$edited" >"$file"
+          fi
+          rm -f "$edited"
         }
 
         # The rebase replays the prerelease branch's commits under new SHAs,
@@ -403,7 +567,7 @@ jobs:
         # Single-package manifests only: the key is one commit for the whole
         # repository, which cannot anchor several packages at once.
         anchor_release_please() {
-          local version tag exact suffix suffixes name subject authored replayed current tmp
+          local version tag exact suffix suffixes name subject authored replayed current
 
           if [ ! -f "$PRERELEASE_MANIFEST_FILE" ] || [ ! -f "$PRERELEASE_CONFIG_FILE" ]; then
             echo "::warning::No $PRERELEASE_MANIFEST_FILE or $PRERELEASE_CONFIG_FILE on '$PRERELEASE_BRANCH', so the release anchor is not maintained. If release-please uses other file names, pass them as PRERELEASE_MANIFEST_FILE and PRERELEASE_CONFIG_FILE, as to release-app.yml."
@@ -489,10 +653,7 @@ jobs:
             return 0
           fi
 
-          tmp=$(mktemp)
-          jq --indent 2 --arg sha "$replayed" '.["last-release-sha"] = $sha' "$PRERELEASE_CONFIG_FILE" >"$tmp"
-          cat "$tmp" >"$PRERELEASE_CONFIG_FILE"
-          rm -f "$tmp"
+          set_last_release_sha "$replayed"
 
           git add -- "$PRERELEASE_CONFIG_FILE"
           git commit --quiet \
@@ -510,6 +671,7 @@ jobs:
         # the case a plain push would reject - or after a hotfix on the
         # release branch, which replays the whole unreleased series.
         if rebase_onto_release_branch; then
+          report_settled_hunks
           anchor_release_please
 
           echo "Rebase successful. Pushing updated $PRERELEASE_BRANCH..."

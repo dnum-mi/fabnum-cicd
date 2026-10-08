@@ -39,6 +39,15 @@ commit() {
   git commit -q -m "$message"
 }
 
+# A changelog the way release-please writes it, newest section first.
+changelog_of() {
+  local version out="# Changelog"
+  for version in "$@"; do
+    out+=$'\n\n'"## $version"$'\n\n\n'"### Features"$'\n\n'"* change in $version"
+  done
+  printf '%s' "$out"
+}
+
 assert_equal() {
   if [ "$1" != "$2" ]; then
     printf 'FAIL: %s: expected %q, got %q\n' "$3" "$1" "$2" >&2
@@ -61,9 +70,13 @@ assert_equal() {
 #   DEVELOP_EXTRA         extra `path=content` specs for a develop commit
 #   HOTFIX_EXTRA          extra `path=content` specs for the hotfix commit
 #   RC_MANIFEST           the prerelease manifest the last prerelease writes
+#   RC_CONFIG             the prerelease config (extra-files: version.txt by default)
+#   CHANGELOG_FILE        the changelog the release commits rewrite (CHANGELOG.md)
 build_history() {
   local with_hotfix="${WITH_HOTFIX:-true}" rc_manifest="${RC_MANIFEST:-}"
+  local rc_config="${RC_CONFIG:-}" changelog="${CHANGELOG_FILE:-CHANGELOG.md}"
   [ -n "$rc_manifest" ] || rc_manifest='{".": "1.1.0-rc.1"}'
+  [ -n "$rc_config" ] || rc_config='{"packages": {".": {"extra-files": ["version.txt"]}}}'
 
   ORIGIN="$SANDBOX/origin.git"
   local seed="$SANDBOX/seed"
@@ -76,23 +89,23 @@ build_history() {
     app.txt=base \
     version.txt=1.0.0 \
     pins.txt=$'v=1.0.0\na\nb\nc\nd\ne\nf\ndep=old' \
-    CHANGELOG.md="## 1.0.0" \
+    "$changelog=$(changelog_of 1.0.0)" \
     .release-please-manifest.json='{".": "1.0.0"}' \
     .release-please-manifest-rc.json='{".": "1.0.0"}' \
-    release-please-config-rc.json='{"packages": {".": {"extra-files": ["version.txt"]}}}'
+    release-please-config-rc.json="$rc_config"
   git tag v1.0.0
   git push -q origin main --tags
 
   git checkout -q -b develop
   commit "feat: new thing" feature.txt=new ${DEVELOP_EXTRA[@]+"${DEVELOP_EXTRA[@]}"}
   commit "chore(develop): release 1.1.0-rc" \
-    CHANGELOG.md=$'## 1.1.0-rc\n## 1.0.0' \
+    "$changelog=$(changelog_of 1.1.0-rc 1.0.0)" \
     version.txt=1.1.0-rc \
     .release-please-manifest-rc.json='{".": "1.1.0-rc"}'
   git tag v1.1.0-rc
   commit "fix: other thing" fix.txt=other
   commit "chore(develop): release 1.1.0-rc.1" \
-    CHANGELOG.md=$'## 1.1.0-rc.1\n## 1.0.0' \
+    "$changelog=$(changelog_of 1.1.0-rc.1 1.1.0-rc 1.0.0)" \
     version.txt=1.1.0-rc.1 \
     .release-please-manifest-rc.json="$rc_manifest"
   git tag v1.1.0-rc.1
@@ -110,7 +123,7 @@ build_history() {
     git checkout -q main
     commit "fix: hotfix" hotfix.txt=urgent ${HOTFIX_EXTRA[@]+"${HOTFIX_EXTRA[@]}"}
     commit "chore(main): release 1.0.1" \
-      CHANGELOG.md=$'## 1.0.1\n## 1.0.0' \
+      "$changelog=$(changelog_of 1.0.1 1.0.0)" \
       version.txt=1.0.1 \
       .release-please-manifest.json='{".": "1.0.1"}' \
       .release-please-manifest-rc.json='{".": "1.0.1"}'
@@ -481,6 +494,205 @@ test_aborts_the_rebase_and_pushes_nothing_when_it_cannot_resolve() {
   assert_status 1
   assert_equal "$before" "$(remote_develop)" "remote develop"
   assert_output_lacks "Pushing updated"
+}
+
+test_keeps_the_changelog_sections_of_both_branches_whatever_the_changelog_is_called() {
+  use_real_git
+  RC_CONFIG='{"packages": {".": {"changelog-path": "HISTORY.md", "extra-files": ["version.txt"]}}}'
+  CHANGELOG_FILE=HISTORY.md
+  build_history
+  sync_env
+
+  run_block "$BLOCK"
+
+  # The config names it, so the name does not have to say "changelog": taking
+  # the prerelease side of a history would drop the hotfix's section, and the
+  # next promotion would remove it from the release branch.
+  assert_status 0
+  grep -qx '## 1.0.1' HISTORY.md || {
+    echo "FAIL: the 1.0.1 section is gone" >&2
+    cat HISTORY.md >&2
+    exit 1
+  }
+  grep -qx '## 1.1.0-rc.1' HISTORY.md || {
+    echo "FAIL: the 1.1.0-rc.1 section is gone" >&2
+    cat HISTORY.md >&2
+    exit 1
+  }
+}
+
+test_says_where_to_list_a_file_the_release_type_rewrites() {
+  use_real_git
+  # Nothing in the config names version.txt, as for `release-type: simple`,
+  # which writes it on its own.
+  RC_CONFIG='{"packages": {".": {}}}'
+  build_history
+  sync_env
+  local before
+  before=$(remote_develop)
+
+  run_block "$BLOCK"
+
+  assert_status 1
+  assert_output_contains "'version.txt' conflicts"
+  assert_output_contains "MANAGED_FILES"
+  assert_equal "$before" "$(remote_develop)" "remote develop is untouched"
+}
+
+test_resolves_a_file_the_release_type_rewrites_once_the_caller_lists_it() {
+  use_real_git
+  RC_CONFIG='{"packages": {".": {}}}'
+  build_history
+  sync_env version.txt
+
+  run_block "$BLOCK"
+
+  assert_status 0
+  assert_equal "1.1.0-rc.1" "$(cat version.txt)" "version.txt"
+}
+
+# A config as a formatter leaves it: compact objects on one line each.
+FORMATTED_CONFIG=$'{\n  "packages": {\n    ".": {\n      "extra-files": ["version.txt"],\n      "changelog-sections": [\n        { "type": "feat", "section": "Features" },\n        { "type": "fix", "section": "Bug Fixes" }\n      ]\n    }\n  }\n}'
+
+test_adds_the_anchor_key_without_reformatting_the_prerelease_config() {
+  use_real_git
+  RC_CONFIG="$FORMATTED_CONFIG"
+  build_history
+  sync_env
+
+  run_block "$BLOCK"
+
+  # Re-serialising the file would turn every compact line into several and
+  # make a repository's JSON formatter fail on a commit nobody wrote.
+  assert_status 0
+  assert_equal "1	0	release-please-config-rc.json" "$(git show --numstat --format= HEAD)" "lines the anchor commit touches"
+  assert_equal "$(git log --format=%H --grep='^chore(develop): release 1.1.0-rc.1$' -1 HEAD)" \
+    "$(jq -r '.["last-release-sha"]' release-please-config-rc.json)" "last-release-sha"
+}
+
+test_replaces_the_anchor_key_in_place_on_a_later_rebase() {
+  use_real_git
+  RC_CONFIG="$FORMATTED_CONFIG"
+  build_history
+  sync_env
+
+  run_block "$BLOCK"
+  assert_status 0
+
+  git -C "$SANDBOX/seed" checkout -q main
+  (
+    cd "$SANDBOX/seed" || exit 1
+    commit "fix: another hotfix" hotfix2.txt=again
+    git push -q origin main
+  )
+  run_block "$BLOCK"
+
+  assert_status 0
+  assert_equal "1	1	release-please-config-rc.json" "$(git show --numstat --format= HEAD)" "lines the refreshed anchor commit touches"
+  assert_equal "$(git log --format=%H --grep='^chore(develop): release 1.1.0-rc.1$' -1 HEAD)" \
+    "$(jq -r '.["last-release-sha"]' release-please-config-rc.json)" "refreshed last-release-sha"
+}
+
+test_still_anchors_a_config_written_on_one_line() {
+  use_real_git
+  RC_CONFIG='{"packages": {".": {"extra-files": ["version.txt"]}}}'
+  build_history
+  sync_env
+
+  run_block "$BLOCK"
+
+  # Nothing to preserve and nowhere to insert a line: the file is re-serialised.
+  assert_status 0
+  assert_equal "$(git log --format=%H --grep='^chore(develop): release 1.1.0-rc.1$' -1 HEAD)" \
+    "$(jq -r '.["last-release-sha"]' release-please-config-rc.json)" "last-release-sha"
+}
+
+test_puts_the_prerelease_sections_above_the_hotfix_one_with_a_blank_line_between() {
+  use_real_git
+  build_history
+  sync_env
+
+  run_block "$BLOCK"
+
+  # Newest first, as release-please writes it: the hotfix sits just above the
+  # release it follows, and the next entry is prepended above the prereleases.
+  assert_status 0
+  assert_equal $'## 1.1.0-rc.1\n## 1.1.0-rc\n## 1.0.1\n## 1.0.0' "$(grep '^## ' CHANGELOG.md)" "order of the sections"
+  # The merge trims the blank line that separated the two inserted sections.
+  local previous="" line changelog
+  changelog=$(cat CHANGELOG.md)
+  while IFS= read -r line; do
+    if [[ "$line" == "## "* ]] && [ -n "$previous" ]; then
+      printf 'FAIL: no blank line before %q\n' "$line" >&2
+      printf '%s\n' "$changelog" >&2
+      exit 1
+    fi
+    previous="$line"
+  done <<<"$changelog"
+}
+
+test_says_which_lines_it_dropped_when_it_settles_a_conflicting_hunk() {
+  use_real_git
+  DEVELOP_EXTRA=(pins.txt=$'v=1.1.0-rc\na\nb\nc\nd\ne\nf\ndep=old')
+  HOTFIX_EXTRA=(pins.txt=$'v=1.0.1\na\nb\nc\nd\ne\nf\ndep=SECURITY-FIX')
+  build_history
+  sync_env pins.txt
+
+  run_block "$BLOCK"
+
+  # Taking a side is the design; doing it without a trace is not. What the
+  # release branch had on those lines is the one thing nobody can recover from
+  # the result.
+  assert_status 0
+  assert_output_contains "@@ pins.txt:1"
+  assert_output_contains "- v=1.0.1"
+  assert_output_contains "+ v=1.1.0-rc"
+  assert_output_contains "::notice title=Rebase conflicts settled::"
+  assert_output_lacks "SECURITY-FIX"
+}
+
+test_does_not_report_a_changelog_section_as_dropped() {
+  use_real_git
+  build_history
+  sync_env
+
+  run_block "$BLOCK"
+
+  # Both sides are kept: nothing was lost.
+  assert_status 0
+  assert_output_lacks "- ## 1.0.1"
+}
+
+test_writes_the_dropped_lines_to_the_job_summary() {
+  use_real_git
+  DEVELOP_EXTRA=(pins.txt=$'v=1.1.0-rc\na\nb\nc\nd\ne\nf\ndep=old')
+  HOTFIX_EXTRA=(pins.txt=$'v=1.0.1\na\nb\nc\nd\ne\nf\ndep=SECURITY-FIX')
+  build_history
+  sync_env pins.txt
+  export GITHUB_STEP_SUMMARY="$SANDBOX/summary.md"
+
+  run_block "$BLOCK"
+
+  assert_status 0
+  assert_file_contains "$GITHUB_STEP_SUMMARY" '```diff'
+  assert_file_contains "$GITHUB_STEP_SUMMARY" "- v=1.0.1"
+  assert_file_contains "$GITHUB_STEP_SUMMARY" "pins.txt"
+}
+
+test_reports_nothing_when_the_rebase_settled_no_conflict() {
+  use_real_git
+  WITH_HOTFIX=false build_history
+  sync_env
+  export GITHUB_STEP_SUMMARY="$SANDBOX/summary.md"
+
+  run_block "$BLOCK"
+
+  assert_status 0
+  assert_output_lacks "::notice title="
+  [ ! -s "$GITHUB_STEP_SUMMARY" ] || {
+    echo "FAIL: the summary should stay empty" >&2
+    exit 1
+  }
 }
 
 run_tests
