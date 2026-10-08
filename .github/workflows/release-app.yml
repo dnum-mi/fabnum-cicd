@@ -138,6 +138,43 @@ on:
       patch-tag:
         description: Patch version tag
         value: ${{ jobs.release.outputs.patch-tag }}
+      tag-name:
+        description: >-
+          The full tag release-please created (e.g. 'v1.2.3'), for a downstream
+          job that needs to name it explicitly rather than reconstruct it -
+          attest-go.yml's TAG input, or 'gh release download'/'gh release
+          upload' against the same release.
+        value: ${{ jobs.release.outputs.tag-name }}
+      releases-created:
+        description: >-
+          Whether any release was created in this run. 'release-created' above
+          is a root-component output and stays unset for a repository with no
+          root package (manifest mode, one package per directory); this one is
+          set in every mode.
+        value: ${{ jobs.release.outputs.releases-created }}
+      paths-released:
+        description: >-
+          JSON array of the package paths that had a release created ('[]'
+          when nothing was released). A monorepo caller feeds it to a job
+          matrix with fromJSON to run one leg per released package.
+        value: ${{ jobs.release.outputs.paths-released }}
+      release-outputs:
+        description: >-
+          Every output of the release-please step as one JSON object, so a
+          monorepo caller can read the per-path values release-please names
+          after the path ('<path>--tag_name', '<path>--version', ...) - values
+          this workflow cannot declare one by one because it does not know
+          the paths. Read one with
+          fromJSON(needs.<job>.outputs.release-outputs)[format('{0}--tag_name', matrix.path)].
+        value: ${{ jobs.release.outputs.release-outputs }}
+
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
 
 jobs:
   release:
@@ -153,6 +190,18 @@ jobs:
       major-tag: ${{ steps.release.outputs.major }}
       minor-tag: ${{ steps.release.outputs.minor }}
       patch-tag: ${{ steps.release.outputs.patch }}
+      tag-name: ${{ steps.release.outputs.tag_name }}
+      # The three below are what manifest (monorepo) mode sets. The six above
+      # are root-component outputs, unset when a repository has no root
+      # package — a caller releasing `pg/` and `kube/` reads nothing from
+      # them and everything from these.
+      releases-created: ${{ steps.release.outputs.releases_created }}
+      paths-released: ${{ steps.release.outputs.paths_released }}
+      # Every output of the step as one JSON object. A reusable workflow cannot
+      # enumerate `<path>--tag_name` for paths it does not know, so it hands
+      # the whole map over and the caller indexes it with the path it does
+      # know: fromJSON(...)[format('{0}--tag_name', matrix.plugin)].
+      release-outputs: ${{ toJSON(steps.release.outputs) }}
     env:
       # `secrets` is not available in a step-level `if`, but it is here - so the
       # presence check is hoisted to the job and the step tests `env`.
@@ -185,7 +234,7 @@ jobs:
     - name: Generate GitHub App token
       id: app-token
       if: ${{ env.HAS_APP_AUTH == 'true' }}
-      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
       with:
         client-id: ${{ secrets.APP_CLIENT_ID }}
         private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -212,7 +261,7 @@ jobs:
     # "Publish draft release" step instead - same credential, later in the job,
     # and only once the assets are attached.
     - name: Checks-out repository
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     # The invariant every version computed on the prerelease branch depends on:
     # that branch is the release branch plus only the unreleased work. When it
@@ -408,20 +457,83 @@ jobs:
         echo "::error::release-please would start from '$tag', the release of $version, which is not in the history of '$PRERELEASE_BRANCH' (the branch was rebased and its commits replayed under new SHAs), and $PRERELEASE_CONFIG_FILE has no 'last-release-sha' in that history. It would read the 500 most recent commits and open a release pull request with a wrong version (a major bump from an old breaking commit) and a changelog repeating what is already released. The sync-prerelease-branch job sets 'last-release-sha' after each rebase: check that the caller passes it the same PRERELEASE_CONFIG_FILE and PRERELEASE_MANIFEST_FILE as this workflow and that it ran since the rebase. Or set 'last-release-sha' by hand to the replayed release commit of $version. Do not merge such a release pull request, and do not move the tag."
         exit 1
 
+
+    # release-please keeps one branch per target - `release-please--branches--<branch>`,
+    # plus a `--components--<name>` suffix per package in a monorepo - and reuses
+    # it for every release pull request it opens against that target. A pull
+    # request closed on one of those branches while still carrying an
+    # `autorelease:` label stays in release-please's bookkeeping as *the* release
+    # pull request for that branch. The next run then pushes the new release
+    # commit to the branch, opens a new pull request for it, and tries to move
+    # the closed one back to open - which GitHub refuses, because the new pull
+    # request already occupies that same head/base pair:
+    #
+    #   updated code for <new>, but update requested for <closed>
+    #   state cannot be changed. There is already an open pull request from
+    #   release-please--branches--main to main.
+    #
+    # release-please exits there, and where it exits is the damage: after
+    # pushing the release commit, before labelling the pull request it just
+    # opened. `autorelease: pending` is the queue the release phase reads, so an
+    # unlabelled release pull request is invisible to it - merge that pull
+    # request and nothing tags it. The changelog and the manifest then claim a
+    # version that has no tag, no release and no artifacts, and the assertion
+    # after release-please below is what catches that half of it.
+    #
+    # googleapis/release-please#2566 tracks the upstream behaviour: the
+    # `autorelease: snooze` label that produces this state is undocumented, and
+    # the crash lands before any tag is written.
+    #
+    # Asserted rather than cleaned up automatically, and asserted before
+    # release-please rather than after: only a human knows what the closed pull
+    # request was for, the fix is one label removal, and every run until then
+    # would otherwise push a release commit it cannot finish releasing.
+    - name: Assert no abandoned release pull request blocks the run
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
+      run: |
+        set -euo pipefail
+
+        # Exported and read back with `env.` so the branch name never becomes
+        # part of the jq program text. `startswith` rather than `--head`: a
+        # monorepo has one branch per component under this prefix, and all of
+        # them carry the same hazard.
+        export PR_BRANCH_PREFIX="release-please--branches--$GITHUB_REF_NAME"
+
+        # `--state closed` includes merged pull requests, which are the normal
+        # end state and carry `autorelease: tagged` for good - `mergedAt == null`
+        # is what narrows this to the ones that were abandoned.
+        abandoned=$(gh pr list --state closed --limit 50 \
+          --json number,title,mergedAt,headRefName,labels \
+          --jq '[ .[]
+                  | select(.mergedAt == null)
+                  | select(.headRefName | startswith(env.PR_BRANCH_PREFIX))
+                  | select([.labels[].name] | any(startswith("autorelease:")))
+                  | "#\(.number) \(.title) [\([.labels[].name] | join(", "))]"
+                ] | .[]')
+
+        if [ -n "$abandoned" ]; then
+          echo "::error::A closed release pull request on '$PR_BRANCH_PREFIX' still carries an autorelease label, so release-please will try to reopen it instead of labelling the pull request it opens next - and will exit after pushing the release commit but before labelling it. A release pull request merged in that state is never tagged. Remove every 'autorelease:' label from: $abandoned"
+          exit 1
+        fi
+
+        echo "no abandoned release pull request on '$PR_BRANCH_PREFIX'"
+
     # Not run when the prerelease branch is identical to the release branch:
     # it holds no work of its own, and the commits released or about to be
     # released on the release branch would otherwise be proposed again as a
     # prerelease of code that is already out. That is what happens right after
-    # the sync job moves the branch: the push starts this run, release-please
-    # counts every commit that reached the release branch directly (a hotfix)
-    # as unreleased on this line, and opens a release pull request nobody
-    # should merge. Empty step outputs on a skip read as no release created;
-    # the automerge step below is gated on the skip as well, or it would queue
-    # a stale release pull request this run did not refresh.
+    # the sync job moves the branch under an App token: the push starts this
+    # run, release-please counts every commit that reached the release branch
+    # directly (a hotfix) as unreleased on this line, and opens a release pull
+    # request nobody should merge. Empty step outputs on a skip read as no
+    # release created; the automerge step below is gated on the skip as well,
+    # or it would queue a stale release pull request this run did not refresh.
     - name: Release new version
       id: release
       if: ${{ steps.sync-state.outputs.identical != 'true' }}
-      uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5.0.0
+      uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
       with:
         # App token, then GH_PAT, then GITHUB_TOKEN. The first two can trigger
         # workflows, so the release pull request opened here actually runs its
@@ -430,6 +542,68 @@ jobs:
         target-branch: ${{ github.ref_name }}
         config-file: ${{ (github.ref_name == inputs.RELEASE_BRANCH && inputs.RELEASE_CONFIG_FILE) || (inputs.ENABLE_PRERELEASE && github.ref_name == inputs.PRERELEASE_BRANCH && inputs.PRERELEASE_CONFIG_FILE) || inputs.RELEASE_CONFIG_FILE }}
         manifest-file: ${{ (github.ref_name == inputs.RELEASE_BRANCH && inputs.RELEASE_MANIFEST_FILE) || (inputs.ENABLE_PRERELEASE && github.ref_name == inputs.PRERELEASE_BRANCH && inputs.PRERELEASE_MANIFEST_FILE) || inputs.RELEASE_MANIFEST_FILE }}
+
+    # The invariant this whole workflow exists to uphold: when a release pull
+    # request merges, the version it wrote becomes a tag and a release. Nothing
+    # else asserts it. release-please reports `release_created` false for an
+    # ordinary commit and for a release commit it failed to tag alike, and the
+    # downstream jobs a caller gates on that output read the two the same way -
+    # they skip. So the binaries, the image, the chart and their attestations
+    # are quietly not published, while the changelog and the manifest on the
+    # branch say the version shipped.
+    #
+    # It also leaves the *next* release unable to compute: release-please looks
+    # for the tag the manifest names, and with no floor to measure from it walks
+    # the branch to its first commit and proposes a changelog covering the
+    # entire history.
+    #
+    # Keyed on this run's own commit rather than on "is there a merged pull
+    # request still labelled pending": the label is exactly what goes missing in
+    # the failure this guards (see the assertion before release-please above),
+    # and a concurrent run's merge would make a label scan flap. A release pull
+    # request whose merge commit is the commit being built is unambiguous under
+    # every merge method - rebase, squash and merge commit all record it.
+    #
+    # `!cancelled()` rather than `success()`: release-please failing is the most
+    # likely way to arrive here, and a raw API validation error in the log is
+    # not a diagnosis. This turns it into one.
+    - name: Assert a merged release pull request was released
+      if: ${{ !cancelled() }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
+        GITHUB_SHA: ${{ github.sha }}
+        # `releases_created` is set in every mode; `release_created` is the
+        # root-component output and stays unset for a monorepo with no root
+        # package. Either being true means release-please did its job.
+        RELEASES_CREATED: ${{ steps.release.outputs.releases_created }}
+        RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
+        TAG_NAME: ${{ steps.release.outputs.tag_name }}
+      run: |
+        set -euo pipefail
+
+        export PR_BRANCH_PREFIX="release-please--branches--$GITHUB_REF_NAME"
+
+        merged=$(gh pr list --state merged --limit 20 \
+          --json number,title,mergeCommit,headRefName \
+          --jq '[ .[]
+                  | select(.mergeCommit.oid == env.GITHUB_SHA)
+                  | select(.headRefName | startswith(env.PR_BRANCH_PREFIX))
+                  | "#\(.number) \(.title)"
+                ] | first // ""')
+
+        if [ -z "$merged" ]; then
+          echo "this run's commit is not a merged release pull request, nothing to assert"
+          exit 0
+        fi
+
+        if [ "${RELEASES_CREATED:-}" = "true" ] || [ "${RELEASE_CREATED:-}" = "true" ]; then
+          echo "$merged was released as ${TAG_NAME:-an unnamed tag}"
+          exit 0
+        fi
+
+        echo "::error::'$merged' merged into '$GITHUB_REF_NAME' and release-please created no release for it. The release commit is on the branch - the changelog and the manifest now claim this version shipped - but no tag and no release exist, so every downstream job gated on release-created skipped instead of publishing. The next release pull request cannot compute either: with no tag to measure from, release-please proposes a changelog covering the whole history. Recover by adding the 'autorelease: pending' label back to $merged and re-running this workflow, which tags the release and lets the downstream jobs run."
+        exit 1
 
     - name: Download release artifacts
       if: ${{ steps.release.outputs.release_created && inputs.RELEASE_ARTIFACT_NAMES != '' }}

@@ -59,6 +59,7 @@ sandbox_setup() {
   install_gh_stub
   install_git_stub
   install_docker_stub
+  install_helm_docs_stub
   export PATH="$SANDBOX/bin:$PATH"
 }
 
@@ -84,6 +85,17 @@ esac
 exit 0
 STUB
   chmod +x "$SANDBOX/bin/docker"
+}
+
+# Records every helm-docs invocation and writes nothing: the README a real
+# run regenerates is not what these suites assert on.
+install_helm_docs_stub() {
+  cat >"$SANDBOX/bin/helm-docs" <<'STUB'
+#!/usr/bin/env bash
+printf 'helm-docs|%s\n' "$*" >>"$CALL_LOG"
+exit 0
+STUB
+  chmod +x "$SANDBOX/bin/helm-docs"
 }
 
 # Records every git invocation. `config --local --get-regexp` answers from
@@ -198,6 +210,13 @@ case "$args" in
       exit 1
     fi
     ;;
+  # A pull request's file list, for classify-changes.yml. Ordered before the
+  # generic "api repos/" case for the reason the compare case is. A fixture
+  # holding several arrays back to back is several pages: the filter runs over
+  # each, the way `gh api --paginate --jq` applies it page by page.
+  *"/pulls/"*"/files"*)
+    printf '%s' "${STUB_GH_PR_FILES_JSON:-[]}" | apply_filter
+    ;;
   # Ordered before the generic "api repos/" case: a compare call matches both,
   # and answering it with the repository metadata fixture would make every
   # status look valid. The base commit picks the answer when a test needs
@@ -231,6 +250,35 @@ case "$args" in
     ;;
   "pr merge"*|"workflow "*)
     ;;
+  # attest-go.yml's asset download/upload. STUB_GH_RELEASE_DOWNLOAD_FAIL
+  # simulates gh's own real behavior for a missing release or a pattern
+  # matching nothing (nonzero exit, nothing written).
+  # STUB_GH_RELEASE_DOWNLOAD_EMPTY simulates the narrower case a workflow
+  # cannot assume away: gh exits 0 but the requested file still is not there.
+  "release download"*)
+    if [ -n "${STUB_GH_RELEASE_DOWNLOAD_FAIL:-}" ]; then
+      printf 'stub gh: release not found\n' >&2
+      exit 1
+    fi
+    if [ "${STUB_GH_RELEASE_DOWNLOAD_EMPTY:-false}" = "true" ]; then
+      exit 0
+    fi
+    # Parsed from $args (captured at the top, untouched) rather than from the
+    # positional parameters: the --jq extraction above has already shifted
+    # those away by the time a case arm runs.
+    dir="."
+    pattern=""
+    if [[ "$args" =~ --dir[[:space:]]+([^[:space:]]+) ]]; then
+      dir="${BASH_REMATCH[1]}"
+    fi
+    if [[ "$args" =~ --pattern[[:space:]]+([^[:space:]]+) ]]; then
+      pattern="${BASH_REMATCH[1]}"
+    fi
+    mkdir -p "$dir"
+    printf 'stub checksum content\n' >"$dir/$pattern"
+    ;;
+  "release upload"*)
+    ;;
   *)
     printf 'stub gh: unhandled invocation: %s\n' "$args" >&2
     exit 127
@@ -247,13 +295,8 @@ sandbox_teardown() {
 
 # Runs an extracted block. Environment comes from the caller's exports, matching
 # how Actions passes a step's `env:` block.
-#
-# `-e` because that is the shell Actions runs a step under: with no `shell:` key
-# the default is `bash -e {0}`. Without it a block whose last command returns
-# non-zero - a `while` loop ending on a skipped line, say - passes here and
-# aborts the step in CI.
 run_block() {
-  RUN_OUTPUT=$(bash -e -c "$1" 2>&1)
+  RUN_OUTPUT=$(bash -e -o pipefail -c "$1" 2>&1)
   RUN_STATUS=$?
   export RUN_OUTPUT RUN_STATUS
 }

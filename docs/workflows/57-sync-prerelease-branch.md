@@ -30,7 +30,7 @@ La seule chose qui détermine le bon moment pour resynchroniser est « la branch
 | PRERELEASE_CONFIG_FILE | string | Config release-please de la branche de pré-release, **même valeur que l'input de [`release-app.yml`](./50-release-app.md)**. Elle liste les fichiers que release-please réécrit et porte l'ancre ([voir plus bas](#ancre-de-release-please-après-un-rebase)) | Non | `release-please-config-rc.json` |
 | PRERELEASE_MANIFEST_FILE | string | Manifeste release-please de la branche de pré-release, même valeur que l'input de `release-app.yml` | Non | `.release-please-manifest-rc.json` |
 | RELEASE_MANIFEST_FILE | string | Manifeste release-please de la branche de release, même valeur que l'input de `release-app.yml` | Non | `.release-please-manifest.json` |
-| MANAGED_FILES     | string  | Fichiers qu'une release réécrit sur la branche de release et que la branche de pré-release réécrit aussi sur son propre cycle, un chemin ou glob par ligne, en plus de ceux que la config release-please liste déjà. Typiquement `Chart.yaml` et le README du chart quand le chart est dans le dépôt. Voir [Conflits sur les fichiers réécrits par les releases](#conflits-sur-les-fichiers-réécrits-par-les-releases) | Non | vide |
+| MANAGED_FILES     | string  | Fichiers qu'une release réécrit sur la branche de release et que la branche de pré-release réécrit aussi sur son propre cycle, un chemin ou glob par ligne, en plus de ceux que la config release-please liste déjà (manifestes, changelogs, `extra-files`) : le fichier de version que le `release-type` bump lui-même (`version.txt` pour `simple`, `package.json` pour `node`, `Chart.yaml` pour `helm`), et `Chart.yaml` et le README du chart quand le chart est dans le dépôt. Voir [Conflits sur les fichiers réécrits par les releases](#conflits-sur-les-fichiers-réécrits-par-les-releases) | Non | vide |
 | RUNS_ON           | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                             | Non    | `["ubuntu-24.04"]` |
 
 ## Secrets
@@ -119,12 +119,14 @@ Le job résout donc de lui-même les conflits **limités à ces fichiers** : les
 | Fichier | Côté retenu |
 | --- | --- |
 | manifeste de pré-release, `extra-files`, fichiers de `MANAGED_FILES` | la branche de pré-release |
-| `CHANGELOG*` | les deux côtés : un historique ne se choisit pas |
+| changelog (`changelog-path` de la config, ou tout fichier dont le nom contient `changelog`) | les deux côtés : un historique ne se choisit pas. Les sections de la pré-release vont au-dessus de celles de la branche de release, la plus récente en premier, avec la ligne vide entre sections que le merge supprimerait |
 | manifeste de release (`RELEASE_MANIFEST_FILE`) | la branche de release : il consigne ce qu'elle a publié |
+
+**Rien n'est supprimé sans trace.** Prendre un côté supprime les lignes de l'autre dans le hunk en conflit : un correctif sur la très ligne que la branche de pré-release a aussi modifiée disparaîtrait sinon sans laisser de trace. Chaque hunk ainsi tranché est écrit dans le log du job (un groupe nommé d'après le nombre de hunks), signalé en annotation `notice` sur le run, et listé dans le job summary comme un diff : les lignes `-` ont été supprimées, les `+` conservées à leur place, sous un en-tête nommant le fichier, la ligne et le commit rejoué. Pour des lignes de version c'est le remplacement attendu (`- 1.0.1` / `+ 1.1.0-rc.1`) ; tout autre chose mérite d'être lu avant la prochaine promotion. Un changelog garde les deux côtés et ne supprime rien. Le summary liste les 400 premières lignes ; le log les a toutes.
 
 Un conflit sur **tout autre fichier** est du vrai travail à réconcilier à la main : garder silencieusement un côté ferait disparaître le correctif. Le job échoue alors en nommant le fichier, avec le rebase annulé et rien de poussé. Il en va de même quand un fichier a été **supprimé d'un côté** : il n'y a pas de côté à prendre. Les chemins sont lus comme des noms, jamais comme des motifs (un fichier `[id].tsx` ne sélectionne rien d'autre) ; un motif de `MANAGED_FILES` s'applique d'abord comme chemin littéral, puis comme glob.
 
-Le chart n'est pas dans la config release-please quand il est bumpé par [`update-helm-chart.yml`](./53-update-helm-chart.md) : listez ses fichiers dans `MANAGED_FILES`.
+**release-please réécrit plus que ce que la config nomme.** Le fichier de version du `release-type` — `version.txt` pour `simple`, `package.json` et `package-lock.json` pour `node`, `Chart.yaml` pour `helm` — n'est pas dans `extra-files` : listez-le dans `MANAGED_FILES`, sinon son conflit fait échouer le job (le message d'erreur le dit). Le chart bumpé par [`update-helm-chart.yml`](./53-update-helm-chart.md) est dans le même cas : listez ses fichiers.
 
 ## Ancre de release-please après un rebase
 
