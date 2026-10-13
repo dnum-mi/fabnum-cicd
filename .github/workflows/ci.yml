@@ -88,3 +88,20 @@ jobs:
     # credentials and a stubbed `gh`. See ci/tests/lib.sh.
     - name: Run workflow tests
       run: ./ci/tests/run.sh
+
+  # The one check a ruleset requires. lint-yaml and test-workflows are path-filtered,
+  # so they cannot be required individually: a required check that never reports
+  # blocks the merge. Every job above is listed, path-filter included, so that a
+  # failure upstream cannot reach the gate as a mere skip.
+  all-jobs-passed:
+    name: Check jobs status
+    if: ${{ always() }}
+    needs:
+    - path-filter
+    - lint-commits
+    - lint-yaml
+    - test-workflows
+    uses: ./.github/workflows/check-jobs.yml
+    permissions: {}
+    with:
+      NEEDS: ${{ toJson(needs) }}
