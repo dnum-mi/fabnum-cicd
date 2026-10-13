@@ -70,6 +70,7 @@ jobs:
 | [clean-cache.yml](./.github/workflows/clean-cache.yml)   | Nettoyage du cache GitHub Actions                    | [docs](./docs/workflows/70-clean-cache.md)  |
 | [clean-images.yml](./.github/workflows/clean-images.yml) | Nettoyage des images de conteneurs sur GHCR          | [docs](./docs/workflows/71-clean-images.md) |
 | [sync-cpin.yml](./.github/workflows/sync-cpin.yml)       | Synchronisation vers l'instance GitLab CPiN          | [docs](./docs/workflows/72-sync-cpin.md)    |
+| [check-jobs.yml](./.github/workflows/check-jobs.yml)     | Agrège le résultat de tous les jobs en un seul check exigible par un ruleset | [docs](./docs/workflows/80-check-jobs.md)   |
 
 ### Secrets requis
 

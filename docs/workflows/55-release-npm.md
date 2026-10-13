@@ -6,41 +6,42 @@ Supporte les runtimes Node.js et Bun, tous les gestionnaires de paquets majeurs 
 
 ## Inputs
 
-| Input             | Type    | Description                                                                                                | Requis | Défaut                       |
-| ----------------- | ------- | ---------------------------------------------------------------------------------------------------------- | ------ | ---------------------------- |
-| RUNTIME           | string  | Runtime JavaScript (`node` ou `bun`). Vide = auto-détection                                                 | Non    | `""`                         |
-| RUNTIME_VERSION   | string  | Version du runtime. Vide = défaut par runtime (Node.js 24, Bun latest)                                      | Non    | -                            |
-| PACKAGE_MANAGER   | string  | Gestionnaire de paquets (`npm`, `yarn`, `pnpm`, `bun`). Vide = auto-détection                               | Non    | `""`                         |
-| WORKING_DIRECTORY | string  | Répertoire de travail pour l'installation, le build et la publication                                       | Non    | `.`                          |
-| REGISTRY_URL      | string  | URL du registre NPM                                                                                         | Non    | `https://registry.npmjs.org` |
-| SCOPE             | string  | Scope du registre NPM (ex. `@my-org`). Laisser vide pour un paquet sans scope.                              | Non    | -                            |
-| PRE_COMMAND       | string  | Commande shell exécutée à la racine du dépôt avant install/build (ex. build des dépendances d'un monorepo)  | Non    | -                            |
-| BUILD_COMMAND     | string  | Commande shell de build du paquet (exécutée dans `WORKING_DIRECTORY`)                                       | Non    | -                            |
-| PUBLISH_COMMAND   | string  | Commande de publication personnalisée (remplace la publication auto-détectée). Exécutée dans `WORKING_DIRECTORY` | Non | -                        |
-| TAG               | string  | Dist-tag NPM de la version publiée (ex. `latest`, `beta`, `next`)                                           | Non    | `latest`                     |
-| ACCESS            | string  | Niveau d'accès du paquet (`public` ou `restricted`)                                                         | Non    | `public`                     |
-| DRY_RUN           | boolean | Publication à blanc (validation sans envoi)                                                                 | Non    | `false`                      |
-| FAIL_ON_ERROR     | boolean | Faire échouer le workflow en cas d'erreur de publication                                                    | Non    | `true`                       |
-| RUNS_ON           | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                      | Non    | `["ubuntu-24.04"]`           |
+| Input             | Type    | Description                                                                                                                                    | Requis | Défaut                       |
+| ----------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ---------------------------- |
+| RUNTIME           | string  | Runtime JavaScript (`node` ou `bun`). Vide = auto-détection                                                                                    | Non    | `""`                         |
+| RUNTIME_VERSION   | string  | Version du runtime. Vide = défaut par runtime (Node.js 24, Bun latest)                                                                         | Non    | -                            |
+| PACKAGE_MANAGER   | string  | Gestionnaire de paquets (`npm`, `yarn`, `pnpm`, `bun`). Vide = auto-détection                                                                  | Non    | `""`                         |
+| WORKING_DIRECTORY | string  | Répertoire de travail pour l'installation, le build et la publication                                                                          | Non    | `.`                          |
+| REGISTRY_URL      | string  | URL du registre NPM                                                                                                                            | Non    | `https://registry.npmjs.org` |
+| SCOPE             | string  | Scope du registre NPM (ex. `@my-org`). Laisser vide pour un paquet sans scope.                                                                 | Non    | -                            |
+| PRE_COMMAND       | string  | Commande shell exécutée à la racine du dépôt avant install/build (ex. build des dépendances d'un monorepo)                                     | Non    | -                            |
+| BUILD_COMMAND     | string  | Commande shell de build du paquet (exécutée dans `WORKING_DIRECTORY`)                                                                          | Non    | -                            |
+| PUBLISH_COMMAND   | string  | Commande de publication personnalisée (remplace la publication auto-détectée). Exécutée dans `WORKING_DIRECTORY`                               | Non    | -                            |
+| TAG               | string  | Dist-tag NPM de la version publiée (ex. `latest`, `beta`, `next`)                                                                              | Non    | `latest`                     |
+| ACCESS            | string  | Niveau d'accès du paquet (`public` ou `restricted`)                                                                                            | Non    | `public`                     |
+| PROVENANCE        | boolean | Générer une attestation de provenance SLSA signée pour le paquet publié. Requiert `ACCESS: public` — voir [Provenance](#provenance) ci-dessous | Non    | `false`                      |
+| DRY_RUN           | boolean | Publication à blanc (validation sans envoi)                                                                                                    | Non    | `false`                      |
+| FAIL_ON_ERROR     | boolean | Faire échouer le workflow en cas d'erreur de publication                                                                                       | Non    | `true`                       |
+| RUNS_ON           | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                         | Non    | `["ubuntu-24.04"]`           |
 
 ## Secrets
 
-| Secret    | Description                                                                                                                                                                                             | Requis |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| NPM_TOKEN | Token d'authentification du registre NPM. Optionnel si le registre a configuré la publication de confiance (OIDC) pour le workflow appelant - voir [Publication de confiance](#publication-de-confiance-oidc). | Non |
+| Secret    | Description                                                                                                                                                                                                    | Requis |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| NPM_TOKEN | Token d'authentification du registre NPM. Optionnel si le registre a configuré la publication de confiance (OIDC) pour le workflow appelant - voir [Publication de confiance](#publication-de-confiance-oidc). | Non    |
 
 ## Permissions
 
-| Scope    | Accès | Description                                                          |
-| -------- | ----- | -------------------------------------------------------------------- |
-| contents | read  | Checkout du dépôt                                                     |
-| id-token | write | Émission du token OIDC pour la publication de confiance (npm, pnpm)   |
+| Scope    | Accès | Description                                                                                                                          |
+| -------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| contents | read  | Checkout du dépôt                                                                                                                    |
+| id-token | write | Émission du token OIDC pour la publication de confiance (npm, pnpm) et la signature des attestations de provenance (npm, yarn, pnpm) |
 
 ## Notes
 
 - L'authentification passe par la variable d'environnement `NODE_AUTH_TOKEN`, alimentée par `NPM_TOKEN` — le mécanisme standard compris par npm, yarn, pnpm et bun.
 - Avec le runtime **Node.js**, `actions/setup-node` crée automatiquement l'entrée d'authentification `.npmrc` à partir de `REGISTRY_URL` et `SCOPE`.
-- Avec le runtime **Bun**, l'URL du registre et le token sont écrits manuellement dans le `.npmrc` utilisateur (puis supprimés en fin de job), `actions/setup-node` n'étant pas invoqué — cela couvre le registre par défaut comme les registres scopés. Bun est installé dès que `PACKAGE_MANAGER: bun` est utilisé, même avec `RUNTIME: node`. Bun n'a pas de support OIDC ([oven-sh/bun#24855](https://github.com/oven-sh/bun/issues/24855)) : sans `NPM_TOKEN`, la publication bascule de façon transparente sur la CLI npm, qui gère l'échange OIDC — l'installation et le build restent sous bun.
+- Avec le runtime **Bun**, l'URL du registre et le token sont écrits manuellement dans le `.npmrc` utilisateur (puis supprimés en fin de job), `actions/setup-node` n'étant pas invoqué — cela couvre le registre par défaut comme les registres scopés. Bun est installé dès que `PACKAGE_MANAGER: bun` est utilisé, même avec `RUNTIME: node`. Bun n'a pas de support OIDC ([oven-sh/bun#22423](https://github.com/oven-sh/bun/issues/22423)) : sans `NPM_TOKEN`, la publication bascule de façon transparente sur la CLI npm, qui gère l'échange OIDC — l'installation et le build restent sous bun.
 - **Auto-détection** (à la [`@antfu/ni`](https://github.com/antfu-collective/ni)) : quand `PACKAGE_MANAGER`/`RUNTIME` sont vides, le workflow remonte de `WORKING_DIRECTORY` vers la racine du checkout, en cherchant à chaque niveau le champ corepack `packageManager` de `package.json` d'abord, puis les fichiers de lock (`bun.lockb`/`bun.lock` → bun, `pnpm-lock.yaml` → pnpm, `yarn.lock` → yarn, `package-lock.json` → npm), avec npm en dernier recours. Un job scopé sur un paquet de monorepo (`WORKING_DIRECTORY: packages/my-lib`) détecte donc le gestionnaire depuis le lock de la racine du workspace. Le runtime résolu est Bun quand le gestionnaire détecté est bun, sinon Node.js. Renseignez les inputs explicitement pour passer outre. Le gestionnaire détecté sélectionne aussi l'étape de publication correspondante.
 - **pnpm/yarn** sont installés automatiquement via Corepack quand le gestionnaire détecté est `pnpm` ou `yarn` ; la version épinglée dans le champ `packageManager` de `package.json` (le cas échéant) est utilisée. Yarn Berry (`.yarnrc.yml`) installe avec `--immutable`, classique avec `--frozen-lockfile`.
 - L'étape de publication `yarn` utilise `yarn npm publish` (Yarn Berry / v2+).
@@ -48,7 +49,7 @@ Supporte les runtimes Node.js et Bun, tous les gestionnaires de paquets majeurs 
 - `PRE_COMMAND` s'exécute à la **racine du dépôt** avec `NODE_AUTH_TOKEN` défini — utile pour construire des paquets partagés du workspace avant publication. `BUILD_COMMAND` s'exécute dans `WORKING_DIRECTORY`.
 - `PUBLISH_COMMAND` remplace entièrement l'étape de publication auto-détectée — la bonne option pour Turborepo, Lerna ou tout outillage de release personnalisé.
 - `DRY_RUN` ajoute `--dry-run` à la commande de publication pour valider le packaging sans envoi. Note : `yarn npm publish` (Yarn Berry) ne supporte pas `--dry-run`, donc `DRY_RUN: true` n'est pas supporté avec `PACKAGE_MANAGER: yarn`.
-- `FAIL_ON_ERROR: false` est utile quand certains paquets d'une matrice sont peut-être déjà publiés.
+- `FAIL_ON_ERROR: false` est utile quand certains paquets d'une matrice sont peut-être déjà publiés : l'échec de publication n'échoue alors pas le job.
 - Les caches de dépendances sont indexés par gestionnaire de paquets, OS, architecture et le hash combiné de tous les fichiers de lock.
 - `FAIL_ON_ERROR` est appliqué par une étape de contrôle explicite en fin de job, pas par `continue-on-error`. Une expression à cet endroit (<span v-pre>`${{ !inputs.FAIL_ON_ERROR }}`</span>) se résout silencieusement à `true` même quand l'input est défini, ce qui neutralise le contrôle — l'étape échoue, le job réussit, et la seule trace est une annotation `failure` dans le résumé du run. Rapports, artefacts et nettoyage s'exécutent avant le contrôle.
 
@@ -60,9 +61,27 @@ npm et pnpm supportent la [publication de confiance](https://docs.npmjs.com/trus
 2. Accordez `id-token: write` au job appelant (dans votre `cd.yml`) — ce workflow le demande déjà en interne, mais les deux sont requis car les permissions doivent être explicites à chaque niveau d'une chaîne d'appel de workflows réutilisables.
 3. Omettez le secret `NPM_TOKEN`, ou gardez-le en repli — la CLI npm (≥ 11.5.1, livrée avec Node.js 24+) tente OIDC d'abord et ne bascule sur un token statique que si OIDC n'est pas disponible.
 4. Le support OIDC de pnpm est plus récent et a connu des régressions sur certaines versions (voir [pnpm#11513](https://github.com/pnpm/pnpm/issues/11513)) — épinglez une version `packageManager` connue comme fonctionnelle et vérifiez une vraie publication avant de vous y fier exclusivement.
-5. bun n'a pas de support OIDC ([oven-sh/bun#24855](https://github.com/oven-sh/bun/issues/24855)) : avec `PACKAGE_MANAGER: bun` et sans `NPM_TOKEN`, ce workflow publie via la CLI npm au lieu de `bun publish` — aucun changement côté appelant au-delà de la suppression du secret.
+5. bun n'a pas de support OIDC ([oven-sh/bun#22423](https://github.com/oven-sh/bun/issues/22423)) : avec `PACKAGE_MANAGER: bun` et sans `NPM_TOKEN`, ce workflow publie via la CLI npm au lieu de `bun publish` — aucun changement côté appelant au-delà de la suppression du secret.
 
 Si vous migrez un paquet existant d'un token vers la publication de confiance, pensez à mettre à jour le chemin de workflow enregistré du trusted publisher chaque fois que le fichier d'entrée change (ex. après migration de la CI/CD vers des workflows réutilisables).
+
+### Provenance
+
+`PROVENANCE: true` demande une [attestation de provenance SLSA](https://docs.npmjs.com/generating-provenance-statements/) signée pour le paquet publié — un enregistrement vérifiable et consultable publiquement du workflow, du dépôt et du commit qui l'ont produit. Le support et le mécanisme exact diffèrent selon le gestionnaire de paquets, tous s'appuyant sur le même token OIDC `id-token: write` que ce job demande déjà :
+
+| Gestionnaire | Mécanisme                                                                                                  | Notes                                                                                                                                                                                                                                                                          |
+| ------------ | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| npm          | `--provenance` (natif depuis npm 9.5.0 ; le Node.js 24 livré avec ce workflow est bien au-delà)            | Automatique avec la publication de confiance même sans le flag — le passer explicitement est inoffensif dans les deux cas, et c'est ce que fait ce workflow                                                                                                                    |
+| yarn         | `--provenance` sur `yarn npm publish` (Yarn Berry / v2+ ; requiert ≥ 4.9.0)                                | Indisponible sur Yarn Classic (v1) — l'étape de publication yarn de ce workflow ne cible déjà que Berry, voir la note ci-dessus                                                                                                                                                |
+| pnpm         | `--provenance` sur `pnpm publish`                                                                          | Plus récent que celui de npm, et le mécanisme OIDC propre à pnpm a déjà connu de vraies régressions (voir le point 4 ci-dessus) — vérifiez une vraie publication plutôt que de supposer une parité avec npm                                                                    |
+| bun          | Non supporté par `bun publish` lui-même ([oven-sh/bun#22423](https://github.com/oven-sh/bun/issues/22423)) | Sans `NPM_TOKEN`, ce workflow route déjà les projets bun via la CLI npm (point 5 ci-dessus), qui le supporte — `PROVENANCE: true` avec `PACKAGE_MANAGER: bun` et un `NPM_TOKEN` fourni échoue à la validation, en amont, plutôt que de publier silencieusement sans provenance |
+
+Deux exigences s'appliquent quel que soit le gestionnaire, toutes deux imposées par le registre et non par ces clients :
+
+- **`ACCESS` doit valoir `public`.** Une attestation de provenance est une métadonnée publique, vérifiable par tous ; le registre refuse d'en attacher une à un paquet restreint (« Can't generate provenance for new or private package, you must set access to public »). Ce workflow valide la combinaison en amont et échoue en nommant l'input à changer, plutôt que de laisser l'étape de publication échouer avec l'erreur, moins précise, du registre.
+- **Le champ `repository` de `package.json` doit correspondre** (en respectant la casse) au dépôt depuis lequel ce workflow publie. C'est de la responsabilité du paquet lui-même, ce workflow ne peut pas le valider pour le compte de l'appelant.
+
+`PROVENANCE` ne s'applique qu'aux étapes de publication auto-détectées — comme `TAG`, `ACCESS` et `DRY_RUN`, il n'a aucun effet quand `PUBLISH_COMMAND` les remplace.
 
 ## Exemples
 
@@ -96,6 +115,22 @@ jobs:
       id-token: write
     with:
       WORKING_DIRECTORY: .
+```
+
+### Publication avec provenance
+
+S'associe naturellement à la publication de confiance (les deux reposent sur le même token OIDC), mais fonctionne aussi avec un `NPM_TOKEN` statique — voir [Provenance](#provenance) ci-dessus pour les différences par gestionnaire de paquets.
+
+```yaml
+jobs:
+  release-npm:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-npm.yml@v0
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      WORKING_DIRECTORY: .
+      PROVENANCE: true
 ```
 
 ### Monorepo : build des dépendances partagées puis publication

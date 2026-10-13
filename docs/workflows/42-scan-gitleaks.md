@@ -4,15 +4,15 @@ Analyse de l'historique git complet à la recherche de secrets divulgués avec [
 
 ## Inputs
 
-| Input               | Type    | Description                                                                              | Requis | Défaut              |
-| ------------------- | ------- | ----------------------------------------------------------------------------------------- | ------ | ------------------- |
-| GITLEAKS_VERSION    | string  | Version de gitleaks utilisée pour effectuer le scan                                       | Non    | `8.30.1`            |
-| FORMAT              | string  | Format du rapport (`sarif`, `json`, `csv`, `junit`)                                       | Non    | `sarif`             |
-| LOG_OPTS            | string  | Plage de révisions passée à `git log` pour le scan. Par défaut la ref checkout uniquement ; élargir (ex: `--all`) pour scanner toutes les branches | Non    | `HEAD`              |
-| FAIL_ON_LEAKS       | boolean | Faire échouer le workflow si des secrets sont détectés                                    | Non    | `true`              |
-| PR_NUMBER           | string  | Numéro de la PR pour poster le commentaire de résumé du scan                              | Non    | -                   |
-| GITHUB_SECURITY_TAB | boolean | Lier l'onglet GitHub Security dans le commentaire de la PR                                | Non    | `false`             |
-| RUNS_ON             | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)    | Non    | `["ubuntu-24.04"]`  |
+| Input               | Type    | Description                                                                                                                                        | Requis | Défaut             |
+| ------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------ |
+| GITLEAKS_VERSION    | string  | Version de gitleaks utilisée pour effectuer le scan                                                                                                | Non    | `8.30.1`           |
+| FORMAT              | string  | Format du rapport (`sarif`, `json`, `csv`, `junit`)                                                                                                | Non    | `sarif`            |
+| LOG_OPTS            | string  | Plage de révisions passée à `git log` pour le scan. Par défaut la ref checkout uniquement ; élargir (ex: `--all`) pour scanner toutes les branches | Non    | `HEAD`             |
+| FAIL_ON_LEAKS       | boolean | Faire échouer le workflow si des secrets sont détectés                                                                                             | Non    | `true`             |
+| PR_NUMBER           | string  | Numéro de la PR pour poster le commentaire de résumé du scan                                                                                       | Non    | -                  |
+| GITHUB_SECURITY_TAB | boolean | Lier l'onglet GitHub Security dans le commentaire de la PR                                                                                         | Non    | `false`            |
+| RUNS_ON             | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                             | Non    | `["ubuntu-24.04"]` |
 
 ## Secrets
 
@@ -20,9 +20,9 @@ Ce workflow ne nécessite aucun secret.
 
 ## Permissions
 
-| Scope           | Accès | Description                        |
-| --------------- | ----- | ----------------------------------- |
-| contents        | read  | Lire le code source                 |
+| Scope           | Accès | Description                                       |
+| --------------- | ----- | ------------------------------------------------- |
+| contents        | read  | Lire le code source                               |
 | security-events | write | Upload des résultats SARIF vers l'onglet Security |
 | pull-requests   | write | Commenter les PRs avec les résultats du scan      |
 
@@ -36,6 +36,7 @@ Ce workflow ne nécessite aucun secret.
 - Un fichier de configuration `.gitleaks.toml` et un fichier `.gitleaksignore` à la racine du dépôt sont pris en compte automatiquement pour ajuster les règles ou ignorer des faux positifs connus. Préférer `.gitleaks.toml` : les fingerprints de `.gitleaksignore` sont épinglés au commit (`<commit>:<fichier>:<règle>:<ligne>`) et deviennent caducs à chaque rebase, amend ou squash de la branche portant la ligne, alors qu'une allowlist `targetRules` + `paths` reste valable.
 - Quand des secrets sont détectés, l'upload du rapport et le commentaire PR s'exécutent toujours avant que le workflow échoue. Mettre `FAIL_ON_LEAKS: false` pour un mode purement informatif qui ne bloque jamais le pipeline.
 - Avec `GITHUB_SECURITY_TAB: true` et `FORMAT: sarif`, upload les résultats vers l'onglet Security.
+- Le lien vers l'onglet Security dans le commentaire de PR est filtré sur la ref contre laquelle le SARIF a réellement été uploadé : `pr:<numéro>` pour un run `pull_request`, `branch:<nom>` pour un push, et aucun filtre de ref pour tout le reste (un tag). Code scanning n'indexe les alertes que sous cette ref : un appelant qui scanne sur `push` et passe `PR_NUMBER` à la main obtient donc quand même un lien qui aboutit, alors qu'un filtre `pr:` figé tomberait sur un onglet vide.
 - Runners Linux uniquement (x64 et arm64 supportés).
 
 ## Exemples

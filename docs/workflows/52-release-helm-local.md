@@ -15,40 +15,56 @@ The nested job 'release' is requesting 'contents: write', but is only allowed 'c
 
 Séparer en deux fichiers signifie que chacun ne déclare que les permissions dont son propre job a besoin - ce workflow n'a besoin que de `contents: read`, un point c'est tout, car il ne crée jamais de tag git, de release ni de commit sur une branche pages.
 
+Le même raisonnement sépare [`dispatch-helm-chart.yml`](./54-dispatch-helm-chart.md) de [`update-helm-chart.yml`](./53-update-helm-chart.md). `ci/tests/permission-union.test.sh` fait désormais respecter cette règle, de sorte qu'un futur workflow ne puisse pas réintroduire discrètement cette forme.
+
 ## Inputs
 
-| Input         | Type   | Description                                                                                                                                         | Requis | Défaut              |
-| ------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | ------------------- |
-| CHARTS_DIR    | string | Répertoire contenant les charts Helm                                                                                                               | Non    | `./charts`          |
-| CHART_NAME    | string | Dossier du chart sous `CHARTS_DIR` à publier (ex: `my-app`). Laisser vide pour packager tous les charts trouvés directement sous `CHARTS_DIR`.     | Non    | -                   |
-| CHART_VERSION | string | Version du chart à appliquer (`helm package --version`). Par défaut, utilise la version déjà présente dans `Chart.yaml`.                           | Non    | -                   |
-| APP_VERSION   | string | Version applicative à appliquer (`helm package --app-version`). Par défaut, utilise l'`appVersion` déjà présente dans `Chart.yaml`.                | Non    | -                   |
-| CHECKOUT_REF  | string | Ref git (branche ou SHA) à checkout avant le packaging, ex: l'output `commit-sha` de `update-helm-chart.yml` en mode local. Défaut : le commit qui a déclenché le workflow. | Non    | -                   |
-| HELM_REPOS    | string | Dépôts Helm à ajouter pour résoudre les dépendances des charts (format: `name=url`, séparés par des virgules). Ignoré si vide.                     | Non    | -                   |
-| REGISTRY      | string | Registre OCI pour publier les charts (ex: `ghcr.io`, `registry.gitlab.com`)                                                                        | Non    | `ghcr.io`           |
-| REPOSITORY    | string | Chemin du repository dans le registre OCI (défaut: `github.repository`)                                                                            | Non    | `github.repository` |
-| RUNS_ON       | string | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                             | Non    | `["ubuntu-24.04"]`  |
+| Input           | Type    | Description                                                                                                                                                                                                      | Requis | Défaut              |
+| --------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------- |
+| CHARTS_DIR      | string  | Répertoire contenant les charts Helm                                                                                                                                                                             | Non    | `./charts`          |
+| CHART_NAME      | string  | Dossier du chart sous `CHARTS_DIR` à publier (ex: `my-app`). Laisser vide pour packager tous les charts trouvés directement sous `CHARTS_DIR`.                                                                   | Non    | -                   |
+| CHART_PATH      | string  | Chemin d'un dossier de chart unique (celui qui contient `Chart.yaml`), ex: `deploy/helm`, pour un chart dont le dossier ne porte pas le nom. Exclusif avec `CHART_NAME` ; `CHARTS_DIR` est ignoré quand il est défini. | Non    | -                   |
+| CHART_VERSION   | string  | Version du chart à appliquer (`helm package --version`). Par défaut, utilise la version déjà présente dans `Chart.yaml`.                                                                                         | Non    | -                   |
+| APP_VERSION     | string  | Version applicative à appliquer (`helm package --app-version`). Par défaut, utilise l'`appVersion` déjà présente dans `Chart.yaml`.                                                                              | Non    | -                   |
+| CHECKOUT_REF    | string  | Ref git (branche ou SHA) à checkout avant le packaging, ex: l'output `commit-sha` de `update-helm-chart.yml` en mode local. Défaut : le commit qui a déclenché le workflow.                                      | Non    | -                   |
+| HELM_REPOS      | string  | Dépôts Helm à ajouter pour résoudre les dépendances des charts (format: `name=url`, séparés par des virgules). Ignoré si vide.                                                                                   | Non    | -                   |
+| REGISTRY        | string  | Registre OCI pour publier les charts (ex: `ghcr.io`, `registry.gitlab.com`)                                                                                                                                      | Non    | `ghcr.io`           |
+| REPOSITORY      | string  | Chemin du repository dans le registre OCI (défaut: `github.repository`)                                                                                                                                          | Non    | `github.repository` |
+| ALLOW_OVERWRITE | boolean | Pousser une version de chart déjà présente dans le registre. Désactivé par défaut : chaque package est vérifié avant tout push, et seul un "not found" explicite laisse passer                                   | Non    | `false`             |
+| RUNS_ON         | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                                                                                          | Non    | `["ubuntu-24.04"]`  |
 
 ## Secrets
 
-| Secret            | Description                                                                       | Requis |
-| ----------------- | ---------------------------------------------------------------------------------- | ------ |
-| REGISTRY_USERNAME | Nom d'utilisateur pour l'authentification au registre OCI (utilise `github.actor` automatiquement pour `ghcr.io`). **Requis** quand `REGISTRY` n'est pas `ghcr.io`. | Non    |
+| Secret            | Description                                                                                                                                                          | Requis |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| REGISTRY_USERNAME | Nom d'utilisateur pour l'authentification au registre OCI (utilise `github.actor` automatiquement pour `ghcr.io`). **Requis** quand `REGISTRY` n'est pas `ghcr.io`.   | Non    |
 | REGISTRY_PASSWORD | Mot de passe pour l'authentification au registre OCI (utilise `GITHUB_TOKEN` automatiquement pour `ghcr.io`). **Requis** avec `REGISTRY_USERNAME` dans les mêmes conditions. | Non    |
 
 Pas de credentials GitHub App/PAT - ce workflow ne crée jamais de tag git, de release ni de commit, donc rien n'a besoin d'un credential au-delà de l'authentification au registre.
 
+## Outputs
+
+| Output           | Description                                                                                                                        |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| published-charts | Tableau JSON des charts poussés sur le registre OCI - `{name, version, repository, digest}` par entrée. Jamais vide               |
+
+De forme identique à l'[output du même nom sur `release-helm.yml`](./51-release-helm.md#outputs), de sorte que [`attest-helm.yml`](./56-attest-helm.md) consomme l'un ou l'autre sans se soucier de celui qui a publié - un chart de monorepo a autant droit à une signature et à une attestation de provenance qu'un chart d'un dépôt de charts dédié. `repository` et `digest` sont gardés séparés pour être transmis tels quels, comme sujet à cosign et comme couple `subject-name`/`subject-digest` attendu par `actions/attest-build-provenance`. Le nom et la version sont relus depuis la sortie de `helm push` plutôt qu'extraits du nom de fichier du package, qui ne peut pas être découpé de façon fiable : une version de prerelease contient elle-même des tirets (`my-chart-1.2.3-rc.1.tgz`).
+
+Contrairement à `release-helm.yml`, cet output n'est jamais un tableau vide - aucun input ne permet de désactiver la publication, et un run qui n'a trouvé aucun chart à packager échoue au lieu de réussir sans rien à montrer. Un `attest-helm.yml` en aval n'a donc besoin d'aucune garde contre l'attestation de rien.
+
 ## Permissions
 
-| Scope    | Accès | Description                              |
-| -------- | ----- | ----------------------------------------- |
-| contents | read  | Checkout uniquement                       |
+| Scope    | Accès | Description                                       |
+| -------- | ----- | ------------------------------------------------- |
+| contents | read  | Checkout uniquement                               |
 | packages | write | Pousser le chart vers le registre OCI (`ghcr.io`) |
 
 ## Notes
 
+- **Une version déjà publiée n'est jamais poussée à nouveau** sauf si `ALLOW_OVERWRITE` est positionné. Un consommateur épingle un chart par sa version et `attest-helm.yml` signe le digest poussé en premier : pousser à nouveau sous la même version changerait silencieusement le sens de cette version et orphelinerait sa signature. Chaque package est vérifié (`helm show chart oci://…/<name> --version <version>`) avant tout push, si bien qu'un run ne peut pas publier la moitié de ses charts ; une réponse autre que "not found" (denied, rate limited, unreachable) arrête le run au lieu d'être lue comme "non publié".
 - N'inspecte pas l'historique git : package exactement ce qui est pointé, à la version présente dans `Chart.yaml` sauf si `CHART_VERSION`/`APP_VERSION` la remplacent. Cela rend les releases de charts déterministes dans un monorepo, sans nécessiter de commit sur `Chart.yaml`.
-- **Gardez les cycles de vie du chart et de l'application séparés** : le chart a son propre flux de versions - il est bumpé quand l'application est publiée (avec un nouvel `appVersion`), mais peut aussi être publié seul (correctif de values/template, sans changement applicatif). Le cerveau de versioning pour cela est [`update-helm-chart.yml`](./53-update-helm-chart.md) en mode `local` : il calcule la prochaine version du chart (compatible release-please, gère les prereleases), commit le bump sur la branche, et expose `commit-sha` en output - à fournir à ce workflow via `CHECKOUT_REF` pour que le package publié corresponde exactement à l'état commité. Les inputs `CHART_VERSION`/`APP_VERSION` restent une échappatoire pour les configurations sans commit ; préférez le `Chart.yaml` commité comme source de vérité.
+- **Gardez les cycles de vie du chart et de l'application séparés** : le chart a son propre flux de versions - il est bumpé quand l'application est publiée (avec un nouvel `appVersion`), mais peut aussi être publié seul (correctif de values/template, sans changement applicatif). Le cerveau de versioning pour cela est [`update-helm-chart.yml`](./53-update-helm-chart.md) en mode `local` : il calcule la prochaine version du chart (compatible release-please, gère les prereleases), commit le bump sur la branche, et expose `commit-sha` en output - à fournir à ce workflow via `CHECKOUT_REF` pour que le package publié corresponde exactement à l'état commité. Les inputs `CHART_VERSION`/`APP_VERSION` restent une échappatoire pour les configurations sans état ; préférez le `Chart.yaml` commité comme source de vérité.
+- **Publieur harmonisé** : ce workflow publie le `Chart.yaml` commité, que le bump soit arrivé par un commit direct (`CHECKOUT_REF` dans le même run) ou par une PR fusionnée (un CD de chart déclenché sur `paths: charts/**`, avec une garde "version bumpée").
 - **Pas de switch `PUBLISH_OCI`, contrairement à [`release-helm.yml`](./51-release-helm.md)** : le registre OCI est l'unique canal de distribution de ce workflow. Dans un monorepo, les GitHub Releases et les tags git appartiennent à l'*application*, le chart ne peut donc pas se les approprier pour ses propres packages - ce qui exclut le canal tgz-sur-release + `index.yaml` que chart-releaser propose dans un dépôt de charts dédié. Un input désactivant le push OCI ne laisserait plus rien à publier à ce workflow ; il n'existe donc pas.
 - **Les credentials de registre sont validés en amont** : avec un `REGISTRY` autre que `ghcr.io`, l'absence de `REGISTRY_USERNAME`/`REGISTRY_PASSWORD` fait échouer le run avec un message explicite, plutôt que d'atteindre `helm registry login` avec un mot de passe vide et d'échouer sur une erreur d'authentification opaque.
 - **Les credentials sont effacés ensuite** : une étape `helm registry logout` s'exécute dès lors que le login a réussi, y compris après un push en échec. Les runners hébergés étant éphémères, c'est sans effet chez eux, mais `RUNS_ON` supporte aussi les runners self-hosted, où la config de registre de Helm survivrait au job.
@@ -78,7 +94,7 @@ jobs:
     uses: dnum-mi/fabnum-cicd/.github/workflows/update-helm-chart.yml@v0
     needs:
     - release
-    if: ${{ needs.release.outputs.release-created }}
+    if: ${{ needs.release.outputs.release-created == 'true' }}
     permissions:
       contents: write
       pull-requests: write
@@ -101,9 +117,24 @@ jobs:
       CHART_NAME: my-app
       # Package exactement le commit de bump poussé par update-helm-chart
       CHECKOUT_REF: ${{ needs.bump-chart.outputs.commit-sha }}
+
+  attest-chart:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/attest-helm.yml@v0
+    needs:
+    - release-chart
+    permissions:
+      packages: write
+      id-token: write
+      attestations: write
+    with:
+      # Transmettre published-charts tel quel : il porte déjà le digest auquel
+      # chaque attestation est liée
+      CHARTS: ${{ needs.release-chart.outputs.published-charts }}
+      PROVENANCE: true
+      SIGN: true
 ```
 
-> Le chart et l'application gardent délibérément des **versions séparées** : ici une release applicative `1.4.0` peut publier le chart `0.7.3` avec `appVersion: 1.4.0`. Un correctif du chart seul relance la même paire `bump-chart` + `release-chart` avec `APP_VERSION` omis. Les inputs `CHART_VERSION`/`APP_VERSION` de ce workflow restent disponibles comme échappatoire sans commit (stamping au moment du packaging), si vous acceptez que le `Chart.yaml` en git ne reflète pas les versions publiées.
+> Le chart et l'application gardent délibérément des **versions séparées** : ici une release applicative `1.4.0` peut publier le chart `0.7.3` avec `appVersion: 1.4.0`. Un correctif du chart seul relance la même paire `bump-chart` + `release-chart` avec `APP_VERSION` omis. Les inputs `CHART_VERSION`/`APP_VERSION` de ce workflow restent disponibles comme échappatoire sans état (stamping au moment du packaging, sans commit), si vous acceptez que le `Chart.yaml` en git ne reflète pas les versions publiées.
 
 ### Registre OCI personnalisé
 
@@ -122,4 +153,18 @@ jobs:
     secrets:
       REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
       REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+```
+
+### Dossier de chart ne portant pas le nom du chart
+
+```yaml
+jobs:
+  release-chart:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-helm-local.yml@v0
+    permissions:
+      contents: read
+      packages: write
+    with:
+      # Le Chart.yaml de deploy/helm déclare `name: my-app` ; il est poussé sous le nom my-app
+      CHART_PATH: deploy/helm
 ```

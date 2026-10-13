@@ -47,6 +47,7 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 - [**Clean Cache**](./70-clean-cache.md) - Nettoyage du cache GitHub Actions
 - [**Clean Images**](./71-clean-images.md) - Nettoyage des images de conteneurs sur GHCR
 - [**Sync CPiN**](./72-sync-cpin.md) - Synchronisation avec l'instance GitLab CPiN
+- [**Check Jobs**](./80-check-jobs.md) - Agrégation du résultat de tous les jobs en un seul check exigible par un ruleset
 
 ### Guides
 

@@ -37,7 +37,7 @@ Exécute une commande dans une image Docker construite, depuis une référence d
 - S'associe à `build-docker.yml` utilisé avec `PUSH: false`, pour tester une image **avant** qu'elle soit publiée plutôt qu'après.
 - `ENTRYPOINT` est nécessaire dès que l'image déclare un entrypoint qui absorberait sinon `COMMAND` - un shell, ou un script de démarrage de service. Sans lui, `COMMAND` est passé en arguments à l'entrypoint existant.
 - `WORKSPACE_PATH` monte un répertoire du dépôt appelant en lecture seule, pour que les scripts de test vivent à côté du code qu'ils vérifient plutôt que d'être écrits en dur dans le workflow.
-- `COMMAND` et `RUN_ARGS` sont découpés en argv (word-splitting), donc ils se comportent comme sur une ligne de commande shell.
+- `COMMAND` et `RUN_ARGS` sont découpés en argv (word-splitting), donc ils se comportent comme sur une ligne de commande shell. Le découpage se fait uniquement sur les espaces : les guillemets, les globs et `$VAR` ne sont **pas** interprétés, et seule la première ligne d'une valeur multiligne est utilisée. Un argument qui doit contenir un espace ne peut pas être exprimé ici - le mettre dans un script et appeler ce script à la place.
 - Le dépôt n'est checkout que si `WORKSPACE_PATH` est fourni.
 - Permet de détecter une classe d'erreur qu'un `docker build` réussi ne peut pas révéler : un outil installé mais qui ne s'exécute pas, un binaire jamais ajouté au `PATH`, une librairie partagée manquante.
 
