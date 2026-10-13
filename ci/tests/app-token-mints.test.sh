@@ -151,6 +151,37 @@ test_every_minting_job_validates_its_credentials() {
   done < <(each_minting_job)
 }
 
+# A minted token that nothing consumes is the worst of both worlds: the App is
+# configured, the private key is in the repository, the mint step runs green -
+# and the work is still done by GITHUB_TOKEN. Nothing above notices, because
+# every other invariant here is about how the token is *made*. For a release
+# workflow the symptom is silent: the release appears and its `release:`
+# triggers never fire.
+test_every_minted_token_is_actually_used() {
+  local workflow job id used
+  while IFS=$'\t' read -r workflow job; do
+    id=$(yq "
+      .jobs.\"$job\".steps[]
+      | select(has(\"uses\"))
+      | select(.uses | test(\"create-github-app-token\"))
+      | .id
+    " "$WORKFLOWS_DIR/$workflow")
+
+    if [ -z "$id" ] || [ "$id" = "null" ]; then
+      printf 'FAIL: %s job %q mints a token with no step id, so nothing can reference it\n' \
+        "$workflow" "$job" >&2
+      exit 1
+    fi
+
+    used=$(yq -o=json -I=0 ".jobs.\"$job\"" "$WORKFLOWS_DIR/$workflow")
+    if [[ "$used" != *"steps.$id.outputs.token"* ]]; then
+      printf 'FAIL: %s job %q mints a token as %q and never reads it\n' \
+        "$workflow" "$job" "$id" >&2
+      exit 1
+    fi
+  done < <(each_minting_job)
+}
+
 test_mints_are_pinned_to_a_commit_sha() {
   local uses
   while read -r uses; do

@@ -19,6 +19,9 @@ validate_env() {
   export APP_VERSION="1.4.0"
   export UPGRADE_TYPE="patch"
   export PRERELEASE_IDENTIFIER="rc"
+  export HELM_DOCS_VERSION="v1.14.2"
+  export CHART_NAME="my-app"
+  export CHART_PATH=""
 }
 
 test_validate_accepts_both_delivery_modes() {
@@ -160,12 +163,80 @@ test_update_stores_a_hostile_app_version_literally() {
   assert_file_contains "$SANDBOX/$CHART_DIR/$CHART_NAME/Chart.yaml" 'e touch pwned'
 }
 
-test_update_pins_helm_docs() {
+test_update_runs_helm_docs_on_the_chart_and_pulls_no_image() {
   chart_env
   run_block "$UPDATE"
   assert_status 0
-  assert_called "docker.io/jnorwood/helm-docs:v1.14.2"
-  assert_not_called "helm-docs:latest"
+  assert_called "helm-docs|--chart-search-root charts/my-app"
+  assert_not_called "docker"
+}
+
+# The tool is built from source at the version asked for, so 'latest' would
+# install whatever is newest on the day - the floating pin the input refuses.
+test_validate_rejects_a_helm_docs_version_that_is_not_a_release_tag() {
+  local bad
+  for bad in latest 1.14.2 main; do
+    validate_env
+    export HELM_DOCS_VERSION="$bad"
+    run_block "$VALIDATE"
+    assert_status 1 "HELM_DOCS_VERSION '$bad' is not a release tag"
+    assert_output_contains "HELM_DOCS_VERSION must be a release tag"
+  done
+}
+
+test_validate_accepts_the_default_helm_docs_version() {
+  validate_env
+  run_block "$VALIDATE"
+  assert_status 0 "the default release tag must validate"
+}
+
+# --- CHART_PATH / CHART_NAME: exactly one names the chart --------------------
+
+test_validate_requires_a_chart() {
+  validate_env
+  export CHART_NAME=""
+
+  run_block "$VALIDATE"
+
+  assert_status 1
+  assert_output_contains "Set CHART_NAME (with CHART_DIR) or CHART_PATH"
+}
+
+test_validate_rejects_chart_path_with_chart_name() {
+  validate_env
+  export CHART_PATH="deploy/helm"
+
+  run_block "$VALIDATE"
+
+  assert_status 1
+  assert_output_contains "CHART_PATH and CHART_NAME are mutually exclusive"
+}
+
+test_validate_accepts_chart_path_alone() {
+  validate_env
+  export CHART_NAME=""
+  export CHART_PATH="deploy/helm"
+
+  run_block "$VALIDATE"
+
+  assert_status 0
+}
+
+test_update_rejects_a_chart_name_unfit_for_branches() {
+  mkdir -p "$SANDBOX/deploy/helm"
+  printf 'apiVersion: v2\nname: "x; touch pwned"\nversion: 1.0.0\n' >"$SANDBOX/deploy/helm/Chart.yaml"
+  cd "$SANDBOX" || exit 1
+  export CHART_DIR="charts" CHART_NAME="" CHART_PATH="deploy/helm"
+  export APP_VERSION="" UPGRADE_TYPE="patch" PRERELEASE_IDENTIFIER="rc" HELM_DOCS_VERSION="v1.14.2"
+
+  run_block "$UPDATE"
+
+  assert_status 1 "a Chart.yaml name flows into branch names and commit messages"
+  assert_output_contains "is not a valid chart name"
+  if [ -e "$SANDBOX/pwned" ]; then
+    echo "FAIL: the chart name was executed" >&2
+    exit 1
+  fi
 }
 
 run_tests

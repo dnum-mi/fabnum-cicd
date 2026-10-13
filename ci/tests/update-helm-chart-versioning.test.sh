@@ -16,6 +16,7 @@ UPDATE=$(extract_run update-helm-chart.yml update "update chart version")
 chart_at() {
   export CHART_DIR="charts"
   export CHART_NAME="my-app"
+  export CHART_PATH=""
   export APP_VERSION=""
   export UPGRADE_TYPE="${2:-patch}"
   export PRERELEASE_IDENTIFIER="${3:-rc}"
@@ -249,6 +250,9 @@ validate_env() {
   export APP_VERSION="1.4.0"
   export UPGRADE_TYPE="patch"
   export PRERELEASE_IDENTIFIER="rc"
+  export HELM_DOCS_VERSION="v1.14.2"
+  export CHART_NAME="my-app"
+  export CHART_PATH=""
 }
 
 test_validate_accepts_every_upgrade_type() {
@@ -278,6 +282,37 @@ test_validate_accepts_auto_without_app_version() {
   export APP_VERSION=""
   run_block "$VALIDATE"
   assert_status 0 "the default type with the documented empty APP_VERSION must validate"
+}
+
+# --- CHART_PATH: a chart whose directory is not named after it ---------------
+
+test_chart_path_bumps_a_chart_not_named_after_its_directory() {
+  export CHART_DIR="charts" CHART_NAME="" CHART_PATH="utils/helm/"
+  export APP_VERSION="" UPGRADE_TYPE="patch" PRERELEASE_IDENTIFIER="rc" HELM_DOCS_VERSION="v1.14.2"
+  mkdir -p "$SANDBOX/utils/helm"
+  printf 'apiVersion: v2\nname: ohmlab\nversion: 0.1.0\n' >"$SANDBOX/utils/helm/Chart.yaml"
+  cd "$SANDBOX" || exit 1
+
+  run_block "$UPDATE"
+
+  assert_status 0
+  local actual
+  actual=$(yq '.version' "$SANDBOX/utils/helm/Chart.yaml")
+  [ "$actual" = "0.1.1" ] || { echo "FAIL: expected 0.1.1, got $actual" >&2; exit 1; }
+  assert_file_contains "$GITHUB_OUTPUT" "CHART_NAME=ohmlab"
+  assert_file_contains "$GITHUB_OUTPUT" "CHART_PATH=utils/helm"
+  assert_file_contains "$GITHUB_OUTPUT" "BRANCH_NAME=ohmlab-v0.1.1"
+  assert_called "helm-docs|--chart-search-root utils/helm"
+}
+
+test_legacy_mode_keeps_the_input_name() {
+  chart_at 1.2.3 patch
+
+  run_block "$UPDATE"
+
+  assert_status 0
+  assert_file_contains "$GITHUB_OUTPUT" "CHART_NAME=my-app"
+  assert_file_contains "$GITHUB_OUTPUT" "CHART_PATH=charts/my-app"
 }
 
 run_tests
