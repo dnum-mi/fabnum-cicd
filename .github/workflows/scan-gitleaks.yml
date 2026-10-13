@@ -41,6 +41,14 @@ on:
         type: string
         default: '["ubuntu-24.04"]'
 
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   secrets-scan:
     name: Scan git history for leaked secrets
@@ -144,17 +152,71 @@ jobs:
     needs:
     - secrets-scan
     steps:
+    - name: Build the report link
+      id: report
+      env:
+        GITHUB_SECURITY_TAB: ${{ inputs.GITHUB_SECURITY_TAB }}
+        FORMAT: ${{ inputs.FORMAT }}
+        REPOSITORY: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+        REF: ${{ github.ref }}
+      # Code scanning only finds the alerts under the ref the SARIF was uploaded
+      # against, and that ref is `github.ref` - the same one for every job of
+      # this run. A pull request lands under `refs/pull/<N>/merge`, which the
+      # search matches as `pr:<N>`; anything pushed lands under
+      # `refs/heads/<branch>`, which it matches as `branch:<name>`. Deriving the
+      # filter from the ref instead of always assuming a pull request is what
+      # keeps the link honest for a caller that scans on `push` and passes
+      # PR_NUMBER by hand - there the alerts are on a branch and `pr:<N>` finds
+      # nothing.
+      run: |
+        if [ "${GITHUB_SECURITY_TAB}" != "true" ] || [ "${FORMAT}" != "sarif" ]; then
+          echo "link=[the GitHub Workflow Summary](https://github.com/${REPOSITORY}/actions/runs/${RUN_ID})" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Percent-encode everything outside the unreserved set: a branch name may
+        # hold `#`, `&` or `+`, each of which would otherwise cut the query short
+        # or decode back to a different name. Iterating under LC_ALL=C walks
+        # bytes, so a non-ASCII name encodes to the UTF-8 sequence the search
+        # expects rather than to a codepoint it cannot read.
+        urlencode() {
+          local LC_ALL=C string="$1" index char encoded=""
+          for (( index = 0; index < ${#string}; index++ )); do
+            char="${string:index:1}"
+            case "${char}" in
+              [a-zA-Z0-9.~_-]) encoded+="${char}" ;;
+              *) printf -v char '%%%02X' "'${char}"; encoded+="${char}" ;;
+            esac
+          done
+          printf '%s' "${encoded}"
+        }
+
+        case "${REF}" in
+          refs/pull/*/merge | refs/pull/*/head)
+            PR_REF="${REF#refs/pull/}"
+            FILTER="+pr%3A$(urlencode "${PR_REF%%/*}")"
+            ;;
+          refs/heads/*)
+            FILTER="+branch%3A$(urlencode "${REF#refs/heads/}")"
+            ;;
+          # A tag, or a ref shape that is none of the above: no ref filter beats
+          # a wrong one, since the tab then lists every open alert rather than
+          # none of them.
+          *)
+            FILTER=""
+            ;;
+        esac
+
+        echo "link=[the GitHub Security Tab](https://github.com/${REPOSITORY}/security/code-scanning?query=is%3Aopen${FILTER})" >> "$GITHUB_OUTPUT"
+
     - name: Comment PR
       uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88  # v3.0.5
       with:
-        # Only `pr:` here: on a pull_request event `github.ref_name` is
-        # `<N>/merge`, which the code scanning search does not resolve to a
-        # branch - ANDed with `pr:` it matches nothing and hides the very
-        # alerts the link points at.
         message: |
           🤖 Hey !
 
-          ${{ needs.secrets-scan.outputs.leaks == 'true' && '🚨 Gitleaks detected potential leaked secrets in the git history.' || '✅ Gitleaks found no leaked secrets in the git history.' }} The secret scan report for the current pull request is available in ${{ (inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif') && format('[the GitHub Security Tab](https://github.com/{0}/security/code-scanning?query=is%3Aopen+pr%3A{1})', github.repository, inputs.PR_NUMBER) || format('[the GitHub Workflow Summary](https://github.com/{0}/actions/runs/{1})', github.repository, github.run_id) }}.
+          ${{ needs.secrets-scan.outputs.leaks == 'true' && '🚨 Gitleaks detected potential leaked secrets in the git history.' || '✅ Gitleaks found no leaked secrets in the git history.' }} The secret scan report for the current pull request is available in ${{ steps.report.outputs.link }}.
         header: secret-scan
         # Not `number`: that one is only a fallback the event payload overrides,
         # and the caller naming a pull request has to be what decides.

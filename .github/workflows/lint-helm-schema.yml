@@ -23,6 +23,14 @@ on:
         type: string
         default: '["ubuntu-24.04"]'
 
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   lint-helm-schema:
     name: Validate Helm values against schema
