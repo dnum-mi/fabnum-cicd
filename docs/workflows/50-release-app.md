@@ -1,45 +1,72 @@
 # `release-app.yml`
 
-Gestion automatisée des releases d'application avec [release-please](https://github.com/googleapis/release-please). Supporte les versions stables et les pré-releases.
+Crée des releases avec [`release-please`](https://github.com/googleapis/release-please), peut taguer les versions majeure/mineure et supporte l'automerge des PRs générées.
+
+> **Références :** [googleapis/release-please-action](https://github.com/googleapis/release-please-action) · [googleapis/release-please](https://github.com/googleapis/release-please)
 
 ## Inputs
 
-| Input                    | Type    | Description                                                                                                                                                               | Requis | Défaut                             |
-| ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ---------------------------------- |
-| ENABLE_PRERELEASE        | boolean | Activer la fonctionnalité de pré-release                                                                                                                                  | Non    | `false`                            |
-| TAG_MAJOR_AND_MINOR      | boolean | Taguer les versions majeure et mineure                                                                                                                                    | Non    | `false`                            |
-| RELEASE_ASSET_PATHS      | string  | Liste de chemins locaux séparés par des virgules à uploader comme assets de release (ex: `dist/app-linux-amd64,dist/app-darwin-amd64`)                                    | Non    |                                    |
-| RELEASE_ARTIFACT_NAMES   | string  | Nom ou pattern glob d'artefacts (uploadés par des jobs précédents via `actions/upload-artifact`) à télécharger et attacher à la release (ex: `my-binaries` ou `my-app-*`) | Non    |                                    |
-| PUBLISH_DRAFT_RELEASE    | boolean | Publier la release GitHub une fois les assets attachés. À activer avec `"draft": true` et `"force-tag-creation": true` dans la config release-please pour rester compatible avec les *immutable releases* (voir [Compatibilité avec les releases immuables](#compatibilité-avec-les-releases-immuables))                                    | Non    | `false`                            |
-| AUTOMERGE_PRERELEASE     | boolean | Fusionner automatiquement la PR de pré-release                                                                                                                            | Non    | `false`                            |
-| AUTOMERGE_RELEASE        | boolean | Fusionner automatiquement la PR de release                                                                                                                                | Non    | `false`                            |
-| AUTOMERGE_METHOD         | string  | Méthode de fusion de la PR de release quand l'automerge est activé : `auto` (met en file d'attente, GitHub fusionne une fois les checks requis passés, nécessite *Allow auto-merge*) ou `admin` (fusionne immédiatement en contournant la protection de branche) | Non    | `auto`                              |
-| RELEASE_PR_AUTHOR        | string  | Limiter l'action à la PR de release ouverte par ce login (tel que `gh` le rapporte, ex: `app/github-actions` pour un bot). Laisser vide pour dériver automatiquement l'auteur du credential utilisé. `*` désactive explicitement la vérification.        | Non    | `""`                                |
-| PRERELEASE_BRANCH        | string  | Branche sur laquelle créer les pré-releases                                                                                                                               | Non    | `develop`                          |
-| RELEASE_BRANCH           | string  | Branche sur laquelle créer les releases                                                                                                                                   | Non    | `main`                             |
-| RELEASE_CONFIG_FILE      | string  | Fichier de configuration release-please pour les releases                                                                                                                 | Non    | `release-please-config.json`       |
-| RELEASE_MANIFEST_FILE    | string  | Fichier manifest release-please pour les releases                                                                                                                         | Non    | `.release-please-manifest.json`    |
-| PRERELEASE_CONFIG_FILE   | string  | Fichier de configuration release-please pour les pré-releases                                                                                                             | Non    | `release-please-config-rc.json`    |
-| PRERELEASE_MANIFEST_FILE | string  | Fichier manifest release-please pour les pré-releases                                                                                                                     | Non    | `.release-please-manifest-rc.json` |
-| RUNS_ON                  | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                                                    | Non    | `["ubuntu-24.04"]`                 |
+| Input                    | Type    | Description                                                                                                                                                                                                                                                          | Requis | Défaut                             |
+| ------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ---------------------------------- |
+| ENABLE_PRERELEASE        | boolean | Activer la fonctionnalité de pré-release                                                                                                                                                                                                                             | Non    | `false`                            |
+| TAG_MAJOR_AND_MINOR      | boolean | Taguer les versions majeure et mineure                                                                                                                                                                                                                               | Non    | `false`                            |
+| AUTOMERGE_PRERELEASE     | boolean | Fusionner automatiquement la PR de pré-release                                                                                                                                                                                                                       | Non    | `false`                            |
+| AUTOMERGE_RELEASE        | boolean | Fusionner automatiquement la PR de release                                                                                                                                                                                                                           | Non    | `false`                            |
+| AUTOMERGE_METHOD         | string  | Méthode de fusion de la PR quand l'automerge est activé : `auto` (met en file d'attente, GitHub fusionne une fois les checks requis passés, nécessite **Allow auto-merge** sur le dépôt) ou `admin` (fusionne immédiatement en contournant la protection de branche) | Non    | `auto`                             |
+| RELEASE_PR_AUTHOR        | string  | Durcissement optionnel : n'agir que sur les PRs de release ouvertes par ce login — voir [Quelles pull requests sont éligibles](#quelles-pull-requests-sont-éligibles)                                                                                                | Non    | `""`                               |
+| PRERELEASE_BRANCH        | string  | Branche sur laquelle créer les pré-releases                                                                                                                                                                                                                          | Non    | `develop`                          |
+| RELEASE_BRANCH           | string  | Branche sur laquelle créer les releases                                                                                                                                                                                                                              | Non    | `main`                             |
+| RELEASE_CONFIG_FILE      | string  | Fichier de configuration release-please pour la branche de release                                                                                                                                                                                                   | Non    | `release-please-config.json`       |
+| RELEASE_MANIFEST_FILE    | string  | Fichier manifest release-please pour la branche de release                                                                                                                                                                                                           | Non    | `.release-please-manifest.json`    |
+| PRERELEASE_CONFIG_FILE   | string  | Fichier de configuration release-please pour la branche de pré-release                                                                                                                                                                                               | Non    | `release-please-config-rc.json`    |
+| PRERELEASE_MANIFEST_FILE | string  | Fichier manifest release-please pour la branche de pré-release                                                                                                                                                                                                       | Non    | `.release-please-manifest-rc.json` |
+| RELEASE_ASSET_PATHS      | string  | Liste de chemins locaux séparés par des virgules à uploader comme assets de release (ex: `dist/app-linux-amd64,dist/app-darwin-amd64`)                                                                                                                               | Non    | -                                  |
+| RELEASE_ARTIFACT_NAMES   | string  | Nom ou pattern glob d'artefacts (uploadés par des jobs précédents via `actions/upload-artifact`) à télécharger et attacher à la release (ex: `my-binaries` ou `my-app-*`)                                                                                            | Non    | -                                  |
+| PUBLISH_DRAFT_RELEASE    | boolean | Publier la release GitHub une fois les assets attachés. À activer avec `"draft": true` et `"force-tag-creation": true` dans la config release-please pour rester compatible avec les [releases immuables](#compatibilité-avec-les-releases-immuables)                | Non    | `false`                            |
+| RUNS_ON                  | string  | Labels des runners au format JSON (ex: `'["ubuntu-24.04"]'` ou `'["self-hosted", "linux"]'`)                                                                                                                                                                         | Non    | `["ubuntu-24.04"]`                 |
 
 ## Secrets
 
-| Secret            | Description                                                                                                                                    | Requis |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| APP_CLIENT_ID      | Client ID d'une GitHub App (ex: `Iv23li...`, PAS l'App ID numérique). À fournir avec `APP_PRIVATE_KEY` pour authentifier comme une App — prend le pas sur `GH_PAT`. Contrairement à `GITHUB_TOKEN`, un token App permet à la PR de release de déclencher les workflows `pull_request`. Voir [`authentication.md`](./05-authentication.md). | Non    |
-| APP_PRIVATE_KEY    | Clé privée (PEM) de la GitHub App. Requis avec `APP_CLIENT_ID`.                                                                                    | Non    |
-| GH_PAT             | Personal Access Token GitHub. Alternative historique à `APP_CLIENT_ID`/`APP_PRIVATE_KEY`, toujours supportée mais l'authentification App est préférée. | Non    |
+| Secret          | Description                                                                                                                                                                             | Requis | Défaut |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------ |
+| APP_CLIENT_ID   | **Client ID** d'une GitHub App (pas l'App ID numérique). Avec `APP_PRIVATE_KEY`, authentifie comme une App — prend le pas sur `GH_PAT`. Voir [Authentification](./05-authentication.md) | Non    | -      |
+| APP_PRIVATE_KEY | Clé privée (PEM) de la GitHub App. Requis avec `APP_CLIENT_ID`                                                                                                                          | Non    | -      |
+| GH_PAT          | Personal Access Token GitHub. Alternative historique, toujours supportée (voir [Configuration du token](#configuration-du-token))                                                       | Non    | -      |
+
+> Fournir des credentials App permet à la PR de release de déclencher les workflows `pull_request`, donc à sa CI de tourner réellement — ce que `GITHUB_TOKEN` ne peut pas faire. Cela fait aussi déclencher les triggers `push: tags:` et `release:` par le **tag** et la **release GitHub** créés par release-please, ce que `GITHUB_TOKEN` ne faisait jamais. Vérifiez sur quoi votre pipeline se déclenche avant de basculer. Voir [Authentification](./05-authentication.md).
+
+> `APP_CLIENT_ID` et `APP_PRIVATE_KEY` doivent être fournis **ensemble**. En définir un seul fait échouer le job plutôt que de retomber sur `GH_PAT` ou `GITHUB_TOKEN`.
+
+> **L'automerge dépend des inputs `AUTOMERGE_*`, pas des credentials.** Ajouter des credentials App n'active jamais la fusion à lui seul. Si l'automerge est activé et qu'aucun credential n'est fourni, le job échoue plutôt que de silencieusement ne rien faire.
 
 ## Outputs
 
-| Output          | Description                        |
-| --------------- | ---------------------------------- |
-| release-created | Indique si une release a été créée |
-| version         | Version semver complète            |
-| major-tag       | Tag de version majeure             |
-| minor-tag       | Tag de version mineure             |
-| patch-tag       | Tag de version patch               |
+| Output           | Description                                                                                                                                                                                                                            |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| release-created  | Indique si une release a été créée lors de ce run                                                                                                                                                                                      |
+| version          | Version semver complète (ex: `1.2.3`)                                                                                                                                                                                                  |
+| major-tag        | Tag de version majeure (ex: `1`)                                                                                                                                                                                                       |
+| minor-tag        | Tag de version mineure (ex: `2`)                                                                                                                                                                                                       |
+| patch-tag        | Tag de version patch (ex: `3`)                                                                                                                                                                                                         |
+| tag-name         | Tag complet créé (ex: `v1.2.3`) - pour un job aval qui doit nommer la release explicitement plutôt que reconstruire le préfixe du tag                                                                                                  |
+| releases-created | Indique si au moins une release a été créée - renseigné aussi en mode manifest (monorepo), où `release-created` ci-dessus reste vide pour un dépôt sans package racine                                                                 |
+| paths-released   | Tableau JSON des chemins de packages pour lesquels une release a été créée (`[]` si rien n'a été publié) - à passer à une matrice avec `fromJSON`                                                                                      |
+| release-outputs  | Tous les outputs de release-please sous forme d'un seul objet JSON, pour les valeurs par chemin (`<path>--tag_name`, `<path>--version`, ...) : `fromJSON(needs.release.outputs.release-outputs)[format('{0}--tag_name', matrix.path)]` |
+
+**Appelants monorepo.** Avec une config manifest contenant un package par répertoire et aucun package racine, les six outputs mono-package restent vides - release-please nomme chaque output d'après le chemin auquel il appartient. Utilisez `releases-created` comme condition, `paths-released` comme matrice et `release-outputs` pour le tag et la version de chaque entrée :
+
+```yaml
+  binaries:
+    needs: [release]
+    if: ${{ needs.release.outputs.releases-created == 'true' }}
+    strategy:
+      matrix:
+        path: ${{ fromJSON(needs.release.outputs.paths-released) }}
+    steps:
+    - env:
+        TAG: ${{ fromJSON(needs.release.outputs.release-outputs)[format('{0}--tag_name', matrix.path)] }}
+      run: gh release upload "$TAG" dist/*
+```
 
 ## Permissions
 
@@ -49,6 +76,73 @@ Gestion automatisée des releases d'application avec [release-please](https://gi
 | issues        | write | Créer ou mettre à jour les issues ouvertes par l'outil de release    |
 | pull-requests | write | Créer, mettre à jour et fusionner optionnellement les PRs de release |
 
+## Configuration du token
+
+Un credential n'est requis que lorsque `AUTOMERGE_PRERELEASE` ou `AUTOMERGE_RELEASE` est activé. Utilisez soit une **GitHub App** (recommandé), soit un **Personal Access Token**, stocké comme secret du dépôt qui exécute ce workflow.
+
+### GitHub App (recommandé)
+
+Définir `APP_CLIENT_ID` et `APP_PRIVATE_KEY`. Au-delà de l'automerge, cela permet aussi à la PR de release de déclencher les workflows `pull_request`, ce que `GITHUB_TOKEN` ne peut pas faire — voir [Authentification](./05-authentication.md) pour la configuration complète.
+
+Permissions de dépôt requises pour l'App : **Contents: Read & Write**, **Pull requests: Read & Write**, **Issues: Read & Write**, **Metadata: Read**.
+
+### Quelles pull requests sont éligibles
+
+Le nom d'une branche source est choisi par celui qui ouvre la pull request — pour une PR depuis un fork, c'est simplement une branche de son propre dépôt — il identifie donc une pull request mais n'autorise rien. Trois filtres déterminent ce que ce workflow modifie ou fusionne :
+
+1. **Les pull requests depuis un fork sont rejetées d'emblée.** Sans cela, n'importe quel utilisateur GitHub pourrait ouvrir une PR depuis une branche nommée `release-please--branches--main` et la faire fusionner dans votre branche de release — avec `AUTOMERGE_METHOD: admin`, en contournant la protection de branche et tous les checks requis.
+2. **La branche doit correspondre exactement**, soit à `release-please--branches--<base>`, soit à `release-please--branches--<base>--components--<name>` — les deux seules formes produites par release-please. Une simple correspondance de préfixe acceptait aussi `release-please--branches--main-anything`.
+3. **L'auteur de la pull request doit correspondre**, ce qui ferme le cas restant que la vérification de fork ne couvre pas : quelqu'un ayant un accès en push qui fabrique une branche de forme release-please dans votre propre dépôt.
+
+Les trois sont actifs par défaut et ne demandent aucune configuration. L'auteur est **dérivé du credential qui a ouvert la pull request** :
+
+| Credential     | Auteur attendu par le workflow | Dérivé de                                                             |
+| -------------- | ------------------------------ | --------------------------------------------------------------------- |
+| GitHub App     | `app/<app-slug>`               | l'output `app-slug` de l'action de token elle-même                    |
+| `GITHUB_TOKEN` | `app/github-actions`           | fixe — c'est toujours l'auteur                                        |
+| `GH_PAT`       | *(vérification ignorée)*       | l'auteur est le propriétaire du token, ce qui ne peut pas être dérivé |
+
+> Notez le préfixe `app/`. C'est ainsi que l'API rapporte un auteur bot — **pas** `github-actions[bot]`. Définir `RELEASE_PR_AUTHOR: github-actions[bot]` ne correspondrait à rien et arrêterait silencieusement toute fusion.
+
+Ne définissez `RELEASE_PR_AUTHOR` que pour surcharger la dérivation — fixez le login du propriétaire de votre PAT avec `GH_PAT`, ou passez `*` pour désactiver la vérification d'auteur tout en conservant les gardes fork et branche.
+
+**Un tiers peut-il falsifier l'auteur ?** Non. `author.login` est défini par GitHub à partir de l'identité qui a ouvert la pull request ; il n'est pas fourni par l'attaquant. Le `GITHUB_TOKEN` d'un fork est un token d'installation limité à ce fork, il ne peut donc pas ouvrir de pull request dans votre dépôt — et la vérification de fork rejette les pull requests cross-repository avant même d'examiner l'auteur. Les deux gardes sont indépendantes, et la vérification de fork échoue en mode fermé : une pull request dont le statut de fork ne peut être déterminé est refusée plutôt qu'autorisée.
+
+**Ce qui reste.** Quelqu'un qui *a déjà un accès en push* pourrait ajouter un workflow qui fait ouvrir par votre propre bot `github-actions` une pull request sur une branche de forme release-please. Elle passe les trois filtres. `RELEASE_PR_AUTHOR` n'y change rien — l'auteur correspondrait. C'est la frontière de confiance de l'accès en push plutôt que quelque chose que le workflow peut fermer : quiconque peut pousser un workflow peut déjà exécuter du code arbitraire en CI. Si cela compte pour votre dépôt, exigez une revue sur `.github/workflows/**` via CODEOWNERS, et préférez `AUTOMERGE_METHOD: auto` pour que la protection de branche continue de s'appliquer.
+
+### Comment la fusion s'effectue
+
+L'étape d'automerge utilise `gh pr merge --rebase`, avec la méthode choisie par `AUTOMERGE_METHOD` :
+
+- `auto` (par défaut) met la PR en file d'attente et laisse GitHub la fusionner une fois tous les status checks requis passés. Cela nécessite que **Settings > General > Allow auto-merge** soit activé sur le dépôt.
+- `admin` force la fusion immédiatement, en contournant la protection de branche et les status checks requis.
+
+Il n'y a **aucun repli automatique de l'un vers l'autre**. Si `auto` est sélectionné et que l'auto-merge n'est pas activé sur le dépôt, le job échoue avec un message nommant le réglage à activer. C'est délibéré : retomber sur `--admin` fusionnerait au-delà des checks mêmes que l'authentification App fait tourner.
+
+L'étape fusionne **toutes** les pull requests release-please ouvertes ciblant la branche courante, ce qui couvre les monorepos utilisant `separate-pull-requests` (une pull request par composant) — pas seulement la première trouvée.
+
+### Fine-grained PAT
+
+Créez un [fine-grained personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token) limité au **dépôt courant** avec les permissions suivantes :
+
+| Permission    | Accès        | Raison                                                               |
+| ------------- | ------------ | -------------------------------------------------------------------- |
+| Contents      | Read & Write | Pousser des commits (synchronisation du manifest, rebase de branche) |
+| Pull requests | Read & Write | Activer l'auto-merge sur les PRs de release                          |
+
+> Avec `AUTOMERGE_METHOD: admin`, le propriétaire du PAT doit être **administrateur du dépôt** pour que la fusion forcée réussisse.
+
+### Classic PAT
+
+Vous pouvez aussi créer un [token classic](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-personal-access-token-classic) avec le scope **`repo`**.
+
+### Où le stocker
+
+Ajoutez le credential comme **secrets du dépôt** (`APP_CLIENT_ID` + `APP_PRIVATE_KEY`, ou `GH_PAT`) :  
+**Settings > Secrets and variables > Actions > New repository secret**
+
+Si les deux sont définis, l'App prend le pas — utile pour vérifier la bascule avant de supprimer le PAT.
+
 ## Notes
 
 - Définir `ENABLE_PRERELEASE: false` pour désactiver toute fonctionnalité de pré-release et travailler uniquement avec les branches de release.
@@ -56,15 +150,13 @@ Gestion automatisée des releases d'application avec [release-please](https://gi
 - Sur `RELEASE_BRANCH` (par défaut `main`), utilise les fichiers spécifiés par `RELEASE_CONFIG_FILE` et `RELEASE_MANIFEST_FILE`.
 - Sur `PRERELEASE_BRANCH` (par défaut `develop`), utilise les fichiers spécifiés par `PRERELEASE_CONFIG_FILE` et `PRERELEASE_MANIFEST_FILE` (seulement quand `ENABLE_PRERELEASE: true`).
 - Si `TAG_MAJOR_AND_MINOR: true`, crée les tags `v<major>` et `v<major>.<minor>` après la création d'une release.
-- Si `RELEASE_ARTIFACT_NAMES` est défini, les artefacts correspondant au pattern (uploadés par des jobs précédents via `actions/upload-artifact`) sont automatiquement téléchargés et attachés à la release GitHub.
-- Si `RELEASE_ASSET_PATHS` est défini, les fichiers des chemins listés (séparés par des virgules) sont uploadés sur la release GitHub via `gh release upload` après sa création.
-- Si `PUBLISH_DRAFT_RELEASE: true`, la release est publiée après l'upload des assets. Sans effet si la release n'est pas un brouillon, ce qui rend l'étape rejouable. Voir [Compatibilité avec les releases immuables](#compatibilité-avec-les-releases-immuables).
-- Si `AUTOMERGE_*` est activé, un credential (App ou `GH_PAT`) est requis - sans credential, le job échoue plutôt que de silencieusement ne rien fusionner. `AUTOMERGE_METHOD` choisit `auto` (file d'attente, nécessite *Allow auto-merge*) ou `admin` (fusion immédiate en contournant la protection de branche). Voir [`authentication.md`](./05-authentication.md#automerge).
-- La PR de release est recherchée via l'API (`gh pr list`) plutôt que par nom de branche, ce qui fonctionne aussi pour les monorepos où release-please ouvre une PR par composant. `RELEASE_PR_AUTHOR` permet de restreindre cette recherche à un auteur précis ; laissé vide, l'auteur est dérivé automatiquement du credential utilisé (App, `github-actions[bot]`, ou désactivé sous PAT).
-- Fournir `APP_CLIENT_ID`/`APP_PRIVATE_KEY` (ou `GH_PAT`) permet à la PR de release de déclencher les workflows `pull_request`, ce que `GITHUB_TOKEN` ne peut jamais faire. Voir [`authentication.md`](./05-authentication.md).
+- Si `AUTOMERGE_*` est activé et qu'un credential est fourni, tente de fusionner automatiquement la PR de release.
 - **Assère** que `PRERELEASE_BRANCH` contient tout ce qui est publié sur `RELEASE_BRANCH`, avant tout calcul de version — voir [Assertion de synchronisation](#assertion-de-synchronisation). Le rebase lui-même appartient à [`sync-prerelease-branch.yml`](./57-sync-prerelease-branch.md).
 - **Assère** que le point de départ de release-please sur `PRERELEASE_BRANCH` est dans la branche — voir [Ancre de release-please](#ancre-de-release-please).
 - **N'exécute pas release-please** quand `PRERELEASE_BRANCH` est identique à `RELEASE_BRANCH` — voir [Branche de pré-release identique](#branche-de-pré-release-identique-à-la-branche-de-release).
+- **Assère** qu'une PR de release fusionnée devient un tag et une release, et refuse de démarrer tant qu'une PR abandonnée peut l'en empêcher — voir [Assertions de release](#assertions-de-release). Rien à configurer.
+- `RELEASE_ASSET_PATHS` uploade des fichiers déjà présents sur le système de fichiers du runner. `RELEASE_ARTIFACT_NAMES` accepte un nom ou un pattern glob — les artefacts correspondants sont téléchargés via `actions/download-artifact` avant d'être attachés à la release ; les deux inputs peuvent être utilisés ensemble.
+- `PUBLISH_DRAFT_RELEASE: true` publie la release une fois les assets attachés. Sans effet si la release n'est pas un brouillon, ce qui rend l'étape rejouable. Voir [releases immuables](#compatibilité-avec-les-releases-immuables).
 
 ## Assertion de synchronisation
 
@@ -109,104 +201,109 @@ Quand `PRERELEASE_BRANCH` est identique à `RELEASE_BRANCH`, elle ne porte aucun
 
 C'est l'état d'une synchronisation qui n'a pas eu de commit d'ancre à ajouter (voir [l'ancre](#ancre-de-release-please)). Le push du job de synchronisation, fait avec un token App, démarre un run de la CD sur cette branche ; sans cette règle, release-please y compte comme non publiés sur la ligne de pré-release tous les commits arrivés directement sur la branche de release (un hotfix, un correctif porté à la main) et ouvre une PR `chore(develop): release X.Y.Z-rc` pour du code déjà publié — une PR à ne jamais fusionner, qui devient périmée et conflictuelle dès la release stable. Dès que la branche de pré-release reçoit son premier commit propre, le calcul reprend normalement. L'étape d'automerge est ignorée elle aussi : elle mettrait en file une PR de release périmée que ce run n'a pas rafraîchie.
 
+## Assertions de release
+
+Deux vérifications encadrent release-please, toutes deux inconditionnelles et sans configuration. Elles existent parce que release-please peut pousser un commit de release sur la branche puis échouer à le taguer, et que rien d'autre dans un pipeline de release ne le remarque.
+
+### Avant : aucune PR de release abandonnée
+
+release-please garde une branche par cible — `release-please--branches--<branch>`, plus un suffixe `--components--<name>` par package dans un monorepo — et la réutilise pour chaque pull request de release qu'il ouvre. Une pull request **fermée sur l'une de ces branches tout en portant encore un label `autorelease:`** reste dans la comptabilité de release-please comme *la* pull request de release de cette branche. Le run suivant pousse le nouveau commit de release, ouvre une nouvelle pull request, puis tente de remettre la fermée à l'état ouvert — ce que GitHub refuse, car la nouvelle pull request occupe déjà cette paire head/base :
+
+```
+updated code for <new>, but update requested for <closed>
+state cannot be changed. There is already an open pull request from
+release-please--branches--main to main.
+```
+
+L'endroit où release-please s'arrête fait le dégât : **après** avoir poussé le commit de release, **avant** d'avoir labellisé la pull request qu'il vient d'ouvrir. `autorelease: pending` est la file que lit la phase de release, donc une pull request de release sans label lui est invisible — la fusionner ne produit aucun tag.
+
+L'assertion fait échouer le run et nomme la pull request à nettoyer. Retirez-lui tous les labels `autorelease:` ; le correctif tient en un retrait de label, et rien d'autre à propos de la pull request fermée n'importe.
+
+> C'est [googleapis/release-please#2566](https://github.com/googleapis/release-please/issues/2566). Le label `autorelease: snooze` qui produit cet état n'est pas documenté, et le crash survient avant l'écriture de tout tag.
+
+> Une pull request de release fermée ne portant **aucun** label `autorelease:` est l'état de repartir de zéro propre à release-please et passe : il ouvre une nouvelle pull request et ne regarde plus jamais l'ancienne.
+
+### Après : une PR de release fusionnée a bien été publiée
+
+L'invariant que tout le workflow existe pour garantir : quand une pull request de release est fusionnée, la version qu'elle a écrite devient un tag et une release.
+
+Rien d'autre ne l'assère. release-please rapporte `release-created` à false **aussi bien** pour un commit ordinaire que pour un commit de release qu'il n'a pas réussi à taguer, et les jobs aval conditionnés par cet output lisent les deux de la même façon — ils sont ignorés. Les binaires, l'image, le chart et leurs attestations ne sont alors silencieusement pas publiés, alors que le changelog et le manifest de la branche disent que la version a été livrée.
+
+Cela empêche aussi la *prochaine* release d'être calculée. release-please cherche le tag que nomme le manifest ; sans plancher à partir duquel mesurer, il parcourt la branche jusqu'à son premier commit et propose **un changelog couvrant tout l'historique**. Ce symptôme apparaît généralement des jours plus tard, sur un run sans rapport, et se lit comme un tout autre bug.
+
+La récupération suit la [procédure upstream](https://github.com/googleapis/release-please/blob/main/docs/troubleshooting.md) : remettez `autorelease: pending` sur la pull request de release fusionnée et relancez le workflow. release-please la tague alors, la relabellise `autorelease: tagged`, et les jobs aval s'exécutent.
+
+> Indexé sur le commit en cours de build, et non sur « une pull request fusionnée porte-t-elle encore le label pending » : le label est précisément ce qui disparaît dans l'échec ci-dessus, et la fusion d'un run concurrent ferait osciller un balayage de labels. Une pull request de release dont le commit de merge **est** le commit de ce run est sans ambiguïté, que ce soit en rebase, squash ou merge-commit.
+
+> S'exécute sous `!cancelled()`, il rapporte donc aussi un run où release-please a planté sans renseigner aucun output — la façon la plus probable d'arriver ici, et où une erreur brute de validation de l'API est sinon le seul indice.
+
 ## Configuration
 
-Le workflow nécessite des fichiers de configuration release-please pour fonctionner correctement. Deux ensembles de fichiers sont requis si vous utilisez les pré-releases, un seul si vous ne faites que des releases stables.
+release-please nécessite un fichier de configuration et un fichier manifest à la racine du dépôt. Le manifest suit la version courante et est mis à jour automatiquement à chaque release.
 
-### Fichiers requis
+### Config de release (`release-please-config.json`)
 
-#### Pour les releases stables (sur `main`)
+Config minimale pour un dépôt mono-package utilisant le type de release `node` (ajuste la version de `package.json`). Voir la [documentation release-please](https://github.com/googleapis/release-please/blob/main/docs/manifest-releaser.md) pour toutes les options et types de release disponibles.
 
-**`release-please-config.json`** - Configuration principale
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "packages": {
     ".": {
       "release-type": "node",
-      "initial-version": "0.1.0",
+      "initial-version": "0.0.1",
       "include-component-in-tag": false,
       "versioning": "prerelease",
       "prerelease": false,
       "prerelease-type": "",
-      "extra-files": [],
-      "changelog-sections": [
-        {
-          "type": "feat",
-          "section": "Features",
-          "hidden": false
-        },
-        {
-          "type": "fix",
-          "section": "Bug Fixes",
-          "hidden": false
-        }
-      ]
+      "extra-files": []
     }
   }
 }
 ```
 
-**`.release-please-manifest.json`** - Manifest des versions
+### Manifest de release (`.release-please-manifest.json`)
+
+Suit la version courante de chaque chemin de package. release-please met ce fichier à jour automatiquement — définissez la version initiale à votre release actuelle.
+
 ```json
 {
-  ".": "0.1.0"
+  ".": "0.0.1"
 }
 ```
 
-#### Pour les pré-releases (sur `develop` ou autre)
+### Config de pré-release (`release-please-config-rc.json`)
 
-**`release-please-config-rc.json`** - Configuration pré-release
+Utilisée quand `ENABLE_PRERELEASE: true`. Structure identique à la config de release, avec en plus `prerelease-type` pour contrôler l'identifiant de pré-release ajouté à la version.
+
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "prerelease-type": "rc",
   "packages": {
     ".": {
       "release-type": "node",
-      "initial-version": "0.1.0",
+      "initial-version": "0.0.1",
       "include-component-in-tag": false,
       "versioning": "prerelease",
       "prerelease": true,
       "prerelease-type": "rc",
-      "extra-files": [],
-      "changelog-sections": [
-        {
-          "type": "feat",
-          "section": "Features",
-          "hidden": false
-        },
-        {
-          "type": "fix",
-          "section": "Bug Fixes",
-          "hidden": false
-        }
-      ]
+      "extra-files": []
     }
   }
 }
 ```
 
-**`.release-please-manifest-rc.json`** - Manifest des versions pré-release
+### Manifest de pré-release (`.release-please-manifest-rc.json`)
+
 ```json
 {
-  ".": "0.1.0"
+  ".": "0.0.1"
 }
 ```
 
-### Champs de configuration importants
-
-| Champ                      | Description                                                       | Valeurs                                                           |
-| -------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `release-type`             | Type de projet (détermine comment parser les fichiers de version) | `node`, `python`, `go`, `rust`, `simple`, etc.                    |
-| `initial-version`          | Version initiale si aucune version n'existe                       | Semver (ex: `0.1.0`)                                              |
-| `include-component-in-tag` | Inclure le nom du composant dans le tag (pour monorepos)          | `true` ou `false`                                                 |
-| `versioning`               | Stratégie de versioning                                           | `default`, `always-bump-patch`, `always-bump-minor`, `prerelease` |
-| `prerelease`               | Activer le mode pré-release                                       | `true` ou `false`                                                 |
-| `prerelease-type`          | Identifiant de pré-release                                        | `rc`, `alpha`, `beta`, ou vide pour releases stables              |
-| `extra-files`              | Fichiers supplémentaires à mettre à jour avec la version          | Tableau de patterns (ex: `["docker/version.txt"]`)                |
-| `changelog-sections`       | Sections du changelog selon les types de commits conventionnels   | Tableau d'objets `{type, section, hidden}`                        |
-
-### Compatibilité avec les releases immuables
+## Compatibilité avec les releases immuables
 
 Les [*immutable releases*](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases) gèlent une release GitHub dès sa publication : plus aucun asset ne peut être ajouté, modifié ou supprimé, et le tag associé ne peut plus être déplacé ni supprimé. Le seul ordonnancement supporté est donc **créer en brouillon → attacher les assets → publier**.
 
@@ -237,7 +334,7 @@ jobs:
       issues: write
       pull-requests: write
     with:
-      RELEASE_ARTIFACT_NAMES: my-binaries
+      RELEASE_ARTIFACT_NAMES: my-app-binaries
       PUBLISH_DRAFT_RELEASE: true
 ```
 
@@ -252,68 +349,15 @@ jobs:
 > [!WARNING]
 > [`release-helm.yml`](./51-release-helm.md) avec `CREATE_GITHUB_RELEASE: true` n'est **pas** compatible avec les releases immuables : `chart-releaser` crée la release puis attache le `.tgz` en deux appels séparés, sans option de brouillon ([helm/chart-releaser#591](https://github.com/helm/chart-releaser/issues/591)). Publier les charts sur un registre OCI à la place (`PUBLISH_OCI: true`, `CREATE_GITHUB_RELEASE: false`) ne crée aucune release GitHub et n'est pas concerné.
 
-### Gestion de multiples identifiants de pré-release
-
-Si vous souhaitez utiliser plusieurs identifiants (ex: `alpha`, `beta`, `rc`) pour différentes branches :
-
-1. **Créez des configurations distinctes** pour chaque identifiant :
-   - `release-please-config-alpha.json` avec `"prerelease-type": "alpha"`
-   - `release-please-config-beta.json` avec `"prerelease-type": "beta"`
-   - `release-please-config-rc.json` avec `"prerelease-type": "rc"`
-
-2. **Créez des manifests distincts** pour chaque identifiant :
-   - `.release-please-manifest-alpha.json`
-   - `.release-please-manifest-beta.json`
-   - `.release-please-manifest-rc.json`
-
-3. **Configurez vos workflows** pour utiliser les bons fichiers selon la branche :
-
-```yaml
-# .github/workflows/release-dev.yml (branche dev)
-jobs:
-  release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-    with:
-      ENABLE_PRERELEASE: true
-      PRERELEASE_BRANCH: dev
-      PRERELEASE_CONFIG_FILE: release-please-config-alpha.json
-      PRERELEASE_MANIFEST_FILE: .release-please-manifest-alpha.json
-```
-
-```yaml
-# .github/workflows/release-staging.yml (branche staging)
-jobs:
-  release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-    with:
-      ENABLE_PRERELEASE: true
-      PRERELEASE_BRANCH: staging
-      PRERELEASE_CONFIG_FILE: release-please-config-beta.json
-      PRERELEASE_MANIFEST_FILE: .release-please-manifest-beta.json
-```
-
-### Workflow de progression des versions
-
-Le workflow typique de progression des versions est :
-
-1. **Développement** (`dev`) : `1.0.0` → `1.0.1-alpha` → `1.0.1-alpha.1` → `1.0.1-alpha.2`
-2. **Staging** (`staging`) : `1.0.1-alpha.2` → `1.0.1-beta` → `1.0.1-beta.1`
-3. **Pré-production** (`preprod`) : `1.0.1-beta.1` → `1.0.1-rc` → `1.0.1-rc.1`
-4. **Production** (`main`) : `1.0.1-rc.1` → `1.0.1` (release officielle)
-
-**Important :** Les manifests doivent être synchronisés manuellement ou via scripts lors du passage d'une branche à l'autre pour maintenir la cohérence des versions.
-
 ## Exemples
 
+Les exemples couvrent les principaux scénarios de release : une configuration complète avec support des pré-releases, un flux release uniquement, et un build qui attache des binaires compilés à la release GitHub.
+
+> Ils utilisent des credentials GitHub App, le mode recommandé. Pour utiliser un personal access token à la place, remplacez les deux lignes `APP_*` par <span v-pre>`GH_PAT: ${{ secrets.GH_PAT }}`</span> — rien d'autre ne change. Les deux peuvent être passés ensemble pendant une migration ; l'App l'emporte. Voir [Authentification](./05-authentication.md) pour la configuration complète de l'un ou l'autre.
+
 ### Exemple simple
+
+Configuration complète à deux branches avec `develop` pour les pré-releases et `main` pour les releases stables. `AUTOMERGE_*: true` nécessite des credentials disposant de permissions suffisantes pour contourner les règles de protection de branche. Garder `develop` rebasée sur `main` après chaque release stable est le rôle de [`sync-prerelease-branch.yml`](./57-sync-prerelease-branch.md).
 
 ```yaml
 jobs:
@@ -328,32 +372,17 @@ jobs:
       TAG_MAJOR_AND_MINOR: true
       AUTOMERGE_PRERELEASE: true
       AUTOMERGE_RELEASE: true
-    secrets:
-      GH_PAT: ${{ secrets.GH_PAT }}
-```
-
-### Avec authentification GitHub App (PR de release avec CI)
-
-Nécessaire pour que la PR de release déclenche ses propres workflows `pull_request`. Voir [`authentication.md`](./05-authentication.md).
-
-```yaml
-jobs:
-  release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-    with:
-      TAG_MAJOR_AND_MINOR: true
-      AUTOMERGE_RELEASE: true
-      AUTOMERGE_METHOD: auto
+      # Optionnel : personnaliser les fichiers de config et de manifest
+      RELEASE_CONFIG_FILE: custom-release-config.json
+      PRERELEASE_CONFIG_FILE: custom-prerelease-config.json
     secrets:
       APP_CLIENT_ID: ${{ secrets.APP_CLIENT_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
 
-### Workflow release uniquement (sans pré-release)
+### Workflow release uniquement
+
+Workflow à une seule branche ciblant uniquement `main`. Aucun fichier de config de pré-release n'est requis. `TAG_MAJOR_AND_MINOR: true` ajoute des alias pratiques (`v1`, `v1.2`) à chaque tag de release stable.
 
 ```yaml
 jobs:
@@ -368,22 +397,46 @@ jobs:
       TAG_MAJOR_AND_MINOR: true
       AUTOMERGE_RELEASE: true
     secrets:
-      GH_PAT: ${{ secrets.GH_PAT }}
+      APP_CLIENT_ID: ${{ secrets.APP_CLIENT_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
 
-### Avec upload d'artefacts supplémentaires
+### Attacher des artefacts de build à la release
+
+Deux options sont disponibles selon l'endroit où se trouvent les artefacts.
+
+**Option 1 — fichiers sur le système de fichiers du runner** (`RELEASE_ASSET_PATHS`) : à utiliser quand les fichiers sont produits dans le même job (ou déjà présents sur le runner).
+
+```yaml
+jobs:
+  release:
+    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    with:
+      ENABLE_PRERELEASE: false
+      RELEASE_ASSET_PATHS: "dist/my-app-linux-amd64,dist/my-app-darwin-amd64"
+    secrets:
+      APP_CLIENT_ID: ${{ secrets.APP_CLIENT_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+```
+
+**Option 2 — artefacts d'un job précédent** (`RELEASE_ARTIFACT_NAMES`) : accepte un nom ou un pattern glob — les artefacts correspondants uploadés via `actions/upload-artifact` dans le même run sont téléchargés automatiquement avant d'être attachés à la release.
 
 ```yaml
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - run: make build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: my-binaries
-          path: dist/
+    - uses: actions/checkout@v6
+    - name: Build
+      run: make build
+    - uses: actions/upload-artifact@v7
+      with:
+        name: my-app-binaries
+        path: dist/
 
   release:
     needs: build
@@ -393,24 +446,11 @@ jobs:
       issues: write
       pull-requests: write
     with:
-      RELEASE_ARTIFACT_NAMES: my-binaries
-      RELEASE_ASSET_PATHS: dist/app-linux-amd64,dist/app-darwin-amd64
-```
-
-### Avec fichiers de configuration personnalisés
-
-```yaml
-jobs:
-  release:
-    uses: dnum-mi/fabnum-cicd/.github/workflows/release-app.yml@v0
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-    with:
-      ENABLE_PRERELEASE: true
-      RELEASE_CONFIG_FILE: custom-release-config.json
-      PRERELEASE_CONFIG_FILE: custom-prerelease-config.json
+      ENABLE_PRERELEASE: false
+      RELEASE_ARTIFACT_NAMES: "my-app-binaries"  # ou un glob comme "my-app-*"
     secrets:
-      GH_PAT: ${{ secrets.GH_PAT }}
+      APP_CLIENT_ID: ${{ secrets.APP_CLIENT_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
+
+Les deux inputs peuvent être combinés quand certains fichiers sont locaux et d'autres proviennent de jobs précédents.

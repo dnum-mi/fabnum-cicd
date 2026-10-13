@@ -1,18 +1,18 @@
 # `scan-sonarqube.yml`
 
-Analyse de la qualité du code avec [SonarQube](https://www.sonarqube.org/), incluant le support des rapports de couverture de tests.
+Exécute l'analyse statique SonarQube et vérifie la Quality Gate. Le workflow peut télécharger un artefact de couverture et le transmettre à SonarQube.
 
 ## Inputs
 
 | Input                  | Type    | Description                                                                            | Requis | Défaut                |
 | ---------------------- | ------- | -------------------------------------------------------------------------------------- | ------ | --------------------- |
-| SONAR_URL              | string  | URL du serveur SonarQube                                                               | Oui    | -                     |
-| SOURCES_PATH           | string  | Chemins vers le code source à analyser (ex: `apps,packages`)                           | Non    | -                     |
-| SONAR_EXTRA_ARGS       | string  | Arguments supplémentaires pour SonarQube                                               | Non    | -                     |
-| FAIL_ON_ERROR          | boolean | Faire échouer le workflow en cas d'erreur d'analyse                                    | Non    | `true`                |
-| COVERAGE_IMPORT        | boolean | Activer l'import d'artefact de couverture                                              | Non    | `false`               |
-| COVERAGE_ARTIFACT_NAME | string  | Nom de l'artefact de couverture à importer                                             | Non    | `unit-tests-coverage` |
+| COVERAGE_IMPORT        | boolean | Télécharger un artefact de couverture                                                  | Non    | `false`               |
+| COVERAGE_ARTIFACT_NAME | string  | Nom de l'artefact de couverture                                                        | Non    | `unit-tests-coverage` |
 | COVERAGE_ARTIFACT_PATH | string  | Chemin de téléchargement de l'artefact de couverture                                   | Non    | `./coverage`          |
+| SONAR_EXTRA_ARGS       | string  | Arguments supplémentaires pour le scanner SonarQube                                    | Non    | -                     |
+| SOURCES_PATH           | string  | Chemins vers le code source à analyser (ex: `apps,packages`)                           | Non    | -                     |
+| SONAR_URL              | string  | URL du serveur SonarQube                                                               | Oui    | -                     |
+| FAIL_ON_ERROR          | boolean | Faire échouer le workflow en cas d'erreur de la Quality Gate                           | Non    | `true`                |
 | RUNS_ON                | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`) | Non    | `["ubuntu-24.04"]`    |
 
 ## Secrets
@@ -24,31 +24,31 @@ Analyse de la qualité du code avec [SonarQube](https://www.sonarqube.org/), inc
 
 ## Permissions
 
-| Scope         | Accès | Description                                    |
-| ------------- | ----- | ---------------------------------------------- |
-| contents      | read  | Lire le code source                            |
-| issues        | write | Créer des issues pour les problèmes détectés   |
-| pull-requests | write | Commenter les PRs avec les résultats d'analyse |
+| Scope         | Accès | Description                                                   |
+| ------------- | ----- | ------------------------------------------------------------- |
+| contents      | read  | Lire le code source pour l'analyse                            |
+| issues        | write | Créer/mettre à jour les issues remontées par les intégrations |
+| pull-requests | write | Publier les décorations de PR et les résumés de statut        |
 
 ## Notes
 
-- Supporte l'analyse des pull requests et des branches.
-- Peut importer des rapports de couverture de tests depuis des artefacts GitHub Actions.
-- Configure automatiquement les paramètres pour les pull requests (clé, branche, base).
-- Utilise `fetch-depth: 0` pour obtenir l'historique complet Git nécessaire à l'analyse.
-- Les arguments supplémentaires permettent de personnaliser l'analyse selon les besoins du projet.
-- **FAIL_ON_ERROR** : Par défaut à `true`, le workflow échoue si l'analyse SonarQube ou la Quality Gate détecte des problèmes. Mettre à `false` pour continuer malgré les erreurs. Le gate est appliqué par une étape explicite en fin de job plutôt que par `continue-on-error` (une expression sur ce champ y résout silencieusement à `true` même quand `FAIL_ON_ERROR` est actif, rendant le gate inopérant).
+- Lorsque `COVERAGE_IMPORT` vaut `true`, le workflow télécharge l'artefact `COVERAGE_ARTIFACT_NAME` dans `COVERAGE_ARTIFACT_PATH` avant de lancer le scan SonarQube ; lorsqu'il vaut `false`, aucun téléchargement n'est tenté. Pour les pull requests, il passe les arguments de décoration de PR ; sinon il analyse la branche courante.
+- `SOURCES_PATH` n'a pas de valeur par défaut et doit être fourni par l'appelant (ex: `-Dsonar.sources=apps,packages` ou `-Dsonar.sources=.`). L'omettre passe un `-Dsonar.sources=` vide.
+- Nécessite `SONAR_TOKEN` et `SONAR_PROJECT_KEY` pour s'authentifier auprès de SonarQube.
+- Échoue si la Quality Gate SonarQube échoue.
+- Utilise `sonarsource/sonarqube-scan-action` pour l'analyse SonarQube.
+- Supporte JavaScript/TypeScript, Python, Java, Go, C#, et plus encore.
+- `FAIL_ON_ERROR` est appliqué par une étape explicite en fin de job, et non par `continue-on-error`. Une expression à cet endroit (<span v-pre>`${{ !inputs.FAIL_ON_ERROR }}`</span>) résout silencieusement à `true` même quand l'input est défini, ce qui rend le gate inopérant - l'étape échoue, le job rapporte un succès, et la seule trace est une annotation `failure` dans le résumé de l'exécution. Les rapports, artefacts et nettoyages s'exécutent quand même avant le déclenchement du gate.
 
 ## Exemples
 
+Les exemples progressent d'un scan complet avec import de couverture à une exécution légère sans couverture, et montrent comment désactiver le blocage en cas d'échec de la Quality Gate.
+
 ### Exemple simple
 
+Configuration monorepo complète avec couverture par package. `COVERAGE_IMPORT: true` télécharge l'artefact `unit-tests-coverage` produit par un job de tests en amont. La valeur de `SONAR_EXTRA_ARGS` indique à SonarQube le `lcov.info` de chaque package et exclut les fichiers de spec et les assets des métriques.
+
 ```yaml
-name: CI
-
-on:
-  pull_request:
-
 jobs:
   scan-sonarqube:
     uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@v0
@@ -58,47 +58,19 @@ jobs:
       pull-requests: write
     with:
       SONAR_URL: https://sonarqube.example.com
-      SOURCES_PATH: apps,packages
-    secrets:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
-```
-
-### Avec import de couverture de tests
-
-```yaml
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v5
-    - name: Run tests
-      run: npm test -- --coverage
-    - name: Upload coverage
-      uses: actions/upload-artifact@v4
-      with:
-        name: unit-tests-coverage
-        path: ./coverage
-
-  scan-sonarqube:
-    needs: test
-    uses: dnum-mi/fabnum-cicd/.github/workflows/scan-sonarqube.yml@v0
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: write
-    with:
-      SONAR_URL: https://sonarqube.example.com
-      SOURCES_PATH: src
       COVERAGE_IMPORT: true
       COVERAGE_ARTIFACT_NAME: unit-tests-coverage
       COVERAGE_ARTIFACT_PATH: ./coverage
+      SOURCES_PATH: apps,packages
+      SONAR_EXTRA_ARGS: -Dsonar.javascript.lcov.reportPaths=./coverage/apps/api/lcov.info,./coverage/apps/client/lcov.info,./coverage/packages/shared/lcov.info -Dsonar.coverage.exclusions=**/*.spec.js,**/*.spec.ts,**/*.vue,**/assets/** -Dsonar.exclusions=**/*.spec.js,**/*.spec.ts,**/*.vue
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
 ```
 
-### Avec arguments supplémentaires
+### Sans import de couverture
+
+Pour un scan plus simple lorsque la couverture n'est pas disponible :
 
 ```yaml
 jobs:
@@ -111,13 +83,14 @@ jobs:
     with:
       SONAR_URL: https://sonarqube.example.com
       SOURCES_PATH: src
-      SONAR_EXTRA_ARGS: "-Dsonar.exclusions=**/*.test.ts -Dsonar.coverage.exclusions=**/*.test.ts"
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
 ```
 
-### Sans bloquer le workflow en cas d'erreur
+#### Quality Gate non bloquante
+
+Pour exécuter le scan comme une étape informative sans bloquer la pipeline :
 
 ```yaml
 jobs:

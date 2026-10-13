@@ -1,6 +1,6 @@
 # `attest-helm.yml`
 
-Attestations pour les charts Helm publiés sur un registre OCI : signatures cosign keyless et provenance de build SLSA. Consomme la sortie `published-charts` de [`release-helm.yml`](./51-release-helm.md) et atteste chaque chart par son digest.
+Attestations pour les charts Helm publiés sur un registre OCI : signatures cosign keyless et provenance de build SLSA. Consomme la sortie `published-charts` de [`release-helm.yml`](./51-release-helm.md) ou de [`release-helm-local.yml`](./52-release-helm-local.md) - les deux émettent la même forme - et atteste chaque chart par son digest.
 
 Les inputs de capacité reprennent ceux d'[`attest-docker.yml`](./31-attest-docker.md) : une image et un chart sont attestés de la même façon - les deux flux sont keyless, pilotés par le token OIDC GitHub du job, sans aucune clé au repos.
 
@@ -14,29 +14,29 @@ C'est le même raisonnement qui sépare [`attest-docker.yml`](./31-attest-docker
 
 ## Inputs
 
-| Input      | Type    | Description                                                                                                                                                                       | Requis | Défaut             |
-| ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------ |
-| CHARTS     | string  | Tableau JSON des charts à attester, tel que produit par la sortie `published-charts` de `release-helm.yml` : `{name, version, repository, digest}` par entrée. Un tableau vide est sans effet. | Oui    | -                  |
-| SIGN       | boolean | Signer le digest du chart avec la signature keyless cosign                                                                                                                          | Non    | `false`            |
-| PROVENANCE | boolean | Générer l'attestation standard de provenance de build SLSA de GitHub (enregistre le workflow appelant, le dépôt et le commit)                                                       | Non    | `false`            |
-| RUNS_ON    | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                                                             | Non    | `["ubuntu-24.04"]` |
+| Input      | Type    | Description                                                                                                                                                                                                                                         | Requis | Défaut             |
+| ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------ |
+| CHARTS     | string  | Tableau JSON des charts à attester, tel que produit par la sortie `published-charts` de `release-helm.yml` ou de `release-helm-local.yml` : `{name, version, repository, digest}` par entrée. Un tableau vide est sans effet                         | Oui    | -                  |
+| SIGN       | boolean | Signer le digest du chart avec la signature keyless cosign                                                                                                                                                                                          | Non    | `false`            |
+| PROVENANCE | boolean | Générer l'attestation standard de provenance de build SLSA de GitHub (enregistre le workflow appelant, le dépôt et le commit)                                                                                                                       | Non    | `false`            |
+| RUNS_ON    | string  | Labels des runners au format JSON (ex: `["ubuntu-24.04"]`, `["self-hosted", "linux"]`)                                                                                                                                                              | Non    | `["ubuntu-24.04"]` |
 
 **Au moins un de `SIGN` et `PROVENANCE` doit être activé.** Aucun des deux déploierait une matrice de jobs qui se connectent à un registre sans rien faire - au vert, et indiscernable d'un run ayant tout attesté.
 
 ## Secrets
 
-| Secret            | Description                                                             | Requis |
-| ----------------- | ----------------------------------------------------------------------- | ------ |
+| Secret            | Description                                                                    | Requis |
+| ----------------- | ------------------------------------------------------------------------------ | ------ |
 | REGISTRY_USERNAME | Nom d'utilisateur pour l'authentification au registre (inutile pour `ghcr.io`) | Non    |
 | REGISTRY_PASSWORD | Mot de passe pour l'authentification au registre (inutile pour `ghcr.io`)      | Non    |
 
 ## Permissions
 
-| Scope        | Accès | Description                                                        |
-| ------------ | ----- | ------------------------------------------------------------------ |
-| packages     | write | Pousser les artefacts de signature et d'attestation à côté du chart |
+| Scope        | Accès | Description                                                              |
+| ------------ | ----- | ------------------------------------------------------------------------ |
+| packages     | write | Pousser les artefacts de signature et d'attestation à côté du chart      |
 | id-token     | write | Émettre le token OIDC échangé contre un certificat de signature éphémère |
-| attestations | write | Requis par `actions/attest-build-provenance`                        |
+| attestations | write | Requis par `actions/attest-build-provenance`                             |
 
 ## Notes
 
@@ -101,7 +101,10 @@ jobs:
       contents: write
       packages: write
     with:
+      # OCI uniquement : attest-helm.yml signe des artefacts OCI, et
+      # `published-charts` n'est alimenté que par ce canal
       PUBLISH_OCI: true
+      CREATE_GITHUB_RELEASE: false
 
   attest-charts:
     uses: dnum-mi/fabnum-cicd/.github/workflows/attest-helm.yml@v0

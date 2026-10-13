@@ -103,12 +103,53 @@ En oublier un laisse la branche de pré-release périmée. En ajouter un qui ne 
 
 ### Selon la forme du dépôt
 
-| Forme du dépôt                     | Commits sur la branche de release après le job de release | Ce job     |
-| ---------------------------------- | ---------------------------------------------------------- | ---------- |
-| Application seule (sans chart)      | aucun                                                      | `needs: [release]` |
+| Forme du dépôt                       | Commits sur la branche de release après le job de release | Ce job                           |
+| ------------------------------------ | --------------------------------------------------------- | -------------------------------- |
+| Application seule (sans chart)       | aucun                                                     | `needs: [release]`               |
 | Application + chart local (monorepo) | le bump du chart                                          | `needs: [..., bump-chart-local]` |
-| Application + chart distant         | aucun — le bump atterrit dans l'*autre* dépôt              | `needs: [release]` |
-| Dépôt de charts seul, mono-branche  | —                                                          | inutile    |
+| Application + chart distant          | aucun — le bump atterrit dans l'*autre* dépôt             | `needs: [release]`               |
+| Dépôt de charts seul, mono-branche   | —                                                         | inutile                          |
+
+## Conflits sur les fichiers réécrits par une release
+
+Quand la branche de release a bougé (un hotfix et sa release, par exemple), le rebase rejoue le travail non publié par-dessus. Les commits de release de la branche de pré-release — `chore(develop): release 1.1.0-rc.1`, le bump du chart — réécrivent les mêmes lignes que ceux de la branche de release : manifestes, `CHANGELOG.md`, version dans `Chart.yaml`. Ces conflits sont structurels : ils portent sur des lignes de comptabilité dont la bonne valeur est connue d'avance, celle de la branche de pré-release, puisque ses prochaines versions sont calculées depuis cet état.
+
+Le job règle donc lui-même les conflits **confinés à ces fichiers** : les deux manifestes, le changelog, les `extra-files` listés dans `PRERELEASE_CONFIG_FILE`, et ce que l'appelant ajoute via `MANAGED_FILES`. La fusion se fait **hunk par hunk** (`git merge-file` sur les trois versions du fichier), et non en prenant un côté entier : ce que la branche de release a changé *en dehors* des hunks en conflit — une dépendance corrigée par le hotfix dans le même fichier, une section de changelog — est conservé. Pour les hunks en conflit :
+
+| Fichier | Côté conservé |
+| --- | --- |
+| manifeste de pré-release, `extra-files`, fichiers de `MANAGED_FILES` | la branche de pré-release |
+| changelog (`changelog-path` de la configuration, ou tout fichier nommé `*changelog*`) | les deux côtés : on ne choisit pas dans un historique. Les sections de pré-release vont au-dessus de celles de la branche de release, la plus récente en premier, avec la ligne vide entre les sections que la fusion elle-même supprimerait |
+| manifeste de release (`RELEASE_MANIFEST_FILE`) | la branche de release : il enregistre ce qu'elle a publié |
+
+**Rien n'est écarté sans trace.** Prendre un côté écarte les lignes de l'autre dans le hunk en conflit : une modification de hotfix sur la ligne même que la branche de pré-release a aussi changée disparaîtrait sinon. Chacun de ces hunks est écrit dans le log du job (un groupe nommé d'après le nombre de hunks), signalé par une annotation `notice` sur le run, et listé dans le résumé du job sous forme de diff : les lignes `-` ont été écartées, les lignes `+` conservées à leur place, sous un en-tête nommant le fichier, la ligne et le commit rejoué. Pour les lignes de version, c'est l'échange attendu (`- 1.0.1` / `+ 1.1.0-rc.1`) ; tout le reste mérite d'être lu avant la prochaine promotion. Un changelog garde les deux côtés et n'écarte rien. Le résumé liste les 400 premières lignes ; le log les contient toutes. Ce qui est affiché est le contenu de fichiers déjà présents dans le dépôt, lisible par quiconque peut lire les logs.
+
+Un conflit sur **tout autre fichier** est un vrai travail à réconcilier à la main : garder silencieusement un côté ferait perdre le correctif. Le job échoue alors en nommant le fichier, avec le rebase abandonné et rien de poussé. Il en va de même pour un fichier **supprimé d'un côté** : il n'y a pas de côté à prendre. Les chemins sont lus comme des noms, jamais comme des motifs (un fichier nommé `[id].tsx` n'en sélectionne aucun autre) ; une entrée de `MANAGED_FILES` s'applique d'abord comme chemin littéral, puis comme glob.
+
+**release-please réécrit plus que ce que la configuration nomme.** Le fichier de version du `release-type` — `version.txt` pour `simple`, `package.json` et `package-lock.json` pour `node`, `Chart.yaml` pour `helm` — n'est pas dans `extra-files` : listez-le dans `MANAGED_FILES`, sinon son conflit fait échouer le job (l'erreur le dit). Il en va de même pour un chart incrémenté par [`update-helm-chart.yml`](./53-update-helm-chart.md) : listez ses fichiers.
+
+## Ancre de release après un rebase
+
+Sur la branche de pré-release, release-please part de la release nommée d'après la version du manifeste de pré-release (`1.1.0-rc.1`), la retrouve par son tag, et lit l'historique de la branche jusqu'au commit de ce tag.
+
+Un rebase rejoue les commits sous de nouveaux SHA, ceux de release compris. Le tag pointe toujours vers le commit d'origine, qui n'est plus dans la branche : release-please ne trouve jamais son point d'arrêt, lit les 500 commits les plus récents et propose une mauvaise version — un bump majeur issu d'un ancien commit breaking (`4.0.0-rc.4` au lieu de `3.5.0-rc.5`) — avec un changelog répétant tout ce qui est déjà publié. Rien ne le signale avant l'ouverture de la pull request.
+
+Déplacer le tag n'est pas envisageable : les registres et miroirs construisent leurs versions depuis les tags, et une version doit continuer à désigner le commit dont elle a été construite. `last-release-sha` dans la configuration de pré-release indique à release-please de partir d'un autre commit ; ce job le renseigne **après chaque rebase qui a sorti un tag de la branche** :
+
+1. il lit la version du manifeste de pré-release et trouve son tag : `v<version>` ou `<version>`, sinon l'unique tag se terminant par la version (un préfixe de composant) ; plusieurs candidats (versions de chart et d'application en lockstep) sont ambigus, le job le dit et ne renseigne rien ;
+2. si ce tag n'est plus dans la branche, il retrouve le commit de release rejoué : même sujet **et même date d'auteur** (un rebase, un cherry-pick et un rebase-merge conservent les deux), parmi les commits rejoués sur la branche de release ; ou, après une promotion par rebase-merge qui a copié toute la série sur la branche de release, le rebase ne rejoue rien (tout est déjà en amont) et c'est la copie de ce commit sur la branche de release qui est utilisée ;
+3. il commite `chore(develop): anchor release-please on 1.1.0-rc.1`, en fixant `last-release-sha` à ce commit dans `PRERELEASE_CONFIG_FILE`, avant le push unique.
+
+La clé doit se trouver dans un commit de la branche car release-please lit sa configuration depuis GitHub, pas depuis un espace de travail. Une fois la pré-release suivante taguée, release-please atteint ce tag avant le commit d'ancrage et la clé devient inerte ; le prochain rebase qui sort un tag la rafraîchit.
+
+- **Un manifeste de pré-release mono-package.** La clé est un commit pour tout le dépôt : elle ne peut pas servir de point de départ à plusieurs packages. Au-delà d'un, le job le dit et ne renseigne rien.
+- **Idempotent.** Sans nouveau rebase, ou si la clé nomme déjà le commit rejoué, aucun commit n'est ajouté.
+- **La configuration est éditée, pas re-sérialisée.** La clé est remplacée sur sa ligne ou insérée comme première propriété : un fichier formaté garde sa mise en page et un linter JSON n'a rien à redire sur le commit d'ancrage. Seul un fichier sur lequel l'édition ne peut pas être vérifiée (un objet qui ne s'ouvre pas sur une ligne à part) est réécrit avec `jq`.
+- **Un commit d'ancrage par rebase qui sort un tag.** Les précédents sont rejoués avec le reste et s'empilent : un petit commit `chore` de plus par hotfix resynchronisé, qui atteint la branche de release à la promotion, où la clé est inerte.
+- **`jq` doit être présent sur le runner** (il l'est sur les runners hébergés par GitHub ; installez-le sur un runner self-hosted).
+- **En régime établi, rien à faire** : après une promotion, le manifeste contient la version stable, dont le tag est sur la branche de release.
+
+[`release-app.yml`](./50-release-app.md) vérifie le résultat à chaque run de pré-release (assertion d'ancre de release) et échoue si ni le tag ni `last-release-sha` ne se trouvent dans la branche.
 
 ## Conflits sur les fichiers réécrits par les releases
 
@@ -166,7 +207,7 @@ Oublier ce job, ou oublier une entrée dans son `needs:`, resterait invisible ju
 
 ## Notes
 
-- **Ne s'exécute que depuis la branche de release.** Placez le `if:` côté appelant (voir l'exemple) : le job n'a rien à propager quand il tourne depuis la branche de pré-release elle-même.
+- **Ne s'exécute que depuis la branche de release.** Placez le `if:` côté appelant (voir l'exemple ci-dessus) : le job n'a rien à propager quand il tourne depuis la branche de pré-release elle-même.
 - **En régime établi, le rebase est un simple fast-forward.** La promotion ayant versé les commits de la branche de pré-release dans la branche de release, `RELEASE_BRANCH..PRERELEASE_BRANCH` est vide et rien n'est rejoué. Le rebase ne fait un vrai travail que si la branche de pré-release a bougé pendant la release — possible dès que le `concurrency` de l'appelant est indexé sur la branche — et c'est précisément le cas qu'un `git push` simple rejetterait.
 - **Cela suppose que la promotion préserve les commits** — comme ancêtres (merge) ou comme copies patch-identiques (rebase-merge, où le rebase reconnaît chaque commit déjà appliqué et l'écarte). Un **squash** de `PRERELEASE_BRANCH` → `RELEASE_BRANCH` casse cette propriété : les N commits d'origine sont fondus en un seul dont aucun n'est patch-identique, le rebase les rejoue tous, et les conflits deviennent la norme.
 - **Le push utilise un lease explicite** sur le sommet de la branche de pré-release lu avant le rebase : un commit arrivé entre-temps est rejeté, pas écrasé. Les tags sont récupérés seuls, sans toucher aux branches de suivi.

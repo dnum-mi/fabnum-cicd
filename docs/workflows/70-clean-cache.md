@@ -14,9 +14,9 @@ Pour les images de conteneurs, voir [clean-images](./71-clean-images.md).
 
 ## Permissions
 
-| Scope   | Accès | Description                    |
-| ------- | ----- | ------------------------------ |
-| actions | write | Supprimer les entrées de cache |
+| Scope   | Accès | Description                                  |
+| ------- | ----- | -------------------------------------------- |
+| actions | write | Gérer les caches Actions via l'API de cache  |
 
 ## Quand déclencher ce workflow
 
