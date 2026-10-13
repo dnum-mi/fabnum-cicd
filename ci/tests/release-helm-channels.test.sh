@@ -127,4 +127,24 @@ test_ships_the_classic_channel_on_and_oci_off_by_default() {
   fi
 }
 
+# chart-releaser-action passes `skip_upload` on to cr.sh, which tests only
+# whether it is non-empty: 'false' skips the index update exactly as 'true' does.
+# A bare `${{ !inputs.CREATE_GITHUB_RELEASE }}` therefore turned the default
+# configuration into one that never refreshed index.yaml, with every run green.
+# The expression has to yield the empty string when the classic channel is on.
+test_asks_chart_releaser_to_skip_the_index_only_when_the_classic_channel_is_off() {
+  local expression
+  expression=$(yq '
+    .jobs.release.steps[]
+    | select(.id == "chart-releaser")
+    | .with.skip_upload
+  ' "$WORKFLOWS_DIR/release-helm.yml")
+
+  if [ "$expression" != "\${{ !inputs.CREATE_GITHUB_RELEASE && 'true' || '' }}" ]; then
+    printf 'FAIL: skip_upload must be empty, not the string false, when CREATE_GITHUB_RELEASE is on; got %q\n' \
+      "$expression" >&2
+    return 1
+  fi
+}
+
 run_tests

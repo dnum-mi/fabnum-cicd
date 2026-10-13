@@ -38,6 +38,11 @@ guard_env() {
   export APP_VERSION=""
   export UPGRADE_TYPE="auto"
   export PRERELEASE_IDENTIFIER="rc"
+  export HELM_DOCS_VERSION="v1.14.2"
+  # update-helm-chart.yml needs the chart named one way or the other
+  # (CHART_NAME or CHART_PATH) for its invocation to be valid at all.
+  export CHART_NAME="my-app"
+  export CHART_PATH=""
   # release-helm.yml is the one deviation from "the defaults": both of its
   # distribution channels default to false, and that combination is rejected
   # by design. A valid minimal configuration is used instead, so these tests
