@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.23.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.22.0...v0.23.0) (2026-10-13)
+
+
+### Features
+
+* **workflows:** sync reusable workflows with upstream 0.40.0 ([96fcf6d](https://github.com/dnum-mi/fabnum-cicd/commit/96fcf6d475e236fb3e0e0b9f99b918e2b6adbb2c))
+
+
+### Dependencies
+
+* **deps:** update actions/create-github-app-token to v3.3.0 ([b0a95f6](https://github.com/dnum-mi/fabnum-cicd/commit/b0a95f6d799a9143764bf1cce3ac0ad02fa1af2a))
+* **deps:** update github/codeql-action to v4.38.3 ([94d2be9](https://github.com/dnum-mi/fabnum-cicd/commit/94d2be933fa786c85929f8f1950ef69ee9a69109))
+* **deps:** update helm/chart-testing-action to v2.9.0 ([8195ee2](https://github.com/dnum-mi/fabnum-cicd/commit/8195ee278e764db36c535ad2e58aa1e49124a285))
+
 ## [0.22.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.21.0...v0.22.0) (2026-10-08)
 
 
