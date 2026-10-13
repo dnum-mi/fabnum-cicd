@@ -21,6 +21,14 @@ on:
           directly under CHARTS_DIR.
         type: string
         required: false
+      CHART_PATH:
+        description: >-
+          Path to a single chart directory (the one holding Chart.yaml), e.g.
+          'deploy/helm'. Use it when the directory is not named after the
+          chart. Mutually exclusive with CHART_NAME; CHARTS_DIR is ignored
+          when it is set.
+        type: string
+        required: false
       CHART_VERSION:
         description: >-
           Chart version to stamp when packaging (helm package --version).
@@ -30,9 +38,9 @@ on:
         required: false
       APP_VERSION:
         description: >-
-          Application version to stamp when packaging
-          (helm package --app-version). Defaults to the appVersion already set
-          in Chart.yaml. Applies to every chart packaged in this run.
+          Application version to stamp when packaging (helm package
+          --app-version). Defaults to the appVersion already set in
+          Chart.yaml. Applies to every chart packaged in this run.
         type: string
         required: false
       CHECKOUT_REF:
@@ -56,6 +64,15 @@ on:
         description: Repository path in the OCI registry (defaults to github.repository)
         type: string
         required: false
+      ALLOW_OVERWRITE:
+        description: >-
+          Whether to push a chart version that is already in the registry.
+          Off by default: a consumer pins a chart by version and its signature
+          is bound to the digest first pushed, so pushing again under the same
+          version silently changes what that version means.
+        type: boolean
+        required: false
+        default: false
       RUNS_ON:
         description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
         required: false
@@ -73,6 +90,29 @@ on:
           Password for OCI registry authentication. Required alongside
           REGISTRY_USERNAME under the same conditions.
         required: false
+    outputs:
+      published-charts:
+        description: >-
+          JSON array of the charts pushed to the OCI registry, each entry
+          `{name, version, repository, digest}`. Identical in shape to the
+          output of the same name on release-helm.yml, so attest-helm.yml
+          consumes either without caring which one published - the monorepo
+          pipeline this workflow serves is no less entitled to a signature and
+          a provenance statement than a dedicated chart repository. repository
+          and digest are kept apart so they can be fed straight to
+          attest-helm.yml, which passes them on as cosign's subject and as the
+          subject-name/subject-digest pair actions/attest-build-provenance
+          expects. Never empty: this workflow fails rather than publishing
+          nothing.
+        value: ${{ jobs.release.outputs.published-charts }}
+
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
 
 jobs:
   release:
@@ -81,6 +121,15 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      # No `|| '[]'` fallback, unlike release-helm.yml, where the publishing
+      # step is legitimately skipped when PUBLISH_OCI is false. Here there is
+      # no such case - a successful run always pushed at least one chart, and
+      # the packaging step fails the run when it found none. An empty value
+      # could therefore only mean a bug in this workflow, and attest-helm.yml
+      # rejecting it by name is a better outcome than a downstream job quietly
+      # attesting nothing and reporting green.
+      published-charts: ${{ steps.publish.outputs.published-charts }}
     env:
       # `secrets` is not available in a step-level `if`, but it is here.
       HAS_REGISTRY_AUTH: ${{ secrets.REGISTRY_USERNAME != '' && secrets.REGISTRY_PASSWORD != '' }}
@@ -133,13 +182,16 @@ jobs:
         echo "$PASSWORD" | helm registry login "$REGISTRY" -u "$USERNAME" --password-stdin
 
     - name: Package and push chart(s)
+      id: publish
       env:
         CHARTS_DIR: ${{ inputs.CHARTS_DIR }}
         CHART_NAME: ${{ inputs.CHART_NAME }}
+        CHART_PATH: ${{ inputs.CHART_PATH }}
         CHART_VERSION: ${{ inputs.CHART_VERSION }}
         APP_VERSION: ${{ inputs.APP_VERSION }}
         REGISTRY: ${{ inputs.REGISTRY }}
         OCI_REPOSITORY: ${{ inputs.REPOSITORY }}
+        ALLOW_OVERWRITE: ${{ inputs.ALLOW_OVERWRITE }}
       run: |
         set -euo pipefail
 
@@ -148,10 +200,25 @@ jobs:
         OCI_REPO="${OCI_REPOSITORY:-$GITHUB_REPOSITORY}"
         OCI_REPO=$(echo "$OCI_REPO" | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')
 
-        # Resolve which chart(s) to package: a single CHART_NAME, or every
-        # immediate subdirectory of CHARTS_DIR that holds a Chart.yaml
+        # Resolve which chart(s) to package: an explicit CHART_PATH, a single
+        # CHART_NAME under CHARTS_DIR, or every immediate subdirectory of
+        # CHARTS_DIR that holds a Chart.yaml
+        if [ -n "$CHART_PATH" ] && [ -n "$CHART_NAME" ]; then
+          echo "::error::CHART_PATH and CHART_NAME are mutually exclusive - set one."
+          exit 1
+        fi
+
         CHART_PATHS=()
-        if [ -n "$CHART_NAME" ]; then
+        if [ -n "$CHART_PATH" ]; then
+          while [ "${CHART_PATH%/}" != "$CHART_PATH" ]; do CHART_PATH="${CHART_PATH%/}"; done
+          # An explicit path that holds no chart is a caller mistake, not an
+          # empty directory to skip.
+          if [ ! -f "$CHART_PATH/Chart.yaml" ]; then
+            echo "::error::Chart.yaml not found in $CHART_PATH"
+            exit 1
+          fi
+          CHART_PATHS+=("$CHART_PATH")
+        elif [ -n "$CHART_NAME" ]; then
           CHART_PATHS+=("$CHARTS_DIR/$CHART_NAME")
         else
           while IFS= read -r dir; do
@@ -187,11 +254,72 @@ jobs:
           exit 1
         fi
 
+        # A version already in the registry is never pushed again unless the
+        # caller asks for it, and every package is checked before any is
+        # pushed, so a run cannot publish half of its charts. Only a clear "not
+        # found" lets a push through: any other answer (denied, rate limited,
+        # unreachable) says nothing about the version.
+        if [ "$ALLOW_OVERWRITE" != "true" ]; then
+          for chart_package in .cr-release-packages/*.tgz; do
+            meta=$(helm show chart "$chart_package")
+            # Top-level keys only: `dependencies:` is printed first and holds
+            # indented name: and version: lines of its own.
+            name=$(awk '/^name:/ { print $2; exit }' <<<"$meta" | tr -d "\"'")
+            version=$(awk '/^version:/ { print $2; exit }' <<<"$meta" | tr -d "\"'")
+            if [[ ! "$name" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || [[ ! "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.+-]*)?$ ]]; then
+              echo "::error::cannot read the name and version of $(basename "$chart_package")"
+              exit 1
+            fi
+            if probe=$(helm show chart "oci://$REGISTRY/$OCI_REPO/$name" --version "$version" 2>&1); then
+              echo "::error::$name $version is already published at oci://$REGISTRY/$OCI_REPO; refusing to overwrite it (set ALLOW_OVERWRITE to replace it)."
+              exit 1
+            fi
+            if ! grep -q -i -E 'not found|manifest unknown|name unknown|404' <<<"$probe"; then
+              echo "::error::cannot tell whether $name $version is published at oci://$REGISTRY/$OCI_REPO: $probe"
+              exit 1
+            fi
+          done
+        fi
+
+        # Each entry is recorded from helm's own Pushed:/Digest: output rather
+        # than rebuilt from the file name: '<name>-<version>.tgz' cannot be
+        # split back reliably, because a prerelease version contains dashes of
+        # its own ('my-chart-1.2.3-rc.1.tgz').
+        PUBLISHED='[]'
+
         for chart_package in .cr-release-packages/*.tgz; do
           chart_file=$(basename "$chart_package")
           echo "Publishing ${chart_file} to oci://$REGISTRY/${OCI_REPO}"
-          helm push "$chart_package" "oci://$REGISTRY/${OCI_REPO}"
+          push_output=$(helm push "$chart_package" "oci://$REGISTRY/${OCI_REPO}" 2>&1 | tee /dev/stderr)
+
+          pushed=$(printf '%s\n' "$push_output" | awk '/^Pushed:/ { print $2 }')
+          digest=$(printf '%s\n' "$push_output" | awk '/^Digest:/ { print $2 }')
+
+          # Downstream signing pins the digest, so a missing one has to fail
+          # here rather than produce an entry that cosign cannot resolve.
+          if [ -z "$pushed" ] || [ -z "$digest" ]; then
+            echo "::error::Could not read the reference and digest of $chart_file back from 'helm push'."
+            exit 1
+          fi
+
+          # repository and digest are kept apart rather than pre-joined:
+          # actions/attest-build-provenance takes them as separate
+          # subject-name/subject-digest inputs, exactly as attest-docker.yml
+          # feeds it. Consumers that want one string join them with '@'.
+          PUBLISHED=$(printf '%s' "$PUBLISHED" | jq -c \
+            --arg name "${pushed##*/}" \
+            --arg repository "${pushed%:*}" \
+            --arg digest "$digest" \
+            '. + [{
+               name: ($name | split(":")[0]),
+               version: ($name | split(":")[1]),
+               repository: $repository,
+               digest: $digest
+             }]')
         done
+
+        printf 'published-charts=%s\n' "$PUBLISHED" >> "$GITHUB_OUTPUT"
+        printf 'Published %s chart(s)\n' "$(printf '%s' "$PUBLISHED" | jq 'length')"
 
     # Helm stores registry credentials in the runner's Helm config, which on a
     # self-hosted runner (supported through RUNS_ON) outlives the job and would

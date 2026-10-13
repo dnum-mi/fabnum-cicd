@@ -4,7 +4,11 @@ on:
   workflow_call:
     inputs:
       HELM_DOCS_VERSION:
-        description: Version of helm-docs to use (eg. 'v1.14.2')
+        description: >-
+          The helm-docs release the READMEs are checked against, as its tag
+          (e.g. 'v1.14.2') - the same one update-helm-chart.yml regenerates
+          with, built from source at exactly that version. Must be a release
+          tag: 'latest' is refused.
         required: false
         type: string
         default: v1.14.2
@@ -36,6 +40,14 @@ on:
         required: false
         type: string
         default: '["ubuntu-24.04"]'
+
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
 
 jobs:
   lint-charts:
@@ -77,6 +89,36 @@ jobs:
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
+    # helm-docs is built from source at exactly the version asked for, which
+    # `go install` verifies against the Go checksum database - a transparency
+    # log over the module - rather than pulled as a container image whose tag
+    # could be repointed by whoever holds the upstream account. Stamped with
+    # the same -X main.version the upstream release carries: the README's
+    # footer names the version and a bare `go install` leaves it empty, so an
+    # unstamped build would rewrite every README's last line.
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+      with:
+        go-version: stable
+        cache: false
+
+    - name: Install helm-docs
+      env:
+        HELM_DOCS_VERSION: ${{ inputs.HELM_DOCS_VERSION }}
+      run: |
+        set -euo pipefail
+
+        if [[ ! "$HELM_DOCS_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::HELM_DOCS_VERSION must be a release tag matching '^v[0-9]+\.[0-9]+\.[0-9]+\$' - 'latest' would install whatever is newest today - got '$HELM_DOCS_VERSION'"
+          exit 1
+        fi
+        go install -trimpath -ldflags "-s -w -X main.version=${HELM_DOCS_VERSION#v}" \
+          "github.com/norwoodj/helm-docs/cmd/helm-docs@$HELM_DOCS_VERSION"
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+    # Regenerated in place and compared to what is committed, which says
+    # which README drifted and how - the read-only mount this used to run
+    # under only said that helm-docs failed to write.
     - name: Run helm-docs
       env:
         CHARTS_DIR: ${{ inputs.CHARTS_DIR }}
@@ -85,9 +127,9 @@ jobs:
         set -euo pipefail
 
         echo "Validating helm chart docs"
-        docker run \
-          --rm \
-          --volume "$(pwd)/$CHARTS_DIR:/helm-docs:ro" \
-          -u "$(id -u)" \
-          "docker.io/jnorwood/helm-docs:$HELM_DOCS_VERSION"
+        helm-docs --chart-search-root "$CHARTS_DIR"
+        if ! git diff --exit-code --stat -- "$CHARTS_DIR"; then
+          echo "::error::a chart README is out of date - run helm-docs at $HELM_DOCS_VERSION and commit the result"
+          exit 1
+        fi
         echo "Helm chart docs are valid"

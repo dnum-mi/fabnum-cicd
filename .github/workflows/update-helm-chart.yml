@@ -18,9 +18,21 @@ on:
         type: string
         default: charts
       CHART_NAME:
-        description: Name of the chart to update (in CHART_DIR)
-        required: true
+        description: >-
+          Name of the chart to update, as a directory under CHART_DIR. Set
+          this or CHART_PATH.
+        required: false
         type: string
+        default: ""
+      CHART_PATH:
+        description: >-
+          Path to the chart directory (the one holding Chart.yaml), e.g.
+          'deploy/helm', for a chart whose directory is not named after it.
+          The chart name is read from Chart.yaml. Set this or CHART_NAME;
+          CHART_DIR is ignored when it is set.
+        required: false
+        type: string
+        default: ""
       APP_VERSION:
         description: >-
           The app version to inject in Chart.yaml (appVersion). Leave empty to
@@ -52,9 +64,11 @@ on:
         default: rc
       HELM_DOCS_VERSION:
         description: >-
-          Version of helm-docs used to regenerate the chart README (e.g.
-          'v1.14.2'). Pinned rather than tracking ':latest', so a new upstream
-          release cannot silently change what this job runs against your chart.
+          The helm-docs release that regenerates the chart README, as its tag
+          (e.g. 'v1.14.2'). Built from source at exactly that version with
+          `go install`, which verifies the module against the Go checksum
+          database, rather than pulled as a container image whose tag could
+          be repointed. Must be a release tag: 'latest' is refused.
         required: false
         type: string
         default: v1.14.2
@@ -117,6 +131,14 @@ on:
         description: SHA of the bump commit pushed on the current branch (local mode only)
         value: ${{ jobs.update.outputs.commit-sha }}
 
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   update:
     name: Update chart
@@ -147,6 +169,9 @@ jobs:
         APP_VERSION: ${{ inputs.APP_VERSION }}
         UPGRADE_TYPE: ${{ inputs.UPGRADE_TYPE }}
         PRERELEASE_IDENTIFIER: ${{ inputs.PRERELEASE_IDENTIFIER }}
+        HELM_DOCS_VERSION: ${{ inputs.HELM_DOCS_VERSION }}
+        CHART_NAME: ${{ inputs.CHART_NAME }}
+        CHART_PATH: ${{ inputs.CHART_PATH }}
       run: |
         set -euo pipefail
 
@@ -188,6 +213,15 @@ jobs:
             ;;
         esac
 
+        if [ -n "${CHART_PATH:-}" ] && [ -n "${CHART_NAME:-}" ]; then
+          echo "::error::CHART_PATH and CHART_NAME are mutually exclusive - set one."
+          exit 1
+        fi
+        if [ -z "${CHART_PATH:-}" ] && [ -z "${CHART_NAME:-}" ]; then
+          echo "::error::Set CHART_NAME (with CHART_DIR) or CHART_PATH."
+          exit 1
+        fi
+
         # Both values are written into Chart.yaml, and PRERELEASE_IDENTIFIER
         # additionally becomes part of the chart version and the pull request's
         # branch name. They are written with `yq` + `strenv()` so neither can be
@@ -209,62 +243,119 @@ jobs:
           exit 1
         fi
 
-    # Minted whenever App auth is configured, for either mode: 'called' needs
-    # it for the pull request and the merge, and 'local' needs it for the
-    # push below - same precedence as every other credential in this catalog
+        # A release tag, never 'latest': the tool is built from source at this
+        # version and 'latest' would install whatever is newest on the day,
+        # which is the floating pin this input exists to refuse.
+        if [[ ! "$HELM_DOCS_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::HELM_DOCS_VERSION must be a release tag matching '^v[0-9]+\.[0-9]+\.[0-9]+\$', got '$HELM_DOCS_VERSION'"
+          exit 1
+        fi
+
+    # Minted whenever App auth is configured, for either mode: 'called' needs it
+    # for the pull request and the merge, and 'local' needs it for the push
+    # below - the same precedence as every other credential in this catalog
     # (App, then GITHUB_TOKEN), not a separate opt-in.
     # Scoped to this repository only: passing `owner:` without `repositories:`
     # would widen the token to every repo in the installation.
     - name: Generate GitHub App token
       id: app-token
       if: ${{ env.HAS_APP_AUTH == 'true' }}
-      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
       with:
         client-id: ${{ secrets.APP_CLIENT_ID }}
         private-key: ${{ secrets.APP_PRIVATE_KEY }}
         permission-contents: write
         permission-pull-requests: write
 
-    # Follows the App token when one was minted above, GITHUB_TOKEN otherwise
-    # - the same precedence used everywhere else credentials are chosen in
-    # this catalog. For 'called' mode this is inert: that push goes out
-    # through create-pull-request's own token, not this checkout's credential.
-    # For 'local' mode it is the credential the push below actually uses -
-    # which means a caller that supplies APP_CLIENT_ID/APP_PRIVATE_KEY to this
-    # job changes that push's behavior: GITHUB_TOKEN cannot trigger a new
-    # workflow run, which is what stops the push from re-entering the
-    # caller's CD pipeline (e.g. a caller triggering on `push: branches:
-    # [main]`); the App token can. Supply App credentials to a 'local'-mode
-    # call only once you have confirmed that re-entry is safe for your
-    # pipeline - typically because you need the App identity for another
-    # reason, such as a branch ruleset that requires a pull request for every
-    # push with no exception for GITHUB_TOKEN, which cannot be named in a
-    # bypass list the way a GitHub App can.
+    # Follows the App token when one was minted above, GITHUB_TOKEN otherwise -
+    # the same precedence used everywhere else credentials are chosen in this
+    # catalog. Deliberately not GH_PAT: the App identity is the one a branch
+    # ruleset can name in a bypass list, and widening this to GH_PAT would flip
+    # the behaviour below for every caller already supplying one for 'called'
+    # mode.
+    #
+    # For 'called' mode this is inert: that push goes out through
+    # create-pull-request's own token, not this checkout's credential. For
+    # 'local' mode it is the credential the push below actually uses - which
+    # means a caller that supplies APP_CLIENT_ID/APP_PRIVATE_KEY to this job
+    # changes that push's behaviour: GITHUB_TOKEN cannot trigger a new workflow
+    # run, which is what stops the push from re-entering the caller's CD
+    # pipeline (e.g. a caller triggering on `push: branches: [main]`); the App
+    # token can. Supply App credentials to a 'local'-mode call only once you
+    # have confirmed that re-entry is safe for your pipeline - typically
+    # because you need the App identity for another reason, such as a branch
+    # ruleset that requires a pull request for every push with no exception for
+    # GITHUB_TOKEN, which cannot be named in a bypass list the way a GitHub App
+    # can.
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
         token: ${{ steps.app-token.outputs.token || github.token }}
+
+    # helm-docs is built from source at exactly the version asked for, which
+    # `go install` verifies against the Go checksum database - a transparency
+    # log over the module - rather than pulled as a container image whose tag
+    # could be repointed by whoever holds the upstream account. Stamped with
+    # the same -X main.version the upstream release carries: the README's
+    # footer names the version and a bare `go install` leaves it empty, so an
+    # unstamped build would rewrite every README's last line.
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+      with:
+        go-version: stable
+        cache: false
+
+    - name: Install helm-docs
+      env:
+        HELM_DOCS_VERSION: ${{ inputs.HELM_DOCS_VERSION }}
+      run: |
+        set -euo pipefail
+
+        if [[ ! "$HELM_DOCS_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::HELM_DOCS_VERSION must be a release tag matching '^v[0-9]+\.[0-9]+\.[0-9]+\$' - 'latest' would install whatever is newest today - got '$HELM_DOCS_VERSION'"
+          exit 1
+        fi
+        go install -trimpath -ldflags "-s -w -X main.version=${HELM_DOCS_VERSION#v}" \
+          "github.com/norwoodj/helm-docs/cmd/helm-docs@$HELM_DOCS_VERSION"
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
     - name: update chart version
       id: update-chart
       env:
         CHART_DIR: ${{ inputs.CHART_DIR }}
         CHART_NAME: ${{ inputs.CHART_NAME }}
+        CHART_PATH: ${{ inputs.CHART_PATH }}
         APP_VERSION: ${{ inputs.APP_VERSION }}
         UPGRADE_TYPE: ${{ inputs.UPGRADE_TYPE }}
         PRERELEASE_IDENTIFIER: ${{ inputs.PRERELEASE_IDENTIFIER }}
-        HELM_DOCS_VERSION: ${{ inputs.HELM_DOCS_VERSION }}
       run: |
-        # Remove trailing slashes
-        while [ "${CHART_DIR%/}" != "$CHART_DIR" ]; do CHART_DIR="${CHART_DIR%/}"; done
+        # Resolve the chart directory: explicit CHART_PATH, or CHART_DIR/CHART_NAME
+        if [ -n "${CHART_PATH:-}" ]; then
+          while [ "${CHART_PATH%/}" != "$CHART_PATH" ]; do CHART_PATH="${CHART_PATH%/}"; done
+        else
+          while [ "${CHART_DIR%/}" != "$CHART_DIR" ]; do CHART_DIR="${CHART_DIR%/}"; done
+          CHART_PATH="$CHART_DIR/$CHART_NAME"
+        fi
 
-        if [ ! -f "$CHART_DIR/$CHART_NAME/Chart.yaml" ]; then
-          echo "Chart.yaml not found in $CHART_DIR/$CHART_NAME"
+        if [ ! -f "$CHART_PATH/Chart.yaml" ]; then
+          echo "Chart.yaml not found in $CHART_PATH"
           exit 1
         fi
 
-        echo "Update chart '$CHART_NAME' in $CHART_DIR/$CHART_NAME with app version '$APP_VERSION'"
-        CURRENT_VERSION=$(yq '.version' "$CHART_DIR/$CHART_NAME/Chart.yaml")
+        # In CHART_PATH mode the directory says nothing about the chart, so its
+        # name comes from Chart.yaml. It ends up in a branch name and a commit
+        # message, so only a valid Helm chart name is accepted. (Legacy
+        # CHART_NAME callers keep their input as-is.)
+        if [ -z "${CHART_NAME:-}" ]; then
+          CHART_NAME=$(yq '.name' "$CHART_PATH/Chart.yaml")
+          if ! [[ "$CHART_NAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
+            echo "::error::'$CHART_NAME' (from $CHART_PATH/Chart.yaml) is not a valid chart name"
+            exit 1
+          fi
+        fi
+
+        echo "Update chart '$CHART_NAME' in $CHART_PATH with app version '$APP_VERSION'"
+        CURRENT_VERSION=$(yq '.version' "$CHART_PATH/Chart.yaml")
 
         # 'auto' mirrors the app's own bump. The level comes from the
         # appVersion delta - what Chart.yaml holds now vs what is being
@@ -298,7 +389,7 @@ jobs:
 
             # Compared on the base X.Y.Z only: mid-cycle both sides are
             # prereleases, and their identifiers say nothing about the level.
-            CURRENT_APP_VERSION=$(yq '.appVersion' "$CHART_DIR/$CHART_NAME/Chart.yaml")
+            CURRENT_APP_VERSION=$(yq '.appVersion' "$CHART_PATH/Chart.yaml")
             if [[ "$CURRENT_APP_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)([-+].*)?$ ]]; then
               OLD_APP_MAJOR="${BASH_REMATCH[1]}"
               OLD_APP_MINOR="${BASH_REMATCH[2]}"
@@ -439,20 +530,18 @@ jobs:
         if [ -n "$APP_VERSION" ]; then
           # Empty APP_VERSION = chart-only release: the chart version bumps on
           # its own lifecycle and the current appVersion is left untouched
-          yq -i '.appVersion = strenv(APP_VERSION)' "$CHART_DIR/$CHART_NAME/Chart.yaml"
+          yq -i '.appVersion = strenv(APP_VERSION)' "$CHART_PATH/Chart.yaml"
         fi
-        yq -i '.version = strenv(NEXT_VERSION)' "$CHART_DIR/$CHART_NAME/Chart.yaml"
+        yq -i '.version = strenv(NEXT_VERSION)' "$CHART_PATH/Chart.yaml"
 
         echo "Generate chart documentation..."
-        docker run \
-          --rm \
-          --volume "$(pwd)/$CHART_DIR/$CHART_NAME:/helm-docs" \
-          -u "$(id -u)" \
-          "docker.io/jnorwood/helm-docs:$HELM_DOCS_VERSION"
+        helm-docs --chart-search-root "$CHART_PATH"
 
         {
           echo "CURRENT_VERSION=$CURRENT_VERSION"
           echo "NEXT_VERSION=$NEXT_VERSION"
+          echo "CHART_NAME=$CHART_NAME"
+          echo "CHART_PATH=$CHART_PATH"
           echo "BRANCH_NAME=$CHART_NAME-v$NEXT_VERSION"
           # The resolved flow, for the automerge gate: under 'auto' the INPUT
           # never says 'prerelease' even when the bump is one, so gating on
@@ -464,36 +553,35 @@ jobs:
       id: push-local
       if: ${{ inputs.RUN_MODE == 'local' }}
       env:
-        CHART_DIR: ${{ inputs.CHART_DIR }}
-        CHART_NAME: ${{ inputs.CHART_NAME }}
+        CHART_PATH: ${{ steps.update-chart.outputs.CHART_PATH }}
+        CHART_NAME: ${{ steps.update-chart.outputs.CHART_NAME }}
         NEXT_VERSION: ${{ steps.update-chart.outputs.NEXT_VERSION }}
       run: |
         set -euo pipefail
 
-        CHART_DIR="${CHART_DIR%/}"
         git config user.name 'github-actions[bot]'
         git config user.email 'github-actions[bot]@users.noreply.github.com'
 
-        git add "$CHART_DIR/$CHART_NAME"
-        # No [skip ci] here on purpose. Without App credentials supplied to
-        # this job, this push cannot trigger a new workflow run - on push OR
-        # pull_request - because it goes out on the checkout's own
-        # GITHUB_TOKEN (see the checkout step above): GitHub never lets
+        git add "$CHART_PATH"
+        # No [skip ci] here on purpose. Without App credentials supplied to this
+        # job, this push cannot trigger a new workflow run - on push OR
+        # pull_request - because it goes out on the checkout's own GITHUB_TOKEN
+        # (see the checkout step above): GitHub never lets
         # GITHUB_TOKEN-authenticated activity create a new run, which is what
         # actually prevents the CD loop. Supplying
         # APP_CLIENT_ID/APP_PRIVATE_KEY trades that protection away by the
         # caller's own choice - re-entry is then a risk they have already
         # accepted, not one [skip ci] should paper over here.
         # [skip ci] would add nothing on the GITHUB_TOKEN path either way,
-        # while silently breaking something else: it is matched on the commit
-        # MESSAGE alone, regardless of which credential wrote it, so it would
-        # also suppress pull_request checks for any pull request a human
-        # later opens FROM this branch (e.g. a manual develop -> main
-        # promotion) - the tip is exactly this commit until the next one
-        # lands. That pull request opening is a human action authenticated
-        # with the human's own credentials, not GITHUB_TOKEN, so nothing else
-        # would stop it from getting real checks - don't reintroduce
-        # [skip ci] here.
+        # while silently breaking
+        # something else: it is matched on the commit MESSAGE alone,
+        # regardless of which credential wrote it, so it would also suppress
+        # pull_request checks for any pull request a human later opens FROM
+        # this branch (e.g. a manual develop -> main promotion) - the tip is
+        # exactly this commit until the next one lands. That pull request
+        # opening is a human action authenticated with the human's own
+        # credentials, not GITHUB_TOKEN, so nothing else would stop it from
+        # getting real checks - don't reintroduce [skip ci] here.
         # The `chore(chart):` prefix is the other guard: release-please does
         # not cut a release from it.
         git commit -m "chore(chart): release $CHART_NAME $NEXT_VERSION"
@@ -515,10 +603,10 @@ jobs:
         token: ${{ steps.app-token.outputs.token || secrets.GH_PAT || github.token }}
         branch: ${{ steps.update-chart.outputs.BRANCH_NAME }}
         base: ${{ inputs.BASE_BRANCH }}
-        title: "${{ inputs.APP_VERSION != '' && format('Update chart {0} app to v{1}', inputs.CHART_NAME, inputs.APP_VERSION) || format('Update chart {0} to v{1}', inputs.CHART_NAME, steps.update-chart.outputs.NEXT_VERSION) }}"
+        title: "${{ inputs.APP_VERSION != '' && format('Update chart {0} app to v{1}', steps.update-chart.outputs.CHART_NAME, inputs.APP_VERSION) || format('Update chart {0} to v{1}', steps.update-chart.outputs.CHART_NAME, steps.update-chart.outputs.NEXT_VERSION) }}"
         add-paths: |
           **/**
-        commit-message: "${{ inputs.APP_VERSION != '' && format('chore: update chart {0} app to v{1}', inputs.CHART_NAME, inputs.APP_VERSION) || format('chore: update chart {0} to v{1}', inputs.CHART_NAME, steps.update-chart.outputs.NEXT_VERSION) }}"
+        commit-message: "${{ inputs.APP_VERSION != '' && format('chore: update chart {0} app to v{1}', steps.update-chart.outputs.CHART_NAME, inputs.APP_VERSION) || format('chore: update chart {0} to v{1}', steps.update-chart.outputs.CHART_NAME, steps.update-chart.outputs.NEXT_VERSION) }}"
         draft: false
         body: |
           🤖 This PR has been automatically generated, please check updates before merging.

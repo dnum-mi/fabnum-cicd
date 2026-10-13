@@ -38,6 +38,10 @@ on:
         description: Gitlab token used to perfom the synchronization.
         required: true
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   trigger-dso:
     name: Trigger CPiN synchro

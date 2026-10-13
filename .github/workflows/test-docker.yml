@@ -61,6 +61,14 @@ on:
         description: Password used to login into registry
         required: false
 
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test:
     name: Test image
@@ -126,7 +134,16 @@ jobs:
           # 'docker load' reports the tag baked into the tarball, which is the
           # only reliable way to address it - the artifact name says nothing
           # about how the image inside is tagged.
-          LOADED=$(docker load -i "/tmp/test-image/${IMAGE_ARTIFACT_FILE}" | tee /dev/stderr | sed -n 's/^Loaded image: //p' | head -1)
+          # No `| head -1` on the end, deliberately: under the `pipefail` above
+          # it would make a tarball carrying several images fail the step for
+          # the wrong reason. head closes the pipe after the first line, the
+          # still-writing sed and docker load die of SIGPIPE, and pipefail
+          # promotes that to the status of a command substitution that `set -e`
+          # then aborts on. The first line is taken in the shell instead, where
+          # no pipe can be closed early. Same trap as test-go.yml's detection,
+          # which this pattern silently broke there.
+          LOADED=$(docker load -i "/tmp/test-image/${IMAGE_ARTIFACT_FILE}" | tee /dev/stderr | sed -n 's/^Loaded image: //p')
+          LOADED=${LOADED%%$'\n'*}
           if [ -z "$LOADED" ]; then
             echo "::error::Could not determine the image reference loaded from ${IMAGE_ARTIFACT_FILE}."
             exit 1
@@ -164,8 +181,8 @@ jobs:
         # RUN_ARGS and COMMAND are argv fragments supplied by the calling
         # workflow, so they have to be split into separate arguments. Splitting
         # once here beats relying on word-splitting at the call site, where a
-        # 'shellcheck disable' would also have to sit on the command itself -
-        # the previous directive landed on set -x and silenced nothing.
+        # `shellcheck disable` would also have to sit on the command itself -
+        # the previous directive landed on `set -x` and silenced nothing.
         read -ra RUN_ARG_LIST <<< "$RUN_ARGS"
         read -ra COMMAND_LIST <<< "$COMMAND"
 

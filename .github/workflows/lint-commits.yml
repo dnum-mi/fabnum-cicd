@@ -41,6 +41,14 @@ on:
         type: string
         default: '["ubuntu-24.04"]'
 
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   lint-commits:
     name: Lint commit messages
@@ -69,6 +77,24 @@ jobs:
     # the 'Lint commits' step below), so no workflow input ever becomes part
     # of the JavaScript. Interpolating them here would let a crafted
     # ALLOWED_TYPES escape both the heredoc and the string literal.
+    #
+    # CommonJS, not ESM, and deliberately so. `bun install` writes a
+    # package.json with no "type" field, which makes a .js file CommonJS by
+    # default - so an `export default` here forced Node to reparse the file as
+    # an ES module and print a MODULE_TYPELESS_PACKAGE_JSON warning. The lint
+    # step runs commitlint once per commit, so that warning is emitted once per
+    # commit too, and the noise grows with the size of the pull request until
+    # the one line saying which commit actually failed is the hard part to find.
+    #
+    # Of the three ways to silence it, this is the only one that changes
+    # nothing else. Renaming to .mjs works, but commitlint searches
+    # `commitlint.config.js` *before* `commitlint.config.mjs`, so a caller with
+    # its own checked-in .js would silently start winning and its ALLOWED_TYPES
+    # /REQUIRE_SCOPE/MAX_SUBJECT_LENGTH inputs would stop having any effect,
+    # with nothing in the log saying so. Adding "type": "module" means editing
+    # a package.json bun generates for us. `module.exports` keeps the filename,
+    # keeps the precedence, and keeps `extends` resolving - commitlint imports
+    # config-conventional itself, so this file never requires it.
     - name: Create commitlint config
       if: ${{ inputs.CONFIG_FILE == '' }}
       run: |
@@ -78,7 +104,7 @@ jobs:
         const requireScope = process.env.COMMITLINT_REQUIRE_SCOPE === 'true';
         const headerMaxLength = Number(process.env.COMMITLINT_MAX_SUBJECT_LENGTH ?? 100);
 
-        export default {
+        module.exports = {
           extends: ['@commitlint/config-conventional'],
           rules: {
             'type-enum': [2, 'always', allowedTypes],
@@ -172,9 +198,9 @@ jobs:
           SHORT_SHA=$(echo "$COMMIT" | cut -c1-7)
 
           # The subject is written by whoever authored the commit, and the step
-          # summary renders Markdown. Unescaped, a '|' closes the table cell and
+          # summary renders Markdown. Unescaped, a `|` closes the table cell and
           # the rest of the subject becomes new cells - enough to forge a passing
-          # row next to a failing one - and '![](https://...)' renders a remote
+          # row next to a failing one - and `![](https://…)` renders a remote
           # image that reports every reviewer who opens the run. Escape the
           # table and Markdown metacharacters, then wrap the result in inline
           # code so what is left renders literally.

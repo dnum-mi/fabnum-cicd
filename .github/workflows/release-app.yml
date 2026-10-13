@@ -234,7 +234,7 @@ jobs:
     - name: Generate GitHub App token
       id: app-token
       if: ${{ env.HAS_APP_AUTH == 'true' }}
-      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
       with:
         client-id: ${{ secrets.APP_CLIENT_ID }}
         private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -261,7 +261,7 @@ jobs:
     # "Publish draft release" step instead - same credential, later in the job,
     # and only once the assets are attached.
     - name: Checks-out repository
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
     # The invariant every version computed on the prerelease branch depends on:
     # that branch is the release branch plus only the unreleased work. When it
@@ -533,7 +533,7 @@ jobs:
     - name: Release new version
       id: release
       if: ${{ steps.sync-state.outputs.identical != 'true' }}
-      uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5.0.0
       with:
         # App token, then GH_PAT, then GITHUB_TOKEN. The first two can trigger
         # workflows, so the release pull request opened here actually runs its

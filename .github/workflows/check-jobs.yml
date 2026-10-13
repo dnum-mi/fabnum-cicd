@@ -1,0 +1,119 @@
+name: Check jobs status
+
+on:
+  workflow_call:
+    inputs:
+      NEEDS:
+        description: The calling job's own needs context, serialised with toJson — see the Check Jobs documentation for the call
+        type: string
+        required: true
+      ALLOW_SKIPPED:
+        description: Whether a skipped job counts as a pass (a path-filtered pipeline needs this; a pipeline where every job always runs does not)
+        type: boolean
+        required: false
+        default: true
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
+
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # One check a ruleset can require, standing for a pipeline whose set of checks
+  # varies.
+  #
+  # Branch protection names the checks it requires, and a required check that
+  # never reports blocks a merge forever — so a pipeline with path filters, a
+  # matrix, or a job behind an `if` cannot have its real jobs required
+  # individually. Aggregating them into one job that always runs is the way out,
+  # and the caller keeps the two halves only it can know: `if: always()`, and a
+  # `needs` list naming every job.
+  #
+  # **Only the caller's `needs` context knows the answer**, which is why it
+  # arrives as an input rather than being discovered here: a reusable workflow
+  # cannot see the workflow that called it, let alone that workflow's job graph.
+  check-jobs:
+    name: Required jobs
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions: {}
+    steps:
+    - name: Check status of all required jobs
+      env:
+        NEEDS: ${{ inputs.NEEDS }}
+        ALLOW_SKIPPED: ${{ inputs.ALLOW_SKIPPED }}
+      run: |
+        set -euo pipefail
+
+        # An empty context is the failure this gate is least able to survive: a
+        # caller that forgets `needs:` gets `{}`, every loop below runs zero
+        # times, and the one check a ruleset requires goes green having verified
+        # nothing. Silence is not success.
+        if [ -z "${NEEDS:-}" ] || [ "$NEEDS" = "null" ] || [ "$NEEDS" = "{}" ]; then
+          echo "***"
+          echo "Error: there are no jobs to check."
+          echo "The needs context arrived empty, so this gate would report success without having"
+          echo "looked at anything. The calling job has to list every job of the workflow in its"
+          echo "own 'needs:', and pass that context to NEEDS through toJson — the Check Jobs"
+          echo "documentation carries the snippet."
+          exit 1
+        fi
+
+        if ! echo "$NEEDS" | jq -e 'type == "object"' >/dev/null 2>&1; then
+          echo "***"
+          echo "Error: the needs context is not a JSON object."
+          echo "Pass the caller's own needs context through toJson rather than building one by hand."
+          exit 1
+        fi
+
+        # Every job is reported before anything exits, because a run with three
+        # broken jobs is a different problem from a run with one, and stopping at
+        # the first sends somebody back to the log for the rest.
+        FAILED=()
+        TOTAL=0
+        while IFS=$'\t' read -r JOB_ID RESULT; do
+          TOTAL=$((TOTAL + 1))
+          echo "$JOB_ID job result: $RESULT"
+          case "$RESULT" in
+          success)
+            ;;
+          skipped)
+            # A skipped job is the ordinary answer under a path filter, and it
+            # is also what a job whose dependency failed reports — the two are
+            # indistinguishable from here. That is survivable only because the
+            # dependency is in this list too and fails on its own account, so
+            # the gate is sound exactly while `needs` names every job rather
+            # than only the leaves.
+            if [ "$ALLOW_SKIPPED" != "true" ]; then
+              FAILED+=("$JOB_ID (skipped, and ALLOW_SKIPPED is false)")
+            fi
+            ;;
+          *)
+            # failure, cancelled, timed_out and anything GitHub adds later. The
+            # result is named rather than folded into "did not pass": a
+            # cancellation is somebody pressing a button and a timeout is a job
+            # that never finished, and neither is read the way a failure is.
+            FAILED+=("$JOB_ID ($RESULT)")
+            ;;
+          esac
+        done < <(echo "$NEEDS" | jq -r 'to_entries[] | "\(.key)\t\(.value.result)"')
+
+        if [ "${#FAILED[@]}" -gt 0 ]; then
+          echo "***"
+          echo "Error: ${#FAILED[@]} of $TOTAL jobs did not pass:"
+          printf '  %s\n' "${FAILED[@]}"
+          exit 1
+        fi
+
+        if [ "$ALLOW_SKIPPED" = "true" ]; then
+          echo "All $TOTAL jobs passed or were skipped."
+        else
+          echo "All $TOTAL jobs passed."
+        fi

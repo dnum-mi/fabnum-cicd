@@ -56,6 +56,16 @@ on:
         required: false
         type: string
         default: "public"
+      PROVENANCE:
+        description: >-
+          Generate a signed SLSA provenance attestation for the published
+          package (npm, yarn and pnpm's native --provenance, backed by the
+          same OIDC token as trusted publishing). Requires ACCESS: public.
+          Not supported by 'bun publish' itself - see the Notes in
+          docs/workflows/55-release-npm.md.
+        required: false
+        type: boolean
+        default: false
       DRY_RUN:
         description: Perform a dry-run publish (validate without uploading)
         required: false
@@ -79,6 +89,14 @@ on:
           caller job's id-token: write permission is used instead. Required
           otherwise, e.g. for GitHub Packages or a registry without OIDC support.
         required: false
+
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
 
 jobs:
   publish:
@@ -184,6 +202,33 @@ jobs:
         else VERSION="24"; fi
         echo "Runtime version: $VERSION"
         echo "runtime-version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+    - name: Validate provenance inputs
+      if: ${{ inputs.PROVENANCE }}
+      env:
+        ACCESS: ${{ inputs.ACCESS }}
+        PACKAGE_MANAGER: ${{ steps.detect.outputs.package-manager }}
+      run: |
+        set -euo pipefail
+
+        # The registry's own rule, not this workflow's: a provenance
+        # attestation is public, verifiable-by-anyone metadata, and it
+        # refuses to attach one to a restricted package regardless of which
+        # client publishes.
+        if [ "$ACCESS" != "public" ]; then
+          echo "::error::PROVENANCE requires ACCESS: public. The registry refuses to generate provenance for a restricted package: \"Can't generate provenance for new or private package, you must set access to public.\""
+          exit 1
+        fi
+
+        # bun publish has no OIDC/provenance support of its own (see
+        # oven-sh/bun#22423). With no NPM_TOKEN this workflow already
+        # publishes bun projects through the npm CLI instead (see 'Publish
+        # package (bun, trusted publishing)' below), which does support it -
+        # so this only blocks the one combination neither path can fulfil.
+        if [ "$PACKAGE_MANAGER" = "bun" ] && [ "$NPM_TOKEN_PROVIDED" = "true" ]; then
+          echo "::error::PROVENANCE is not supported by 'bun publish' itself. Omit the NPM_TOKEN secret to publish this bun project through the npm CLI's trusted-publishing fallback instead, which does support it, or set PROVENANCE: false."
+          exit 1
+        fi
 
     - name: Setup Node.js
       # Also runs for bun-only projects publishing via trusted publishing (empty
@@ -319,11 +364,15 @@ jobs:
         if [ "$DRY_RUN" = "true" ]; then
           ARGS+=(--dry-run)
         fi
+        if [ "$PROVENANCE" = "true" ]; then
+          ARGS+=(--provenance)
+        fi
         npm publish "${ARGS[@]}"
       env:
         TAG: ${{ inputs.TAG }}
         ACCESS: ${{ inputs.ACCESS }}
         DRY_RUN: ${{ inputs.DRY_RUN }}
+        PROVENANCE: ${{ inputs.PROVENANCE }}
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     - name: Publish package (yarn)
@@ -339,11 +388,15 @@ jobs:
         if [ "$DRY_RUN" = "true" ]; then
           ARGS+=(--dry-run)
         fi
+        if [ "$PROVENANCE" = "true" ]; then
+          ARGS+=(--provenance)
+        fi
         yarn npm publish "${ARGS[@]}"
       env:
         TAG: ${{ inputs.TAG }}
         ACCESS: ${{ inputs.ACCESS }}
         DRY_RUN: ${{ inputs.DRY_RUN }}
+        PROVENANCE: ${{ inputs.PROVENANCE }}
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     - name: Publish package (pnpm)
@@ -359,11 +412,15 @@ jobs:
         if [ "$DRY_RUN" = "true" ]; then
           ARGS+=(--dry-run)
         fi
+        if [ "$PROVENANCE" = "true" ]; then
+          ARGS+=(--provenance)
+        fi
         pnpm publish "${ARGS[@]}"
       env:
         TAG: ${{ inputs.TAG }}
         ACCESS: ${{ inputs.ACCESS }}
         DRY_RUN: ${{ inputs.DRY_RUN }}
+        PROVENANCE: ${{ inputs.PROVENANCE }}
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     - name: Publish package (bun)
@@ -409,11 +466,15 @@ jobs:
         if [ "$DRY_RUN" = "true" ]; then
           ARGS+=(--dry-run)
         fi
+        if [ "$PROVENANCE" = "true" ]; then
+          ARGS+=(--provenance)
+        fi
         npm publish "${ARGS[@]}"
       env:
         TAG: ${{ inputs.TAG }}
         ACCESS: ${{ inputs.ACCESS }}
         DRY_RUN: ${{ inputs.DRY_RUN }}
+        PROVENANCE: ${{ inputs.PROVENANCE }}
         # Set (empty) so npm can expand the .npmrc placeholder written by
         # setup-node; the real credential comes from the OIDC exchange
         NODE_AUTH_TOKEN: ''

@@ -13,6 +13,14 @@ on:
         type: string
         default: '["ubuntu-24.04"]'
 
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test-charts:
     name: Install charts
@@ -43,9 +51,15 @@ jobs:
     - name: Run chart-testing (install)
       # Refs/paths via env (never inlined) so a branch name like '$(...)' can't
       # trigger command substitution in this shell
+      #
+      # The target is the branch the pull request merges into. ct installs the
+      # charts that differ between it and HEAD, so naming the pull request's
+      # own branch — head_ref, which this read until it was noticed — diffs the
+      # branch against itself: "No chart changes detected", nothing installed,
+      # and a green check for every chart change it was there to try.
       env:
         CT_CONF_PATH: ${{ inputs.CT_CONF_PATH }}
-        TARGET_BRANCH: ${{ github.head_ref || github.event.repository.default_branch }}
+        TARGET_BRANCH: ${{ github.base_ref || github.event.repository.default_branch }}
       run: |
         ct install \
           --config "$CT_CONF_PATH" \

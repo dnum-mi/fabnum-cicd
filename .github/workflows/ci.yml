@@ -5,6 +5,14 @@ on:
     branches:
     - main
 
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   path-filter:
     runs-on: ubuntu-latest
@@ -13,6 +21,7 @@ jobs:
       pull-requests: read
     outputs:
       workflows: ${{ steps.filter.outputs.workflows }}
+      yamllint: ${{ steps.filter.outputs.yamllint }}
       tests: ${{ steps.filter.outputs.tests }}
     steps:
     - name: Checks-out repository
@@ -29,6 +38,10 @@ jobs:
             # the 'Test workflows' job accepts, so editing it has to re-run that
             # job the same way editing a workflow does.
             - '.github/actionlint.yaml'
+          yamllint:
+            # yamllint's config is the same for 'lint-yaml', and only for it:
+            # its group re-runs that job alone.
+            - 'ci/configs/yamllint.yaml'
           tests:
             - 'ci/tests/**'
 
@@ -40,7 +53,7 @@ jobs:
 
   lint-yaml:
     uses: ./.github/workflows/lint-yaml.yml
-    if: ${{ needs.path-filter.outputs.workflows == 'true' }}
+    if: ${{ needs.path-filter.outputs.workflows == 'true' || needs.path-filter.outputs.yamllint == 'true' }}
     needs:
     - path-filter
     permissions:
