@@ -34,6 +34,7 @@ jobs:
 | ------------------------------------------------------ | -------------------------------------------------------------------- | --------------------------------------- |
 | [test-helm.yml](./.github/workflows/test-helm.yml)     | Tests d'installation des charts dans un cluster Kind                 | [docs](./docs/workflows/20-test-helm.md)   |
 | [test-docker.yml](./.github/workflows/test-docker.yml) | Exécution d'une commande dans une image Docker (registre ou tarball) | [docs](./docs/workflows/24-test-docker.md) |
+| [test-python.yml](./.github/workflows/test-python.yml) | Lint, tests multi-versions et contrôle de la wheel d'un projet Python avec `uv` | [docs](./docs/workflows/22-test-python.md) |
 
 ### Build
 
@@ -62,6 +63,7 @@ jobs:
 | [release-npm.yml](./.github/workflows/release-npm.yml)             | Publication de paquets sur un registre NPM (npmjs.org, GitHub Packages, registre privé)                   | [docs](./docs/workflows/55-release-npm.md)       |
 | [attest-helm.yml](./.github/workflows/attest-helm.yml)             | Signatures cosign et provenance SLSA des charts Helm publiés sur un registre OCI                                      | [docs](./docs/workflows/56-attest-helm.md)       |
 | [sync-prerelease-branch.yml](./.github/workflows/sync-prerelease-branch.yml) | Resynchronisation de la branche de pré-release sur la branche de release après une release (job à placer en dernier) | [docs](./docs/workflows/57-sync-prerelease-branch.md) |
+| [release-pypi.yml](./.github/workflows/release-pypi.yml)           | Publication de paquets Python sur PyPI (ou un autre index) avec `uv`, publication de confiance et vérification d'installation | [docs](./docs/workflows/58-release-pypi.md)       |
 
 ### Utilitaires
 

@@ -1,0 +1,285 @@
+name: Release PyPI
+
+on:
+  workflow_call:
+    inputs:
+      WORKING_DIRECTORY:
+        description: Directory of the Python project (where its pyproject.toml lives)
+        required: false
+        type: string
+        default: "."
+      VERSION:
+        description: >-
+          Version the caller expects to publish (e.g., the one release-please
+          just tagged). The job fails when the built package carries another
+          one, instead of uploading an artifact labelled with the wrong version.
+          Compared as PEP 440 versions, so `0.1.0-rc.1`, `v0.1.0rc1` and
+          `0.1.0rc1` are the same. Leave empty to publish whatever the project
+          declares.
+        required: false
+        type: string
+        default: ""
+      PYTHON_VERSION:
+        description: >-
+          Python version used to build the package and to install it back from
+          the index. Must satisfy the project's requires-python: the job fails
+          before uploading anything when it does not.
+        required: false
+        type: string
+        default: "3.13"
+      REPOSITORY_URL:
+        description: >-
+          Upload endpoint of the package index (e.g.,
+          https://test.pypi.org/legacy/ for TestPyPI). Empty publishes to PyPI.
+        required: false
+        type: string
+        default: ""
+      ATTESTATIONS:
+        description: >-
+          Generate and upload PEP 740 attestations. Only effective with trusted
+          publishing: they are switched off when a PYPI_TOKEN is supplied.
+        required: false
+        type: boolean
+        default: true
+      VERIFY_INSTALL:
+        description: >-
+          Once published, install the exact version back from PyPI in a clean
+          environment, retrying while the index catches up. Ignored for a
+          custom REPOSITORY_URL.
+        required: false
+        type: boolean
+        default: true
+      ENVIRONMENT:
+        description: >-
+          GitHub environment the publish job runs in. PyPI recommends scoping a
+          trusted publisher to one (it is then part of what PyPI validates, and
+          can require a reviewer); only this workflow can set it, a caller job
+          cannot. Empty runs in no environment.
+        required: false
+        type: string
+        default: ""
+      DRY_RUN:
+        description: Build and check the package without uploading it
+        required: false
+        type: boolean
+        default: false
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
+    secrets:
+      PYPI_TOKEN:
+        description: >-
+          API token of the package index. Optional when the project has a
+          trusted publisher (OIDC) configured for the caller's workflow - the
+          caller job's id-token: write permission is used instead. Required
+          otherwise.
+        required: false
+
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # The build runs the project's build backend and the checks run third-party
+  # tools, so it holds no OIDC token: only the publish job below can mint one,
+  # and it never runs project code - it uploads what this job built.
+  build:
+    name: Build package
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      contents: read
+    outputs:
+      name: ${{ steps.metadata.outputs.name }}
+      version: ${{ steps.metadata.outputs.version }}
+      artifact: ${{ steps.artifact.outputs.name }}
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        # No step after checkout runs git against the remote, so the job's
+        # token has no reason to stay readable in .git/config while the build
+        # runs.
+        persist-credentials: false
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
+      with:
+        python-version: ${{ inputs.PYTHON_VERSION }}
+        # Nothing here is worth a cache that a later run would trust.
+        enable-cache: false
+
+    - name: Build the package
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      # --out-dir keeps dist/ next to the project even when it is a member of a
+      # uv workspace. --no-sources builds against what the index serves, so a
+      # [tool.uv.sources] entry cannot hide a dependency that is not published.
+      run: uv build --out-dir dist --no-sources
+
+    - name: Read the package metadata
+      id: metadata
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      env:
+        EXPECTED_VERSION: ${{ inputs.VERSION }}
+      run: |
+        set -euo pipefail
+
+        # Read from the wheel rather than pyproject.toml: it is what gets
+        # uploaded, it carries the normalised version, and it works for
+        # projects whose version is dynamic.
+        shopt -s nullglob
+        wheels=(dist/*.whl)
+        if [ "${#wheels[@]}" -ne 1 ]; then
+          echo "::error::Expected exactly one wheel in dist/, found ${#wheels[@]}."
+          exit 1
+        fi
+
+        uv run --no-project --with packaging python -I - "${wheels[0]}" <<'PY'
+        import os
+        import re
+        import sys
+        import zipfile
+        from email.parser import Parser
+
+        from packaging.specifiers import SpecifierSet
+        from packaging.version import InvalidVersion, Version
+
+
+        def fail(message):
+            print(f"::error::{message}")
+            sys.exit(1)
+
+
+        with zipfile.ZipFile(sys.argv[1]) as wheel:
+            members = [
+                name for name in wheel.namelist()
+                if name.endswith(".dist-info/METADATA") and name.count("/") == 1
+            ]
+            if len(members) != 1:
+                fail(f"Expected one *.dist-info/METADATA in the wheel, found {len(members)}.")
+            metadata = Parser().parsestr(wheel.read(members[0]).decode("utf-8"), headersonly=True)
+
+        name = metadata["Name"] or ""
+        try:
+            version = Version(metadata["Version"] or "")
+        except InvalidVersion:
+            fail(f"The wheel declares an invalid version: {metadata['Version']!r}.")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
+            fail(f"The wheel declares an invalid package name: {name!r}.")
+        print(f"Package: {name} {version}")
+
+        expected = os.environ.get("EXPECTED_VERSION", "")
+        if expected:
+            try:
+                wanted = Version(expected)
+            except InvalidVersion:
+                fail(f"The caller expects version {expected!r}, which is not a valid PEP 440 version.")
+            if wanted != version:
+                fail(
+                    f"The caller expects version {expected!r} but the package is {version}: "
+                    "publishing would upload an artifact labelled with the wrong version."
+                )
+
+        requires = metadata["Requires-Python"]
+        running = ".".join(str(part) for part in sys.version_info[:3])
+        if requires and not SpecifierSet(requires).contains(running, prereleases=True):
+            fail(
+                f"The package requires Python {requires} but PYTHON_VERSION resolves to {running}: "
+                "the install-back check could never succeed, so nothing is uploaded."
+            )
+
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+            output.write(f"name={name}\nversion={version}\n")
+        PY
+
+    - name: Check the package metadata
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      run: uvx twine check dist/*
+
+    - name: Name the artifact
+      id: artifact
+      env:
+        WORKING_DIRECTORY: ${{ inputs.WORKING_DIRECTORY }}
+      run: |
+        set -euo pipefail
+
+        # One workflow run can call this workflow for several packages, and
+        # artifact names must be unique within a run.
+        echo "name=python-dist-${WORKING_DIRECTORY//[^A-Za-z0-9]/-}" >> "$GITHUB_OUTPUT"
+
+    - name: Upload the distributions
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+      with:
+        name: ${{ steps.artifact.outputs.name }}
+        path: ${{ inputs.WORKING_DIRECTORY }}/dist
+        if-no-files-found: error
+        retention-days: 7
+
+  publish:
+    name: Publish to PyPI
+    needs:
+    - build
+    if: ${{ !inputs.DRY_RUN }}
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    # An empty string is not a valid environment name; null means none.
+    environment: ${{ inputs.ENVIRONMENT || null }}
+    permissions:
+      id-token: write
+    steps:
+    - name: Download the distributions
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+      with:
+        name: ${{ needs.build.outputs.artifact }}
+        path: dist
+
+    - name: Publish
+      uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
+      with:
+        packages-dir: dist
+        # Spelled out: an explicitly empty value would override the action's
+        # own default rather than fall back to it.
+        repository-url: ${{ inputs.REPOSITORY_URL || 'https://upload.pypi.org/legacy/' }}
+        # Attestations are signed with the OIDC identity, which a token upload
+        # does not use.
+        attestations: ${{ inputs.ATTESTATIONS && secrets.PYPI_TOKEN == '' }}
+        # Empty means trusted publishing (OIDC).
+        password: ${{ secrets.PYPI_TOKEN }}
+
+    - name: Set up uv
+      if: ${{ inputs.VERIFY_INSTALL && inputs.REPOSITORY_URL == '' }}
+      uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
+      with:
+        python-version: ${{ inputs.PYTHON_VERSION }}
+        enable-cache: false
+
+    # No checkout in this job: a uv.toml or pyproject of the repository
+    # (exclude-newer, a private index) cannot change what the index is asked.
+    - name: Install the published version in a clean environment
+      if: ${{ inputs.VERIFY_INSTALL && inputs.REPOSITORY_URL == '' }}
+      env:
+        PACKAGE: ${{ needs.build.outputs.name }}
+        VERSION: ${{ needs.build.outputs.version }}
+        PYTHON_VERSION: ${{ inputs.PYTHON_VERSION }}
+      run: |
+        set -euo pipefail
+
+        # The index can take a moment to serve what it just accepted.
+        venv="$RUNNER_TEMP/index-check"
+        for attempt in 1 2 3 4 5 6; do
+          rm -rf "$venv"
+          if uv venv --python "$PYTHON_VERSION" "$venv" \
+            && uv pip install --python "$venv" --no-cache "$PACKAGE==$VERSION"; then
+            echo "Installed $PACKAGE==$VERSION from the index"
+            exit 0
+          fi
+          echo "$PACKAGE==$VERSION is not on the index yet (attempt $attempt/6), retrying in 20s"
+          sleep 20
+        done
+
+        echo "::error::$PACKAGE==$VERSION could not be installed from the index after publishing."
+        exit 1
