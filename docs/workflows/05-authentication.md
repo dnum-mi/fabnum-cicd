@@ -121,6 +121,7 @@ Tout ce qui suit est une configuration à faire une seule fois. Elle fonctionne 
 | Pull requests | Read and write | Ouvrir et fusionner des pull requests |
 | Issues        | Read and write | Labels release-please                 |
 | Actions       | Read and write | `dispatch-helm-chart` uniquement      |
+| Workflows     | Read and write | `sync-prerelease-branch` uniquement   |
 
 Chaque workflow mint ensuite son propre token, réduit à ce dont ce job a besoin :
 
@@ -128,7 +129,7 @@ Chaque workflow mint ensuite son propre token, réduit à ce dont ce job a besoi
 | ---------------------------- | --------------------------------------------- | ------------------------- |
 | `release-app.yml`            | `contents`, `pull-requests`, `issues` = write | dépôt courant             |
 | `update-helm-chart.yml`      | `contents`, `pull-requests` = write           | dépôt courant             |
-| `sync-prerelease-branch.yml` | `contents: write`                             | dépôt courant             |
+| `sync-prerelease-branch.yml` | `contents`, `workflows` = write               | dépôt courant             |
 | `dispatch-helm-chart.yml`    | `actions: write`                              | dépôt du chart uniquement |
 | `release-helm.yml`           | `contents: write`                             | dépôt courant             |
 | `build-docker.yml`           | `contents`, `metadata` = read                 | dépôt courant             |
