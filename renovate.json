@@ -26,6 +26,11 @@
       "description": "Internal self-references use the moving v0 major tag on purpose - don't pin or bump them.",
       "matchDepNames": ["dnum-mi/fabnum-cicd"],
       "enabled": false
+    },
+    {
+      "description": "Stay on the current Python major.minor (3.14.x): the runners install whatever setup-python resolves, and a minor bump lands untested across every caller's chart-testing runs. Patch updates within 3.14.x keep flowing.",
+      "matchDepNames": ["python"],
+      "allowedVersions": "^3.14"
     }
   ]
 }
