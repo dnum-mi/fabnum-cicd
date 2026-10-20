@@ -1,0 +1,227 @@
+name: Build Python
+
+on:
+  workflow_call:
+    inputs:
+      WORKING_DIRECTORY:
+        description: Directory of the Python project (where its pyproject.toml lives)
+        required: false
+        type: string
+        default: "."
+      PYTHON_VERSION:
+        description: >-
+          Python version used to build the package and to install the wheel in
+          the smoke test. Must satisfy the project's requires-python: the job
+          fails otherwise, before anything can be published.
+        required: false
+        type: string
+        default: "3.13"
+      VERSION:
+        description: >-
+          Version the caller expects the package to carry (e.g., the one
+          release-please just tagged). The job fails when the built package
+          carries another one, instead of letting a mislabelled artifact reach
+          an index. Compared as PEP 440 versions, so `0.1.0-rc.1`, `v0.1.0rc1`
+          and `0.1.0rc1` are the same. Leave empty to accept whatever the
+          project declares.
+        required: false
+        type: string
+        default: ""
+      IMPORT_NAME:
+        description: >-
+          Module imported from a clean environment the wheel was installed in,
+          to prove it is usable (e.g., my_package). Leave empty to install the
+          wheel without importing anything.
+        required: false
+        type: string
+        default: ""
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
+    outputs:
+      name:
+        description: Distribution name read from the built wheel
+        value: ${{ jobs.build.outputs.name }}
+      version:
+        description: Version read from the built wheel, normalised (PEP 440)
+        value: ${{ jobs.build.outputs.version }}
+      artifact:
+        description: Name of the artifact holding dist/ (what release-pypi.yml takes as ARTIFACT)
+        value: ${{ jobs.build.outputs.artifact }}
+
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build package
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      contents: read
+    outputs:
+      name: ${{ steps.metadata.outputs.name }}
+      version: ${{ steps.metadata.outputs.version }}
+      artifact: ${{ steps.artifact.outputs.name }}
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        # No step after checkout runs git against the remote, so the job's
+        # token has no reason to stay readable in .git/config while the build
+        # runs.
+        persist-credentials: false
+
+    - name: Validate inputs
+      env:
+        IMPORT_NAME: ${{ inputs.IMPORT_NAME }}
+      run: |
+        set -euo pipefail
+
+        # The name is spliced into `python -c`, so anything but a dotted
+        # identifier is refused rather than escaped.
+        if [ -n "$IMPORT_NAME" ] && [[ ! "$IMPORT_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$ ]]; then
+          echo "::error::IMPORT_NAME must be a dotted Python module name, got '$IMPORT_NAME'"
+          exit 1
+        fi
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
+      with:
+        python-version: ${{ inputs.PYTHON_VERSION }}
+        # What this job builds ends up on an index: nothing in it is worth a
+        # cache that a later run would trust.
+        enable-cache: false
+
+    - name: Build the package
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      # --out-dir keeps dist/ next to the project even when it is a member of a
+      # uv workspace. --no-sources builds against what the index serves, so a
+      # [tool.uv.sources] entry cannot hide a dependency that is not published.
+      run: uv build --out-dir dist --no-sources
+
+    - name: Read the package metadata
+      id: metadata
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      env:
+        EXPECTED_VERSION: ${{ inputs.VERSION }}
+      run: |
+        set -euo pipefail
+
+        # Read from the wheel rather than pyproject.toml: it is what gets
+        # uploaded, it carries the normalised version, and it works for
+        # projects whose version is dynamic.
+        shopt -s nullglob
+        wheels=(dist/*.whl)
+        if [ "${#wheels[@]}" -ne 1 ]; then
+          echo "::error::Expected exactly one wheel in dist/, found ${#wheels[@]}."
+          exit 1
+        fi
+
+        uv run --no-project --with packaging python -I - "${wheels[0]}" <<'PY'
+        import os
+        import re
+        import sys
+        import zipfile
+        from email.parser import Parser
+
+        from packaging.specifiers import SpecifierSet
+        from packaging.version import InvalidVersion, Version
+
+
+        def fail(message):
+            print(f"::error::{message}")
+            sys.exit(1)
+
+
+        with zipfile.ZipFile(sys.argv[1]) as wheel:
+            members = [
+                name for name in wheel.namelist()
+                if name.endswith(".dist-info/METADATA") and name.count("/") == 1
+            ]
+            if len(members) != 1:
+                fail(f"Expected one *.dist-info/METADATA in the wheel, found {len(members)}.")
+            metadata = Parser().parsestr(wheel.read(members[0]).decode("utf-8"), headersonly=True)
+
+        name = metadata["Name"] or ""
+        try:
+            version = Version(metadata["Version"] or "")
+        except InvalidVersion:
+            fail(f"The wheel declares an invalid version: {metadata['Version']!r}.")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name):
+            fail(f"The wheel declares an invalid package name: {name!r}.")
+        print(f"Package: {name} {version}")
+
+        expected = os.environ.get("EXPECTED_VERSION", "")
+        if expected:
+            try:
+                wanted = Version(expected)
+            except InvalidVersion:
+                fail(f"The caller expects version {expected!r}, which is not a valid PEP 440 version.")
+            if wanted != version:
+                fail(
+                    f"The caller expects version {expected!r} but the package is {version}: "
+                    "publishing would upload an artifact labelled with the wrong version."
+                )
+
+        requires = metadata["Requires-Python"]
+        running = ".".join(str(part) for part in sys.version_info[:3])
+        if requires and not SpecifierSet(requires).contains(running, prereleases=True):
+            fail(
+                f"The package requires Python {requires} but PYTHON_VERSION resolves to {running}: "
+                "the install-back check could never succeed, so nothing is uploaded."
+            )
+
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+            output.write(f"name={name}\nversion={version}\n")
+        PY
+
+    - name: Check the package metadata
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      run: uvx twine check dist/*
+
+    # A wheel that builds can still be unusable once installed: a missing data
+    # file, a package left out of the wheel. Installing it away from the source
+    # tree is what catches that.
+    - name: Install the wheel in a clean environment
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      env:
+        IMPORT_NAME: ${{ inputs.IMPORT_NAME }}
+        PYTHON_VERSION: ${{ inputs.PYTHON_VERSION }}
+      run: |
+        set -euo pipefail
+
+        venv="$RUNNER_TEMP/wheel-check"
+        uv venv --python "$PYTHON_VERSION" "$venv"
+        uv pip install --python "$venv" dist/*.whl
+
+        if [ -n "$IMPORT_NAME" ]; then
+          # Away from the source tree, so the import cannot be satisfied by it.
+          cd "$RUNNER_TEMP"
+          VIRTUAL_ENV="$venv" uv run --active --no-project python -c "import $IMPORT_NAME; print('imported', $IMPORT_NAME.__name__)"
+        fi
+
+    - name: Name the artifact
+      id: artifact
+      env:
+        WORKING_DIRECTORY: ${{ inputs.WORKING_DIRECTORY }}
+      run: |
+        set -euo pipefail
+
+        # One workflow run can build several packages, and artifact names must
+        # be unique within a run.
+        echo "name=python-dist-${WORKING_DIRECTORY//[^A-Za-z0-9]/-}" >> "$GITHUB_OUTPUT"
+
+    - name: Upload the distributions
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+      with:
+        name: ${{ steps.artifact.outputs.name }}
+        path: ${{ inputs.WORKING_DIRECTORY }}/dist
+        if-no-files-found: error
+        retention-days: 7

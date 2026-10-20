@@ -8,40 +8,36 @@ on:
         required: false
         type: string
         default: "."
-      PYTHON_VERSIONS:
-        description: Python versions to test against, as a JSON array (e.g., '["3.11", "3.13"]'). One matrix leg per version
+      PYTHON_VERSION:
+        description: Python version the project is installed and tested with
         required: false
         type: string
-        default: '["3.13"]'
+        default: "3.13"
       INSTALL_COMMAND:
         description: >-
           Command installing the project and its dependencies (runs in
           WORKING_DIRECTORY). The default refuses a stale uv.lock instead of
-          quietly rewriting it, so the lint and test tools the defaults below
-          call must be in the project's dev dependency group.
+          quietly rewriting it, so the test tools must be in the project's dev
+          dependency group.
         required: false
         type: string
         default: uv sync --locked
-      LINT_COMMAND:
-        description: Lint command (runs in WORKING_DIRECTORY). Leave empty to skip linting
-        required: false
-        type: string
-        default: uv run ruff check .
       TEST_COMMAND:
-        description: Test command (runs in WORKING_DIRECTORY). Leave empty to skip the tests
+        description: >-
+          Complete test command (runs in WORKING_DIRECTORY). Coverage options,
+          including a floor such as --cov-fail-under, belong in it.
         required: false
         type: string
         default: uv run pytest -q
-      BUILD:
-        description: Build the package (sdist + wheel) and install the wheel in a clean environment
+      ARTIFACT_NAME:
+        description: Name of the artifact uploaded from ARTIFACT_PATH (e.g., the coverage report)
         required: false
-        type: boolean
-        default: false
-      IMPORT_NAME:
+        type: string
+        default: test-report
+      ARTIFACT_PATH:
         description: >-
-          Module imported from the clean environment the wheel was installed
-          in, to prove it is usable (e.g., my_package). Only read when BUILD is
-          true; leave empty to skip the import.
+          Path, relative to WORKING_DIRECTORY, uploaded as an artifact even when
+          the tests fail (e.g., htmlcov/ or junit.xml). Empty uploads nothing.
         required: false
         type: string
         default: ""
@@ -61,91 +57,42 @@ defaults:
 
 jobs:
   test:
-    name: Python ${{ matrix.python-version }}
+    name: Test
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ${{ fromJSON(inputs.PYTHON_VERSIONS) }}
     steps:
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
         persist-credentials: false
 
-    - name: Validate inputs
-      if: ${{ inputs.BUILD }}
-      env:
-        IMPORT_NAME: ${{ inputs.IMPORT_NAME }}
-      run: |
-        set -euo pipefail
-
-        # The name is spliced into `python -c`, so anything but a dotted
-        # identifier is refused rather than escaped.
-        if [ -n "$IMPORT_NAME" ] && [[ ! "$IMPORT_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$ ]]; then
-          echo "::error::IMPORT_NAME must be a dotted Python module name, got '$IMPORT_NAME'"
-          exit 1
-        fi
-
     - name: Set up uv
       uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: ${{ inputs.PYTHON_VERSION }}
         enable-cache: true
         cache-dependency-glob: ${{ inputs.WORKING_DIRECTORY }}/uv.lock
 
+    # A `bash -c` does not inherit the step shell's options, so -e and pipefail
+    # are spelled out: without them a multi-line command, or one piped into
+    # tee, stays green when its first line fails.
     - name: Install dependencies
       working-directory: ${{ inputs.WORKING_DIRECTORY }}
       env:
         INSTALL_COMMAND: ${{ inputs.INSTALL_COMMAND }}
-        UV_PYTHON: ${{ matrix.python-version }}
       run: bash -eo pipefail -c "$INSTALL_COMMAND"
 
-    - name: Lint
-      if: ${{ inputs.LINT_COMMAND != '' }}
-      working-directory: ${{ inputs.WORKING_DIRECTORY }}
-      env:
-        LINT_COMMAND: ${{ inputs.LINT_COMMAND }}
-        UV_PYTHON: ${{ matrix.python-version }}
-      run: bash -eo pipefail -c "$LINT_COMMAND"
-
     - name: Test
-      if: ${{ inputs.TEST_COMMAND != '' }}
       working-directory: ${{ inputs.WORKING_DIRECTORY }}
       env:
         TEST_COMMAND: ${{ inputs.TEST_COMMAND }}
-        UV_PYTHON: ${{ matrix.python-version }}
       run: bash -eo pipefail -c "$TEST_COMMAND"
 
-    - name: Build the package
-      if: ${{ inputs.BUILD }}
-      working-directory: ${{ inputs.WORKING_DIRECTORY }}
-      env:
-        UV_PYTHON: ${{ matrix.python-version }}
-      # --out-dir keeps dist/ next to the project even when it is a member of a
-      # uv workspace, where uv would otherwise write it at the workspace root.
-      run: uv build --out-dir dist
-
-    # A wheel that builds can still be unusable once installed: a missing data
-    # file, a package left out of the wheel. Installing it away from the source
-    # tree is what catches that.
-    - name: Install the wheel in a clean environment
-      if: ${{ inputs.BUILD }}
-      working-directory: ${{ inputs.WORKING_DIRECTORY }}
-      env:
-        IMPORT_NAME: ${{ inputs.IMPORT_NAME }}
-        PYTHON_VERSION: ${{ matrix.python-version }}
-      run: |
-        set -euo pipefail
-
-        venv="$RUNNER_TEMP/wheel-check"
-        uv venv --python "$PYTHON_VERSION" "$venv"
-        uv pip install --python "$venv" dist/*.whl
-
-        if [ -n "$IMPORT_NAME" ]; then
-          # Away from the source tree, so the import cannot be satisfied by it.
-          cd "$RUNNER_TEMP"
-          VIRTUAL_ENV="$venv" uv run --active --no-project python -c "import $IMPORT_NAME; print('imported', $IMPORT_NAME.__name__)"
-        fi
+    - name: Upload the test report
+      if: ${{ always() && inputs.ARTIFACT_PATH != '' }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+      with:
+        name: ${{ inputs.ARTIFACT_NAME }}
+        path: ${{ inputs.WORKING_DIRECTORY }}/${{ inputs.ARTIFACT_PATH }}
+        if-no-files-found: warn

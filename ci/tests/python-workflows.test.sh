@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# test-python.yml - 'Validate inputs': IMPORT_NAME is spliced into a `python -c`,
+# build-python.yml - 'Validate inputs': IMPORT_NAME is spliced into a `python -c`,
 # so anything but a dotted module name is refused rather than escaped.
-# release-pypi.yml - 'Name the artifact': one workflow run can publish several
+# build-python.yml - 'Name the artifact': one workflow run can publish several
 # packages, and artifact names must be unique within a run.
 
 # shellcheck source=ci/tests/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-VALIDATE=$(extract_run test-python.yml test "Validate inputs")
-ARTIFACT=$(extract_run release-pypi.yml build "Name the artifact")
+VALIDATE=$(extract_run build-python.yml build "Validate inputs")
+ARTIFACT=$(extract_run build-python.yml build "Name the artifact")
 
 test_accepts_a_module_name() {
   export IMPORT_NAME="my_package"

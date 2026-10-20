@@ -27,6 +27,7 @@ jobs:
 | [lint-helm.yml](./.github/workflows/lint-helm.yml)               | Lint des charts Helm avec `chart-testing`                                                       | [docs](./docs/workflows/11-lint-helm.md)        |
 | [lint-helm-schema.yml](./.github/workflows/lint-helm-schema.yml) | Validation des values Helm contre un JSON Schema avec `check-jsonschema`                        | [docs](./docs/workflows/12-lint-helm-schema.md) |
 | [lint-yaml.yml](./.github/workflows/lint-yaml.yml)               | Lint des fichiers YAML avec `yamllint`                                                          | [docs](./docs/workflows/14-lint-yaml.md)        |
+| [lint-python.yml](./.github/workflows/lint-python.yml) | Lint et vérification de types d'un projet Python avec `uv` | [docs](./docs/workflows/15-lint-python.md) |
 
 ### Tests
 
@@ -34,13 +35,14 @@ jobs:
 | ------------------------------------------------------ | -------------------------------------------------------------------- | --------------------------------------- |
 | [test-helm.yml](./.github/workflows/test-helm.yml)     | Tests d'installation des charts dans un cluster Kind                 | [docs](./docs/workflows/20-test-helm.md)   |
 | [test-docker.yml](./.github/workflows/test-docker.yml) | Exécution d'une commande dans une image Docker (registre ou tarball) | [docs](./docs/workflows/24-test-docker.md) |
-| [test-python.yml](./.github/workflows/test-python.yml) | Lint, tests multi-versions et contrôle de la wheel d'un projet Python avec `uv` | [docs](./docs/workflows/22-test-python.md) |
+| [test-python.yml](./.github/workflows/test-python.yml) | Tests d'un projet Python avec `uv`, rapport de couverture en artefact | [docs](./docs/workflows/22-test-python.md) |
 
 ### Build
 
 | Workflow                                                   | Description                                                                    | Docs                                         |
 | ---------------------------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------- |
 | [build-docker.yml](./.github/workflows/build-docker.yml)   | Build et push (optionnel) d'images Docker multi-architecture (`amd64`/`arm64`)  | [docs](./docs/workflows/30-build-docker.md)  |
+| [build-python.yml](./.github/workflows/build-python.yml) | Construction d'un paquet Python, contrôle de la wheel et envoi de `dist/` comme artefact | [docs](./docs/workflows/32-build-python.md) |
 | [attest-docker.yml](./.github/workflows/attest-docker.yml) | Génération d'attestations de sécurité (provenance SLSA, SBOM, signature cosign) | [docs](./docs/workflows/31-attest-docker.md) |
 
 ### Sécurité & Qualité
@@ -63,7 +65,7 @@ jobs:
 | [release-npm.yml](./.github/workflows/release-npm.yml)             | Publication de paquets sur un registre NPM (npmjs.org, GitHub Packages, registre privé)                   | [docs](./docs/workflows/55-release-npm.md)       |
 | [attest-helm.yml](./.github/workflows/attest-helm.yml)             | Signatures cosign et provenance SLSA des charts Helm publiés sur un registre OCI                                      | [docs](./docs/workflows/56-attest-helm.md)       |
 | [sync-prerelease-branch.yml](./.github/workflows/sync-prerelease-branch.yml) | Resynchronisation de la branche de pré-release sur la branche de release après une release (job à placer en dernier) | [docs](./docs/workflows/57-sync-prerelease-branch.md) |
-| [release-pypi.yml](./.github/workflows/release-pypi.yml)           | Publication de paquets Python sur PyPI (ou un autre index) avec `uv`, publication de confiance et vérification d'installation | [docs](./docs/workflows/58-release-pypi.md)       |
+| [release-pypi.yml](./.github/workflows/release-pypi.yml)           | Publication sur PyPI (ou un autre index) des distributions construites par `build-python.yml`, publication de confiance et vérification d'installation | [docs](./docs/workflows/58-release-pypi.md)       |
 
 ### Utilitaires
 
