@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.23.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.23.0...v0.23.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **sync-prerelease-branch:** let the app token write workflows ([f3d7056](https://github.com/dnum-mi/fabnum-cicd/commit/f3d7056f00f43c4584455a0bf12ee594f0326b0f))
+
+
+### Dependencies
+
+* **deps:** update github/codeql-action to v4.39.0 ([ca0d9b7](https://github.com/dnum-mi/fabnum-cicd/commit/ca0d9b7236436cc32a66ba624f0571e5433accc6))
+
 ## [0.23.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.22.0...v0.23.0) (2026-10-13)
 
 
