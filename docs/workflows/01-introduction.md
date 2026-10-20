@@ -14,16 +14,18 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 - [**Lint Helm**](./11-lint-helm.md) - Lint des charts Helm avec chart-testing
 - [**Lint Helm Schema**](./12-lint-helm-schema.md) - Validation des values Helm contre un JSON Schema
 - [**Lint YAML**](./14-lint-yaml.md) - Lint des fichiers YAML avec yamllint
+- [**Lint Python**](./15-lint-python.md) - Lint et vérification de types d'un projet Python avec uv
 
 ### Tests
 
 - [**Test Helm**](./20-test-helm.md) - Test d'installation des charts Helm dans un cluster Kind
-- [**Test Python**](./22-test-python.md) - Lint, tests multi-versions et contrôle de la wheel d'un projet Python
+- [**Test Python**](./22-test-python.md) - Tests d'un projet Python avec uv, rapport de couverture en artefact
 - [**Test Docker**](./24-test-docker.md) - Exécution d'une commande dans une image Docker construite (registre ou tarball)
 
 ### Build
 
 - [**Build Docker**](./30-build-docker.md) - Build et push (optionnel) d'images Docker multi-architecture
+- [**Build Python**](./32-build-python.md) - Construction d'un paquet Python, contrôle de la wheel et envoi de `dist/` comme artefact
 - [**Attest Docker**](./31-attest-docker.md) - Génération d'attestations de sécurité (provenance SLSA, SBOM, signature cosign) pour une image construite
 
 ### Sécurité & Qualité
@@ -42,7 +44,7 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 - [**Release NPM**](./55-release-npm.md) - Publication de paquets sur un registre NPM (npmjs.org, GitHub Packages, registre privé)
 - [**Attest Helm**](./56-attest-helm.md) - Signatures cosign et provenance SLSA des charts publiés sur un registre OCI
 - [**Sync Prerelease Branch**](./57-sync-prerelease-branch.md) - Resynchronisation de la branche de pré-release après une release (à placer en dernier)
-- [**Release PyPI**](./58-release-pypi.md) - Publication de paquets Python sur PyPI (ou un autre index) avec `uv`
+- [**Release PyPI**](./58-release-pypi.md) - Publication sur PyPI des distributions construites par build-python
 
 ### Utilitaires
 

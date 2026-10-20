@@ -25,7 +25,6 @@ declare -A ACCEPTED_EXCESS=(
   ["scan-gitleaks.yml:pull-requests"]="scan-notif posts the leak summary on the pull request; a caller that passes no PR_NUMBER still grants it. Splitting the notifier out would separate a scan from the report it exists to produce."
   ["scan-trivy.yml:packages"]="images-scan pulls the image to scan; a config-only caller still grants it. Read-only, and the two scans share the SARIF upload plumbing."
   ["scan-trivy.yml:contents"]="both scans read the checked-out tree; only a caller that selects neither scan - a no-op call - grants this unused."
-  ["release-pypi.yml:id-token"]="only the publish job mints the OIDC token, and DRY_RUN skips it - a dry-run caller still grants the scope. The build job, the one that runs project code and third-party tools, holds none; folding the two jobs back into one would make the token reachable from that code, which is worse than the unused grant."
   ["scan-trivy.yml:security-events"]="both scans upload SARIF; only a caller that selects neither scan - a no-op call - grants this unused."
 )
 

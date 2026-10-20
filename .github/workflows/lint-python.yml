@@ -1,0 +1,92 @@
+name: Lint Python
+
+on:
+  workflow_call:
+    inputs:
+      WORKING_DIRECTORY:
+        description: Directory of the Python project (where its pyproject.toml lives)
+        required: false
+        type: string
+        default: "."
+      PYTHON_VERSION:
+        description: Python version the project is installed and linted with
+        required: false
+        type: string
+        default: "3.13"
+      INSTALL_COMMAND:
+        description: >-
+          Command installing the project and its dependencies (runs in
+          WORKING_DIRECTORY). The default refuses a stale uv.lock instead of
+          quietly rewriting it, so the tools the commands below call must be in
+          the project's dev dependency group.
+        required: false
+        type: string
+        default: uv sync --locked
+      LINT_COMMAND:
+        description: Lint and format check (runs in WORKING_DIRECTORY). Leave empty to skip
+        required: false
+        type: string
+        default: uv run ruff check . && uv run ruff format --check .
+      TYPE_CHECK_COMMAND:
+        description: >-
+          Type-check command (runs in WORKING_DIRECTORY), e.g. 'uv run ty check src'.
+          A step of its own so a type error and a lint error are told apart.
+          Empty skips it.
+        required: false
+        type: string
+        default: ""
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
+
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      contents: read
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
+      with:
+        python-version: ${{ inputs.PYTHON_VERSION }}
+        enable-cache: true
+        cache-dependency-glob: ${{ inputs.WORKING_DIRECTORY }}/uv.lock
+
+    # A `bash -c` does not inherit the step shell's options, so -e and pipefail
+    # are spelled out: without them a multi-line command, or one piped into
+    # tee, stays green when its first line fails.
+    - name: Install dependencies
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      env:
+        INSTALL_COMMAND: ${{ inputs.INSTALL_COMMAND }}
+      run: bash -eo pipefail -c "$INSTALL_COMMAND"
+
+    - name: Lint
+      if: ${{ inputs.LINT_COMMAND != '' }}
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      env:
+        LINT_COMMAND: ${{ inputs.LINT_COMMAND }}
+      run: bash -eo pipefail -c "$LINT_COMMAND"
+
+    - name: Type check
+      if: ${{ inputs.TYPE_CHECK_COMMAND != '' }}
+      working-directory: ${{ inputs.WORKING_DIRECTORY }}
+      env:
+        TYPE_CHECK_COMMAND: ${{ inputs.TYPE_CHECK_COMMAND }}
+      run: bash -eo pipefail -c "$TYPE_CHECK_COMMAND"
