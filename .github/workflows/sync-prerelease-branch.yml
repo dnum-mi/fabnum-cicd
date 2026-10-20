@@ -159,6 +159,16 @@ jobs:
         client-id: ${{ secrets.APP_CLIENT_ID }}
         private-key: ${{ secrets.APP_PRIVATE_KEY }}
         permission-contents: write
+        # The rebase replays the prerelease branch's commits under new SHAs and
+        # the push below force-updates the branch. When any replayed commit
+        # touches a file under .github/workflows/, GitHub rejects the push of a
+        # token that cannot write workflows - "refusing to allow a GitHub App
+        # to create or update workflow ... without workflows permission" - even
+        # though the same file content already sits on the release branch. A
+        # fast-forward push (the prerelease branch strictly behind) carries no
+        # new workflow-file commit of the App's own making and passes without
+        # it, which is why the gap only shows on the first diverged rebase.
+        permission-workflows: write
 
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
