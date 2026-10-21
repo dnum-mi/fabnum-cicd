@@ -250,7 +250,7 @@ jobs:
 
     - name: Setup Corepack
       if: ${{ steps.detect.outputs.package-manager == 'pnpm' || steps.detect.outputs.package-manager == 'yarn' }}
-      run: |
+      run: | # zizmor: ignore[adhoc-packages]
         # Exact version: 'latest' would let a new upstream release change
         # what runs here without any change on our side.
         npm install -g corepack@0.34.0

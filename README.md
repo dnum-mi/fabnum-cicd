@@ -52,6 +52,7 @@ jobs:
 | [scan-sonarqube.yml](./.github/workflows/scan-sonarqube.yml) | Analyse qualité du code avec SonarQube                            | [docs](./docs/workflows/40-scan-sonarqube.md) |
 | [scan-trivy.yml](./.github/workflows/scan-trivy.yml)         | Analyse de vulnérabilités (images, config, filesystem) avec Trivy | [docs](./docs/workflows/41-scan-trivy.md)     |
 | [scan-gitleaks.yml](./.github/workflows/scan-gitleaks.yml)   | Analyse de l'historique git complet à la recherche de secrets divulgués | [docs](./docs/workflows/42-scan-gitleaks.md) |
+| [scan-zizmor.yml](./.github/workflows/scan-zizmor.yml)       | Audit des workflows GitHub Actions avec `zizmor` (injections, permissions, identifiants persistés) | [docs](./docs/workflows/45-scan-zizmor.md)   |
 
 ### Release
 

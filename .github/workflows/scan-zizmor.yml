@@ -1,0 +1,141 @@
+name: Zizmor scan
+
+on:
+  workflow_call:
+    inputs:
+      ZIZMOR_VERSION:
+        description: Zizmor version used to perform the audit
+        required: false
+        type: string
+        # renovate: datasource=pypi depName=zizmor
+        default: 1.31.1
+      CONFIG_FILE:
+        description: >-
+          Path to a zizmor configuration file. Defaults to the one zizmor finds
+          itself (`.github/zizmor.yml` or `zizmor.yml`), if any.
+        required: false
+        type: string
+        default: ""
+      SCAN_PATH:
+        description: >-
+          Path to audit: a repository root, a `.github/workflows` directory or a
+          single workflow or action file.
+        required: false
+        type: string
+        default: "."
+      PERSONA:
+        description: >-
+          How much noise to accept (regular, pedantic or auditor). `regular`
+          keeps false positives to a minimum, `pedantic` adds code smells and
+          `auditor` adds findings that may be false positives.
+        required: false
+        type: string
+        default: regular
+      MIN_SEVERITY:
+        description: Drop findings below this severity (informational, low, medium or high)
+        required: false
+        type: string
+        default: ""
+      MIN_CONFIDENCE:
+        description: Drop findings below this confidence (low, medium or high)
+        required: false
+        type: string
+        default: ""
+      ONLINE_AUDITS:
+        description: >-
+          Whether to run the audits that query the GitHub API (known-vulnerable
+          actions, impostor commits, refs that disagree with their version
+          comment), using the job token. Turn it off for a caller that cannot
+          reach api.github.com.
+        required: false
+        type: boolean
+        default: true
+      FAIL_ON_FINDINGS:
+        description: Whether to fail the workflow when findings are reported
+        required: false
+        type: boolean
+        default: true
+      RUNS_ON:
+        description: Runner labels as JSON array (e.g., '["ubuntu-24.04"]' or '["self-hosted", "linux"]')
+        required: false
+        type: string
+        default: '["ubuntu-24.04"]'
+
+# Every `run:` below is bash. Without this GitHub reads the shell off the runner
+# — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
+# error where a run should be. `bash` is the portable value: GitHub resolves it
+# to Git Bash on Windows and to /usr/bin/bash elsewhere.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  zizmor:
+    name: Audit workflows with zizmor
+    runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
+    permissions:
+      contents: read
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        # Nothing below pushes, and zizmor's own `artipacked` audit flags a
+        # token left in .git/config.
+        persist-credentials: false
+
+    - name: Install zizmor
+      env:
+        ZIZMOR_VERSION: ${{ inputs.ZIZMOR_VERSION }}
+      # Exact version: third-party code executed in the job, and an unpinned
+      # install would let a new upstream release change what runs here - the
+      # more so for a linter, whose new audits turn a green run red overnight.
+      run: pip install "zizmor==${ZIZMOR_VERSION}"
+
+    - name: Run zizmor
+      env:
+        CONFIG_FILE: ${{ inputs.CONFIG_FILE }}
+        SCAN_PATH: ${{ inputs.SCAN_PATH }}
+        PERSONA: ${{ inputs.PERSONA }}
+        MIN_SEVERITY: ${{ inputs.MIN_SEVERITY }}
+        MIN_CONFIDENCE: ${{ inputs.MIN_CONFIDENCE }}
+        ONLINE_AUDITS: ${{ inputs.ONLINE_AUDITS }}
+        FAIL_ON_FINDINGS: ${{ inputs.FAIL_ON_FINDINGS }}
+        JOB_TOKEN: ${{ github.token }}
+      # `--format=github` turns every finding into an annotation on the file and
+      # line it points at, which is where a pull request reviewer looks.
+      #
+      # The token reaches zizmor as GH_TOKEN only when the online audits are
+      # wanted: given one, zizmor runs them. Without one it falls back to
+      # offline mode on its own, with a warning - so the off case still names
+      # `--no-online-audits`, rather than leaning on a missing token that would
+      # turn the audits off just as silently for a caller who asked for them.
+      #
+      # Without `--no-exit-codes` zizmor exits 11-14 by the worst finding, and
+      # that is the failure. With it, only a run that could not finish (a bad
+      # config file, an unreadable path) still fails.
+      run: |
+        ARGS=(--format=github --persona "${PERSONA}")
+
+        if [ -n "${CONFIG_FILE}" ]; then
+          ARGS+=(--config "${CONFIG_FILE}")
+        fi
+
+        if [ -n "${MIN_SEVERITY}" ]; then
+          ARGS+=(--min-severity "${MIN_SEVERITY}")
+        fi
+
+        if [ -n "${MIN_CONFIDENCE}" ]; then
+          ARGS+=(--min-confidence "${MIN_CONFIDENCE}")
+        fi
+
+        if [ "${ONLINE_AUDITS}" = "true" ]; then
+          export GH_TOKEN="${JOB_TOKEN}"
+        else
+          ARGS+=(--no-online-audits)
+        fi
+
+        if [ "${FAIL_ON_FINDINGS}" != "true" ]; then
+          ARGS+=(--no-exit-codes)
+        fi
+
+        zizmor "${ARGS[@]}" "${SCAN_PATH}"

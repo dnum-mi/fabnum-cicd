@@ -22,10 +22,16 @@ jobs:
     outputs:
       workflows: ${{ steps.filter.outputs.workflows }}
       yamllint: ${{ steps.filter.outputs.yamllint }}
+      zizmor: ${{ steps.filter.outputs.zizmor }}
       tests: ${{ steps.filter.outputs.tests }}
     steps:
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        # Nothing after this step talks to the git remote (the paths come from
+        # the API on a pull request), so the job's token need not stay in
+        # .git/config.
+        persist-credentials: false
 
     - name: Check updated files paths
       uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d  # v4.0.3
@@ -42,6 +48,9 @@ jobs:
             # yamllint's config is the same for 'lint-yaml', and only for it:
             # its group re-runs that job alone.
             - 'ci/configs/yamllint.yaml'
+          zizmor:
+            # zizmor's config is the same for 'scan-zizmor', and only for it.
+            - '.github/zizmor.yml'
           tests:
             - 'ci/tests/**'
 
@@ -62,6 +71,17 @@ jobs:
       CONFIG_FILE: ci/configs/yamllint.yaml
       SCAN_PATH: ./.github/workflows
 
+  # This repository's own workflows, audited by the workflow it publishes: a
+  # finding fails the pull request that introduces it instead of waiting for a
+  # caller to meet it. The pull request's copy runs, as for lint-yaml above.
+  scan-zizmor:
+    uses: ./.github/workflows/scan-zizmor.yml
+    if: ${{ needs.path-filter.outputs.workflows == 'true' || needs.path-filter.outputs.zizmor == 'true' }}
+    needs:
+    - path-filter
+    permissions:
+      contents: read
+
   test-workflows:
     name: Test workflows
     runs-on: ubuntu-26.04
@@ -73,6 +93,10 @@ jobs:
     steps:
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        # No later step talks to the git remote, so the job's token need not
+        # stay in .git/config while the rest of the job runs.
+        persist-credentials: false
 
     # Schema, context availability and expression validation, plus shellcheck
     # over every `run:` block.
@@ -89,7 +113,7 @@ jobs:
     - name: Run workflow tests
       run: ./ci/tests/run.sh
 
-  # The one check a ruleset requires. lint-yaml and test-workflows are path-filtered,
+  # The one check a ruleset requires. lint-yaml, scan-zizmor and test-workflows are path-filtered,
   # so they cannot be required individually: a required check that never reports
   # blocks the merge. Every job above is listed, path-filter included, so that a
   # failure upstream cannot reach the gate as a mere skip.
@@ -100,6 +124,7 @@ jobs:
     - path-filter
     - lint-commits
     - lint-yaml
+    - scan-zizmor
     - test-workflows
     uses: ./.github/workflows/check-jobs.yml
     permissions: {}
