@@ -291,6 +291,10 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
         token: ${{ steps.app-token.outputs.token || github.token }}
+        # Only 'local' mode pushes from this checkout with the token given above;
+        # 'called' mode hands the push to create-pull-request, so it keeps no
+        # credential in .git/config.
+        persist-credentials: ${{ inputs.RUN_MODE == 'local' }}
 
     # helm-docs is built from source at exactly the version asked for, which
     # `go install` verifies against the Go checksum database - a transparency

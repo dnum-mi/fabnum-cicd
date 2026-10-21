@@ -262,6 +262,10 @@ jobs:
     # and only once the assets are attached.
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        # Kept: the git steps below push the major and minor tags with the
+        # credential this checkout leaves in .git/config.
+        persist-credentials: true
 
     # The invariant every version computed on the prerelease branch depends on:
     # that branch is the release branch plus only the unreleased work. When it

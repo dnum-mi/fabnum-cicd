@@ -60,6 +60,9 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
         fetch-depth: 0
+        # No later step talks to the git remote, so the job's token need not
+        # stay in .git/config while the rest of the job runs.
+        persist-credentials: false
 
     - name: Setup Bun
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2.2.0

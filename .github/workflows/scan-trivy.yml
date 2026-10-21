@@ -153,6 +153,10 @@ jobs:
 
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        # No later step talks to the git remote, so the job's token need not
+        # stay in .git/config while the rest of the job runs.
+        persist-credentials: false
 
     - name: Download image artifact
       if: ${{ inputs.IMAGE_ARTIFACT != '' }}
@@ -303,6 +307,10 @@ jobs:
 
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        # No later step talks to the git remote, so the job's token need not
+        # stay in .git/config while the rest of the job runs.
+        persist-credentials: false
 
     - name: Run Trivy vulnerability scanner on config files
       id: scan

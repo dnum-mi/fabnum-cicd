@@ -64,6 +64,9 @@ jobs:
       with:
         # Full history so gitleaks can scan every commit, not just the current tree
         fetch-depth: 0
+        # No later step talks to the git remote, so the job's token need not
+        # stay in .git/config while the rest of the job runs.
+        persist-credentials: false
 
     - name: Install gitleaks
       env:
