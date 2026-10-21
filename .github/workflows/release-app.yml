@@ -588,13 +588,16 @@ jobs:
 
         export PR_BRANCH_PREFIX="release-please--branches--$GITHUB_REF_NAME"
 
-        merged=$(gh pr list --state merged --limit 20 \
-          --json number,title,mergeCommit,headRefName \
+        found=$(gh pr list --state merged --limit 20 \
+          --json number,title,mergeCommit,headRefName,labels \
           --jq '[ .[]
                   | select(.mergeCommit.oid == env.GITHUB_SHA)
                   | select(.headRefName | startswith(env.PR_BRANCH_PREFIX))
-                  | "#\(.number) \(.title)"
+                  | ["#\(.number) \(.title)",
+                     ((.labels // []) | map(.name) | any(. == "autorelease: tagged") | tostring)]
+                  | @tsv
                 ] | first // ""')
+        IFS=$'\t' read -r merged tagged <<<"$found"
 
         if [ -z "$merged" ]; then
           echo "this run's commit is not a merged release pull request, nothing to assert"
@@ -603,6 +606,17 @@ jobs:
 
         if [ "${RELEASES_CREATED:-}" = "true" ] || [ "${RELEASE_CREATED:-}" = "true" ]; then
           echo "$merged was released as ${TAG_NAME:-an unnamed tag}"
+          exit 0
+        fi
+
+        # A re-run or a manual dispatch on a release commit that an earlier run
+        # already tagged: release-please finds the release in place and creates
+        # nothing, which is the right outcome. `autorelease: tagged` is only
+        # ever put on a release pull request after its release exists, so it is
+        # proof of that and cannot be the label that went missing in the failure
+        # this guards - that one is left `pending` or unlabelled.
+        if [ "$tagged" = "true" ]; then
+          echo "$merged was already released by an earlier run (autorelease: tagged), nothing to create"
           exit 0
         fi
 

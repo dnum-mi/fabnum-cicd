@@ -235,6 +235,8 @@ La récupération suit la [procédure upstream](https://github.com/googleapis/re
 
 > Indexé sur le commit en cours de build, et non sur « une pull request fusionnée porte-t-elle encore le label pending » : le label est précisément ce qui disparaît dans l'échec ci-dessus, et la fusion d'un run concurrent ferait osciller un balayage de labels. Une pull request de release dont le commit de merge **est** le commit de ce run est sans ambiguïté, que ce soit en rebase, squash ou merge-commit.
 
+> Un run sur un commit de release qu'un run précédent a déjà publié - un re-run, ou un déclenchement manuel du CD de l'appelant sur ce commit - passe : release-please trouve la release en place et ne crée rien, et la pull request de release fusionnée porte `autorelease: tagged`, qui n'est posé qu'une fois la release existante. Une pull request laissée `pending` ou sans label échoue toujours.
+
 > S'exécute sous `!cancelled()`, il rapporte donc aussi un run où release-please a planté sans renseigner aucun output — la façon la plus probable d'arriver ici, et où une erreur brute de validation de l'API est sinon le seul indice.
 
 ## Configuration
