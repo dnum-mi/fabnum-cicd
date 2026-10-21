@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.24.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.23.1...v0.24.0) (2026-10-21)
+
+
+### Features
+
+* **scan-zizmor:** add a reusable workflow auditing workflows with zizmor ([ba67d76](https://github.com/dnum-mi/fabnum-cicd/commit/ba67d76d15bed5d7acc6fdbffcdfb686d5de9ca1))
+* **workflows:** add test-python and release-pypi reusable workflows ([007a933](https://github.com/dnum-mi/fabnum-cicd/commit/007a9331dea32ca80f0c67b06468bc1a1ddcdda7))
+
+
+### Bug Fixes
+
+* **release-app:** accept a release commit an earlier run already tagged ([1977572](https://github.com/dnum-mi/fabnum-cicd/commit/197757288305df07434e7fdec021cddc30272195))
+* **release-helm:** create no release when CREATE_GITHUB_RELEASE is off ([89d3fb4](https://github.com/dnum-mi/fabnum-cicd/commit/89d3fb4707c159680165509b5f63e9e04225e6f1))
+* **workflows:** declare persist-credentials on every checkout ([bb2caba](https://github.com/dnum-mi/fabnum-cicd/commit/bb2caba66082aaf10dbf7ba0d29abed34e4a53d6))
+* **workflows:** run caller-supplied commands through env and eval ([3de7e04](https://github.com/dnum-mi/fabnum-cicd/commit/3de7e040ca895c0520ac60b1ecfc2e1b91f92dd6))
+
+
+### Code Refactoring
+
+* **workflows:** split the Python workflow into lint, test, build and release ([9890118](https://github.com/dnum-mi/fabnum-cicd/commit/989011827b4085dc6c043505c70598161a315cfd))
+
+
+### Dependencies
+
+* **deps:** update astral-sh/setup-uv to v10 ([99dda1c](https://github.com/dnum-mi/fabnum-cicd/commit/99dda1cf6712b23d1f53a7ceee2a0869842a0824))
+* **deps:** update github/codeql-action to v4.39.1 ([92a93f3](https://github.com/dnum-mi/fabnum-cicd/commit/92a93f36592afb5404ff2c22e3d0b1315019e652))
+* **deps:** update pypa/gh-action-pypi-publish to v1.14.3 ([1ecdb70](https://github.com/dnum-mi/fabnum-cicd/commit/1ecdb700100b1aba62b7f1b8ca46d380aa7e2985))
+
 ## [0.23.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.23.0...v0.23.1) (2026-10-20)
 
 
