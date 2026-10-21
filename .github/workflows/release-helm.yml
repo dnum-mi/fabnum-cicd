@@ -241,10 +241,10 @@ jobs:
           fi
         fi
 
-    # Only minted when chart-releaser actually creates GitHub Releases and
-    # pushes the pages branch. With CREATE_GITHUB_RELEASE false, `cr` only
-    # packages charts (skip_upload) and CR_TOKEN is never used for a write, so
-    # there is nothing for a contents:write token to do.
+    # Only minted when chart-releaser runs, which is when CREATE_GITHUB_RELEASE
+    # is true: it creates the releases and pushes the pages branch. With it
+    # false chart-releaser is not run at all, so there is nothing for a
+    # contents:write token to do.
     # Scoped to this repository only: passing `owner:` without `repositories:`
     # would widen the token to every repo in the installation.
     - name: Generate GitHub App token
@@ -260,9 +260,17 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
         fetch-depth: 0
-        # chart-releaser pulls and pushes the pages branch and the tags through
-        # `origin` with the credential this checkout persists.
-        persist-credentials: true
+        # chart-releaser pulls and pushes the pages branch through `origin`, and
+        # git sends the credential this checkout persists in preference to the
+        # token chart-releaser puts in the push URL: the persisted header goes
+        # out, the URL's never does. So this has to be the token meant to push -
+        # the same expression as CR_TOKEN below, which a test keeps in step -
+        # not the job's default one, or an App token or GH_PAT would create the
+        # releases while GITHUB_TOKEN pushed the pages branch.
+        # With CREATE_GITHUB_RELEASE false nothing runs git against the remote,
+        # so nothing is persisted.
+        token: ${{ steps.app-token.outputs.token || (inputs.CREATE_GITHUB_RELEASE && secrets.GH_PAT) || github.token }}
+        persist-credentials: ${{ inputs.CREATE_GITHUB_RELEASE }}
 
     - name: Configure Git
       run: |
@@ -329,35 +337,31 @@ jobs:
           exit 1
         fi
 
+    # Only when a GitHub Release is wanted. chart-releaser-action cannot be told
+    # not to create one: cr.sh runs `cr upload` unconditionally (its skip_upload
+    # input only skips the index update), so with CREATE_GITHUB_RELEASE false
+    # the action would still publish a release and a tag per chart, and fail on
+    # a repository with immutable releases. The OCI channel packages the charts
+    # itself, in the step below.
     - name: Run chart-releaser
       id: chart-releaser
+      if: ${{ inputs.CREATE_GITHUB_RELEASE }}
       uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f  # v1.7.0
       with:
         version: v1.8.1
         charts_dir: ${{ inputs.CHARTS_DIR }}
-        # Either 'true' or empty, never 'false': the action hands this to
-        # cr.sh, which only tests whether it is non-empty, so the string
-        # 'false' skips just like 'true' does. What it skips is the index
-        # update (`cr index`) on the pages branch - that is the channel's
-        # whole output, and a classic repository whose index is never
-        # refreshed serves no new chart while every run reports success.
-        # cr.sh runs `cr upload` whatever this is.
-        skip_upload: ${{ !inputs.CREATE_GITHUB_RELEASE && 'true' || '' }}
-        # Same rule as above, and the stakes are higher: 'false' here would
-        # turn the skip ON, since cr.sh only tests that the value is non-empty.
+        # Either 'true' or empty, never 'false': cr.sh only tests whether the
+        # value is non-empty, so the string 'false' would turn the skip ON.
         skip_existing: ${{ inputs.SKIP_EXISTING && 'true' || '' }}
         pages_branch: ${{ inputs.PAGES_BRANCH }}
       env:
-        # `cr index --push` authenticates the PAGES_BRANCH push with this same
-        # token, so under an App token that push can trigger workflows too - not
-        # only the release creation this is added for. Safe as long as no caller
-        # triggers on the pages branch; check before pointing one at it.
-        #
-        # GH_PAT is gated on CREATE_GITHUB_RELEASE for the same reason the App
-        # token is not minted without it: with skip_upload, `cr` only packages
-        # charts and never writes through this token, so both elevated
-        # credentials resolve to GITHUB_TOKEN and neither adds trigger surface.
-        CR_TOKEN: "${{ steps.app-token.outputs.token || (inputs.CREATE_GITHUB_RELEASE && secrets.GH_PAT) || secrets.GITHUB_TOKEN }}"
+        # Creates the releases through the API, and pushes the PAGES_BRANCH with
+        # the credential the checkout persisted: the same token, which is why
+        # the checkout is given this exact expression. Under an App token or
+        # GH_PAT that push can trigger workflows too, not only the release
+        # creation this is added for. Safe as long as no caller triggers on the
+        # pages branch; check before pointing one at it.
+        CR_TOKEN: "${{ steps.app-token.outputs.token || (inputs.CREATE_GITHUB_RELEASE && secrets.GH_PAT) || github.token }}"
         # chart-releaser reads its flags from CR_-prefixed variables. Left
         # false, the three below are ignored and `cr` packages unsigned.
         CR_SIGN: ${{ inputs.SIGN_CHART }}
@@ -365,9 +369,46 @@ jobs:
         CR_KEYRING: ${{ runner.temp }}/secring.gpg
         CR_PASSPHRASE_FILE: ${{ runner.temp }}/gpg-passphrase
 
+    # The OCI channel on its own: no chart-releaser, so no release and no tag.
+    # Finds the charts the way cr.sh does - everything under the charts
+    # directory that differs from the latest tag, or from the first commit when
+    # there is none - and leaves the same two things the OCI steps read from
+    # chart-releaser: the packages under .cr-release-packages and
+    # `changed_charts`. A chart that changed without a version bump is packaged
+    # all the same; the registry check in the publish step decides what happens
+    # to it. Signing needs a GitHub Release, so it is never asked for here.
+    - name: Package the changed charts
+      id: package
+      if: ${{ !inputs.CREATE_GITHUB_RELEASE }}
+      env:
+        CHARTS_DIR: ${{ inputs.CHARTS_DIR }}
+      run: |
+        set -euo pipefail
+
+        base=$(git describe --tags --abbrev=0 HEAD~ 2>/dev/null || git rev-list --max-parents=0 --first-parent HEAD)
+
+        # A charts directory of ./charts or charts/team is one or two path
+        # components deep: a chart is the next one.
+        depth=$(( $(tr / '\n' <<<"$CHARTS_DIR" | sed '/^\(\.\)*$/d' | wc -l) + 1 ))
+
+        changed=()
+        while IFS= read -r chart; do
+          if [ -f "$chart/Chart.yaml" ]; then
+            changed+=("$chart")
+          fi
+        done < <(git diff --find-renames --name-only "$base" -- "$CHARTS_DIR" | cut -d / -f "1-$depth" | sort -u)
+
+        mkdir -p .cr-release-packages
+        for chart in ${changed[@]+"${changed[@]}"}; do
+          echo "Packaging chart '$chart'..."
+          helm package "$chart" --dependency-update --destination .cr-release-packages
+        done
+
+        printf 'changed_charts=%s\n' "$(IFS=,; echo "${changed[*]-}")" >> "$GITHUB_OUTPUT"
+
     - name: Login to OCI Registry
       id: oci-login
-      if: ${{ inputs.PUBLISH_OCI && steps.chart-releaser.outputs.changed_charts != '' }}
+      if: ${{ inputs.PUBLISH_OCI && (steps.chart-releaser.outputs.changed_charts || steps.package.outputs.changed_charts) != '' }}
       env:
         REGISTRY: ${{ inputs.REGISTRY }}
         USERNAME: ${{ inputs.REGISTRY == 'ghcr.io' && github.actor || secrets.REGISTRY_USERNAME }}
@@ -379,7 +420,7 @@ jobs:
 
     - name: Publish charts to OCI registry
       id: publish
-      if: ${{ inputs.PUBLISH_OCI && steps.chart-releaser.outputs.changed_charts != '' }}
+      if: ${{ inputs.PUBLISH_OCI && (steps.chart-releaser.outputs.changed_charts || steps.package.outputs.changed_charts) != '' }}
       env:
         REGISTRY: ${{ inputs.REGISTRY }}
         OCI_REPOSITORY: ${{ inputs.REPOSITORY }}

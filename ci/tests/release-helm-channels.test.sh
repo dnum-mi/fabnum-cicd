@@ -127,12 +127,31 @@ test_ships_the_classic_channel_on_and_oci_off_by_default() {
   fi
 }
 
-# chart-releaser-action passes `skip_upload` on to cr.sh, which tests only
-# whether it is non-empty: 'false' skips the index update exactly as 'true' does.
-# A bare `${{ !inputs.CREATE_GITHUB_RELEASE }}` therefore turned the default
-# configuration into one that never refreshed index.yaml, with every run green.
-# The expression has to yield the empty string when the classic channel is on.
-test_asks_chart_releaser_to_skip_the_index_only_when_the_classic_channel_is_off() {
+# chart-releaser-action passes its `skip_*` inputs on to cr.sh, which tests only
+# whether they are non-empty: the string 'false' skips exactly as 'true' does. A
+# bare `${{ inputs.SKIP_EXISTING }}` would therefore turn the default into "never
+# upload a chart whose release already exists", with every run green. The
+# expression has to yield the empty string when the input is off.
+test_hands_chart_releaser_an_empty_skip_existing_not_the_string_false() {
+  local expression
+  expression=$(yq '
+    .jobs.release.steps[]
+    | select(.id == "chart-releaser")
+    | .with.skip_existing
+  ' "$WORKFLOWS_DIR/release-helm.yml")
+
+  if [ "$expression" != "\${{ inputs.SKIP_EXISTING && 'true' || '' }}" ]; then
+    printf 'FAIL: skip_existing must be empty, not the string false, when SKIP_EXISTING is off; got %q\n' \
+      "$expression" >&2
+    return 1
+  fi
+}
+
+# `skip_upload` only ever skipped the index update: cr.sh runs `cr upload`, which
+# creates the release, whatever it says. The OCI-only channel is now served by not
+# running chart-releaser (ci/tests/release-helm-oci-only.test.sh), so the input has
+# nothing left to do and must not come back looking like a way to avoid a release.
+test_chart_releaser_is_not_asked_to_skip_upload() {
   local expression
   expression=$(yq '
     .jobs.release.steps[]
@@ -140,9 +159,8 @@ test_asks_chart_releaser_to_skip_the_index_only_when_the_classic_channel_is_off(
     | .with.skip_upload
   ' "$WORKFLOWS_DIR/release-helm.yml")
 
-  if [ "$expression" != "\${{ !inputs.CREATE_GITHUB_RELEASE && 'true' || '' }}" ]; then
-    printf 'FAIL: skip_upload must be empty, not the string false, when CREATE_GITHUB_RELEASE is on; got %q\n' \
-      "$expression" >&2
+  if [ "$expression" != "null" ]; then
+    printf 'FAIL: skip_upload does not stop cr upload creating a release; got %q\n' "$expression" >&2
     return 1
   fi
 }
