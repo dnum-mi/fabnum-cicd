@@ -68,25 +68,27 @@ jobs:
         enable-cache: true
         cache-dependency-glob: ${{ inputs.WORKING_DIRECTORY }}/uv.lock
 
-    # A `bash -c` does not inherit the step shell's options, so -e and pipefail
-    # are spelled out: without them a multi-line command, or one piped into
-    # tee, stays green when its first line fails.
+    # Evaluated through `eval` from `env:` rather than interpolated into the
+    # script, so the program text is fixed whatever a caller passes. `eval` runs
+    # in the step's shell, which `defaults.run.shell: bash` starts with -e and
+    # pipefail, so a failing line of a multi-line command, or the first stage of
+    # a pipe, still fails the step.
     - name: Install dependencies
       working-directory: ${{ inputs.WORKING_DIRECTORY }}
       env:
         INSTALL_COMMAND: ${{ inputs.INSTALL_COMMAND }}
-      run: bash -eo pipefail -c "$INSTALL_COMMAND"
+      run: eval "$INSTALL_COMMAND"
 
     - name: Lint
       if: ${{ inputs.LINT_COMMAND != '' }}
       working-directory: ${{ inputs.WORKING_DIRECTORY }}
       env:
         LINT_COMMAND: ${{ inputs.LINT_COMMAND }}
-      run: bash -eo pipefail -c "$LINT_COMMAND"
+      run: eval "$LINT_COMMAND"
 
     - name: Type check
       if: ${{ inputs.TYPE_CHECK_COMMAND != '' }}
       working-directory: ${{ inputs.WORKING_DIRECTORY }}
       env:
         TYPE_CHECK_COMMAND: ${{ inputs.TYPE_CHECK_COMMAND }}
-      run: bash -eo pipefail -c "$TYPE_CHECK_COMMAND"
+      run: eval "$TYPE_CHECK_COMMAND"

@@ -38,6 +38,6 @@ jobs:
 
 ## Notes
 
-- La commande est passée par variable d'environnement et exécutée avec `bash -eo pipefail -c`, jamais interpolée dans le script (voir [`lint-python.yml`](./15-lint-python.md#notes) pour la raison de `-e` et `pipefail`).
+- La commande est passée par variable d'environnement et évaluée avec `eval`, jamais interpolée dans le script (voir [`lint-python.yml`](./15-lint-python.md#notes)).
 - Seuls `uv` et `uv pip` respectent `PYTHON_VERSION` ; une commande appelant `pytest` directement tournerait sur le Python par défaut du runner.
 - Un projet dont les tests ont besoin de services (base de données, broker) n'entre pas dans ce workflow : gardez un workflow local qui les démarre.
