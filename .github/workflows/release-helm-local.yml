@@ -154,6 +154,9 @@ jobs:
       with:
         # Empty ref = default checkout (the commit that triggered the run)
         ref: ${{ inputs.CHECKOUT_REF }}
+        # No later step talks to the git remote, so the job's token need not
+        # stay in .git/config while the rest of the job runs.
+        persist-credentials: false
 
     - name: Install Helm
       uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5.0.1
