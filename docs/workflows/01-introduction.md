@@ -33,6 +33,7 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 - [**Scan SonarQube**](./40-scan-sonarqube.md) - Analyse de qualité du code avec SonarQube
 - [**Scan Trivy**](./41-scan-trivy.md) - Analyse de vulnérabilités avec Trivy
 - [**Scan Gitleaks**](./42-scan-gitleaks.md) - Analyse de l'historique git complet à la recherche de secrets divulgués
+- [**Scan Zizmor**](./45-scan-zizmor.md) - Audit des workflows GitHub Actions avec zizmor (injections, permissions, identifiants persistés)
 
 ### Release
 

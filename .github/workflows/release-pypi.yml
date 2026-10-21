@@ -105,8 +105,10 @@ jobs:
         # Attestations are signed with the OIDC identity, which a token upload
         # does not use.
         attestations: ${{ inputs.ATTESTATIONS && secrets.PYPI_TOKEN == '' }}
-        # Empty means trusted publishing (OIDC).
-        password: ${{ secrets.PYPI_TOKEN }}
+        # Empty means trusted publishing (OIDC). The token stays supported for a
+        # project or an index that has no trusted publisher; it is never the
+        # default path.
+        password: ${{ secrets.PYPI_TOKEN }}  # zizmor: ignore[use-trusted-publishing]
 
     - name: Set up uv
       if: ${{ inputs.VERIFY_INSTALL && inputs.PACKAGE != '' && inputs.VERSION != '' && inputs.REPOSITORY_URL == '' }}
