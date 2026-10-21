@@ -168,12 +168,15 @@ after_env() {
 
 # One merged pull request, as `gh pr list --state merged` reports it.
 merged_pr() {
-  local number="$1" sha="$2" head="$3"
+  local number="$1" sha="$2" head="$3" label="${4:-}" labels=""
+  if [ -n "$label" ]; then
+    labels=", \"labels\": [{ \"name\": \"$label\" }]"
+  fi
   export STUB_GH_PR_LIST_JSON="[{
     \"number\": $number,
     \"title\": \"chore(main): release 0.21.0\",
     \"mergeCommit\": { \"oid\": \"$sha\" },
-    \"headRefName\": \"$head\"
+    \"headRefName\": \"$head\"$labels
   }]"
 }
 
@@ -226,6 +229,29 @@ test_after_fails_when_a_release_commit_produced_no_release() {
   assert_output_contains "#122"
   assert_output_contains "no tag and no release exist"
   assert_output_contains "autorelease: pending"
+}
+
+# A re-run or a manual dispatch on a release commit that was already tagged:
+# release-please finds the release and creates nothing, which is correct.
+test_after_passes_when_an_earlier_run_already_tagged_the_release() {
+  after_env
+  merged_pr 122 "$RELEASE_SHA" "release-please--branches--main" "autorelease: tagged"
+
+  run_block "$AFTER"
+
+  assert_status 0
+  assert_output_contains "already released by an earlier run"
+}
+
+# The failure the guard exists for leaves the pull request pending, never tagged.
+test_after_still_fails_when_the_release_pull_request_is_only_pending() {
+  after_env
+  merged_pr 122 "$RELEASE_SHA" "release-please--branches--main" "autorelease: pending"
+
+  run_block "$AFTER"
+
+  assert_status 1
+  assert_output_contains "no tag and no release exist"
 }
 
 test_after_names_the_whole_history_changelog_as_the_next_symptom() {
