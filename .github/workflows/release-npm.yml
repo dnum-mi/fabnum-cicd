@@ -328,15 +328,20 @@ jobs:
 
     - name: Run pre-command
       if: ${{ inputs.PRE_COMMAND != '' }}
-      run: ${{ inputs.PRE_COMMAND }}
+      # PRE_COMMAND, BUILD_COMMAND and PUBLISH_COMMAND are shell commands by contract, so they are evaluated -
+      # through `eval` from `env:` rather than interpolated into this script,
+      # which keeps the program text fixed whatever a caller passes.
+      run: eval "$PRE_COMMAND"
       env:
+        PRE_COMMAND: ${{ inputs.PRE_COMMAND }}
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     - name: Build package
       if: ${{ inputs.BUILD_COMMAND != '' }}
       working-directory: ${{ inputs.WORKING_DIRECTORY }}
-      run: ${{ inputs.BUILD_COMMAND }}
+      run: eval "$BUILD_COMMAND"
       env:
+        BUILD_COMMAND: ${{ inputs.BUILD_COMMAND }}
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     - name: Publish package (custom command)
@@ -347,8 +352,9 @@ jobs:
       # gated. The gating decision is an explicit step at the end of the job.
       continue-on-error: true
       working-directory: ${{ inputs.WORKING_DIRECTORY }}
-      run: ${{ inputs.PUBLISH_COMMAND }}
+      run: eval "$PUBLISH_COMMAND"
       env:
+        PUBLISH_COMMAND: ${{ inputs.PUBLISH_COMMAND }}
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
     - name: Publish package (npm)

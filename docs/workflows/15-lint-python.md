@@ -36,6 +36,6 @@ jobs:
 
 ## Notes
 
-- Les commandes sont passées par variables d'environnement et exécutées avec `bash -eo pipefail -c`, jamais interpolées dans le script. `-e` et `pipefail` sont explicites parce qu'un `bash -c` n'hérite pas des options du shell de l'étape : sans eux, une commande multi-lignes ou un `… | tee` resterait vert malgré un échec.
+- Les commandes sont passées par variables d'environnement et évaluées avec `eval`, jamais interpolées dans le script : le texte du script reste fixe quoi que passe l'appelant. `eval` s'exécute dans le shell de l'étape, démarré avec `-e` et `pipefail` (`defaults.run.shell: bash`) : une ligne qui échoue dans une commande multi-lignes, ou le premier maillon d'un pipe, fait échouer l'étape.
 - `UV_PYTHON` est exporté par `setup-uv` : seuls `uv` et `uv pip` respectent `PYTHON_VERSION`. Une commande appelant `ruff` directement tournerait sur le Python par défaut du runner.
 - Le défaut de `INSTALL_COMMAND` (`uv sync --locked`) suppose que `ruff` (et l'outil de types) sont dans le groupe de dépendances de développement du projet.
