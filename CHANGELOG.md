@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.24.0...v0.24.1) (2026-10-22)
+
+
+### Dependencies
+
+* **deps:** update actions/setup-python to v7.1.0 ([5699217](https://github.com/dnum-mi/fabnum-cicd/commit/5699217369ada08106cf4567e1a10597708eda39))
+* **deps:** update astral-sh/setup-uv to v10.3.2 ([6c44ef9](https://github.com/dnum-mi/fabnum-cicd/commit/6c44ef952c121b12bc509b318caac4da01f8824a))
+
 ## [0.24.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.23.1...v0.24.0) (2026-10-21)
 
 
