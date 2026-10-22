@@ -499,7 +499,21 @@ jobs:
         path: /tmp/digests/${{ needs.infos.outputs.lower-image }}
         merge-multiple: true
 
+    # `imagetools` only needs the buildx CLI plugin: it talks to the registry
+    # directly and never runs a builder. The setup action creates a builder
+    # (about 12 s) that nothing here uses, so it only runs where the plugin is
+    # missing - a self-hosted runner, say. GitHub-hosted runners ship it.
+    - name: Check for Docker Buildx
+      id: buildx
+      run: |
+        if docker buildx version >/dev/null 2>&1; then
+          echo "present=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "present=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Set up Docker Buildx
+      if: ${{ steps.buildx.outputs.present != 'true' }}
       uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
     - name: Docker meta
