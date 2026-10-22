@@ -63,7 +63,8 @@ sandbox_setup() {
   export PATH="$SANDBOX/bin:$PATH"
 }
 
-# `buildx imagetools inspect --raw` answers from STUB_DOCKER_MANIFEST_JSON, so a
+# `buildx version` fails when STUB_DOCKER_NO_BUILDX is set, like a runner without
+# the plugin. `buildx imagetools inspect --raw` answers from STUB_DOCKER_MANIFEST_JSON, so a
 # test can decide whether a version is a multi-arch manifest list (children to
 # delete alongside it) or a plain image. Absent, the inspect fails the way it
 # does for a digest that is already gone.
@@ -74,6 +75,13 @@ args="$*"
 printf 'docker|%s\n' "$args" >>"$CALL_LOG"
 
 case "$args" in
+  "buildx version"*)
+    # A runner without the buildx plugin: `docker buildx` is an unknown command.
+    if [ -n "${STUB_DOCKER_NO_BUILDX:-}" ]; then
+      printf "docker: unknown command: docker buildx\n" >&2
+      exit 1
+    fi
+    ;;
   "buildx imagetools inspect"*)
     if [ -z "${STUB_DOCKER_MANIFEST_JSON:-}" ]; then
       printf 'stub docker: no such manifest\n' >&2
