@@ -23,12 +23,23 @@ STUB
   chmod +x "$SANDBOX/bin/ct"
 }
 
+# Defined once, on the job, because the check for charts to install and the
+# install itself have to diff against the same branch.
 test_the_target_is_the_branch_the_pull_request_merges_into() {
   local expr
-  expr=$(yq ".jobs.\"test-charts\".steps[] | select(.name == \"$STEP\") | .env.TARGET_BRANCH" \
-    "$WORKFLOWS_DIR/test-helm.yml")
+  expr=$(yq '.jobs."test-charts".env.TARGET_BRANCH' "$WORKFLOWS_DIR/test-helm.yml")
   if [[ "$expr" != *'github.base_ref'* ]] || [[ "$expr" == *'head_ref'* ]]; then
     printf 'FAIL: TARGET_BRANCH is %s; it must be the base branch, never the head\n' "$expr" >&2
+    exit 1
+  fi
+}
+
+test_no_step_names_a_target_of_its_own() {
+  local overrides
+  overrides=$(yq '.jobs."test-charts".steps[] | select(.env.TARGET_BRANCH != null) | .name' \
+    "$WORKFLOWS_DIR/test-helm.yml")
+  if [ -n "$overrides" ]; then
+    printf 'FAIL: a step overrides the job-level TARGET_BRANCH: %s\n' "$overrides" >&2
     exit 1
   fi
 }

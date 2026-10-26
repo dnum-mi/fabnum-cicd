@@ -27,6 +27,18 @@ jobs:
     runs-on: ${{ fromJSON(inputs.RUNS_ON) }}
     permissions:
       contents: read
+    # Read by the check for charts to install and by the install itself, which
+    # have to agree on what changed, so they are defined once. Refs/paths via
+    # env (never inlined) so a branch name like '$(...)' can't trigger command
+    # substitution in the shell.
+    env:
+      CT_CONF_PATH: ${{ inputs.CT_CONF_PATH }}
+      # The target is the branch the pull request merges into. ct installs the
+      # charts that differ between it and HEAD, so naming the pull request's
+      # own branch — head_ref, which this read until it was noticed — diffs the
+      # branch against itself: "No chart changes detected", nothing installed,
+      # and a green check for every chart change it was there to try.
+      TARGET_BRANCH: ${{ github.base_ref || github.event.repository.default_branch }}
     steps:
     - name: Checks-out repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -48,21 +60,49 @@ jobs:
     - name: Set up chart-testing
       uses: helm/chart-testing-action@720270857a28afd41e2426521a7801db09e9b510  # v2.9.0
 
+    # The kind cluster is 40 of this job's 56 seconds, and a run that changes no
+    # chart gives `ct install` nothing to install: a caller's path filter is
+    # usually wider than the chart directories ct looks at (ci/, template/, the
+    # workflows), and a manual run on the default branch diffs against itself.
+    # So ask ct what it would install, and create the cluster only if it would.
+    #
+    # `ct list-changed` alone is not that answer. With `charts:` or `all: true`
+    # in the configuration `ct install` processes charts whether or not they
+    # changed, and `list-changed` reports only the changed ones - skipping on its
+    # word would turn those configurations into a green check that installed
+    # nothing. The effective configuration says which case this is: `--print-config`
+    # writes it to stderr, the changed charts go to stdout.
+    - name: Find the charts to install
+      id: charts
+      run: |
+        set -euo pipefail
+
+        CONFIG_FILE=$(mktemp)
+        trap 'rm -f "$CONFIG_FILE"' EXIT
+
+        if ! CHANGED=$(ct list-changed --config "$CT_CONF_PATH" --target-branch "$TARGET_BRANCH" --print-config 2>"$CONFIG_FILE"); then
+          cat "$CONFIG_FILE" >&2
+          exit 1
+        fi
+
+        if grep -qxE 'ProcessAllCharts: true|Charts: \[.+\]' "$CONFIG_FILE"; then
+          echo "chart-testing is configured to process charts whether or not they changed."
+          echo "install=true" >> "$GITHUB_OUTPUT"
+        elif [ -n "$CHANGED" ]; then
+          echo "Changed charts:"
+          echo "$CHANGED"
+          echo "install=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::notice::No chart changed against $TARGET_BRANCH, so there is nothing to install: no kind cluster is created."
+          echo "install=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Create kind cluster
+      if: ${{ steps.charts.outputs.install == 'true' }}
       uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa  # v1.15.1
 
     - name: Run chart-testing (install)
-      # Refs/paths via env (never inlined) so a branch name like '$(...)' can't
-      # trigger command substitution in this shell
-      #
-      # The target is the branch the pull request merges into. ct installs the
-      # charts that differ between it and HEAD, so naming the pull request's
-      # own branch — head_ref, which this read until it was noticed — diffs the
-      # branch against itself: "No chart changes detected", nothing installed,
-      # and a green check for every chart change it was there to try.
-      env:
-        CT_CONF_PATH: ${{ inputs.CT_CONF_PATH }}
-        TARGET_BRANCH: ${{ github.base_ref || github.event.repository.default_branch }}
+      if: ${{ steps.charts.outputs.install == 'true' }}
       run: |
         ct install \
           --config "$CT_CONF_PATH" \
