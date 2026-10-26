@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.25.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.24.1...v0.25.0) (2026-10-26)
+
+
+### Features
+
+* **build-docker:** push single-job builds directly instead of merging ([19049b2](https://github.com/dnum-mi/fabnum-cicd/commit/19049b23bf161a64655ec8f0da8853088ddfd83d))
+
+
+### Performance Improvements
+
+* **scan:** do not wait for GitHub to process an uploaded SARIF file ([fbfdc80](https://github.com/dnum-mi/fabnum-cicd/commit/fbfdc80df25803743ee2206bc38e1b60779bda2d))
+* **test-helm:** create the kind cluster only when there is a chart to install ([156876a](https://github.com/dnum-mi/fabnum-cicd/commit/156876ac4abe359e26f813e58e47619280bd5377))
+* **workflows:** build helm-docs with the Go the runner already has ([049699f](https://github.com/dnum-mi/fabnum-cicd/commit/049699fc14eafe8cf81353e5fe06e332b2deb0b8))
+
+
+### Dependencies
+
+* **deps:** update docker/login-action to v4.7.0 ([65e1f32](https://github.com/dnum-mi/fabnum-cicd/commit/65e1f32be875286d5d0803dbf1676c4deb14e783))
+
 ## [0.24.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.24.0...v0.24.1) (2026-10-22)
 
 
