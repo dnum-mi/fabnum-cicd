@@ -3,6 +3,7 @@
   "packages": {
     ".": {
       "release-type": "simple",
+      "bump-minor-pre-major": true,
       "initial-version": "0.0.1",
       "include-component-in-tag": false,
       "changelog-sections": [
