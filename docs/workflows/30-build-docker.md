@@ -12,9 +12,9 @@ Build d'images Docker multi-architecture (amd64/arm64) avec Docker Buildx, et pu
 | IMAGE_DOCKERFILE    | string  | Chemin vers le Dockerfile                                                                                                                                                                                                                           | Oui    | -                  |
 | IMAGE_CONTEXT       | string  | Chemin du contexte de build                                                                                                                                                                                                                         | Oui    | -                  |
 | IMAGE_TARGET        | string  | Étape cible à construire dans le Dockerfile (optionnel, construit la dernière étape si non défini)                                                                                                                                                  | Non    | -                  |
-| IMAGE_METADATA      | boolean | Poser le jeu standard `org.opencontainers.image.*` (title, description, url, source, revision, version, created, licenses) en labels sur chaque image et en annotations `index:` sur la manifest list. Voir [Labels et annotations OCI](#labels-et-annotations-oci). Désactiver quand les `LABEL` du Dockerfile doivent l'emporter, ou quand un rebuild inchangé doit continuer à retomber sur le même digest. `IMAGE_LABELS`/`IMAGE_ANNOTATIONS` s'appliquent dans les deux cas. | Non    | `true`             |
+| IMAGE_METADATA      | boolean | Poser le jeu standard `org.opencontainers.image.*` (title, description, url, source, revision, version, created, licenses) en labels sur chaque image et en annotations sur le manifest, ou sur la manifest list quand il y en a une. Voir [Labels et annotations OCI](#labels-et-annotations-oci). Désactiver quand les `LABEL` du Dockerfile doivent l'emporter, ou quand un rebuild inchangé doit continuer à retomber sur le même digest. `IMAGE_LABELS`/`IMAGE_ANNOTATIONS` s'appliquent dans les deux cas. | Non    | `true`             |
 | IMAGE_LABELS        | string  | Labels OCI personnalisés séparés par des sauts de ligne, au format `KEY=VALUE` (ex: `com.example.team=platform`). Appliqués après le jeu d'`IMAGE_METADATA` : une clé donnée ici écrase la valeur standard sans avoir à désactiver tout le jeu. Jamais de secret ici : valeurs gravées dans l'image, lisibles par quiconque peut la pull ou l'inspecter. | Non    | -                  |
-| IMAGE_ANNOTATIONS   | string  | Annotations OCI personnalisées séparées par des sauts de ligne, au format `KEY=VALUE` (sans préfixe de niveau : elles sont posées au niveau `index`). Mêmes ordre et précédence qu'`IMAGE_LABELS`. Contrairement à `IMAGE_LABELS`, ne peut pas être défini depuis le Dockerfile, et n'existe que si `PUSH` est `true` - un build non poussé n'a pas de manifest list. Même mise en garde : texte en clair, jamais de secret. | Non    | -                  |
+| IMAGE_ANNOTATIONS   | string  | Annotations OCI personnalisées séparées par des sauts de ligne, au format `KEY=VALUE` (sans préfixe de niveau : il suit ce qui est poussé, `index` pour une manifest list et `manifest` pour une image seule). Mêmes ordre et précédence qu'`IMAGE_LABELS`. Contrairement à `IMAGE_LABELS`, ne peut pas être défini depuis le Dockerfile, et n'existe que si `PUSH` est `true` - un build non poussé n'a ni manifest ni manifest list à annoter. Même mise en garde : texte en clair, jamais de secret. | Non    | -                  |
 | PUSH                | boolean | Pousser l'image construite vers le registre. Si `false`, l'image est exportée sous forme d'artefact tarball (un par architecture) au lieu d'être poussée, pour qu'un job en aval puisse la charger avec `docker load` et exécuter des tests dessus. | Non    | `true`             |
 | TAG_MAJOR_AND_MINOR | boolean | Créer des tags pour les versions majeure et mineure (ex: `1.2.3` → `1.2` et `1`)                                                                                                                                                                    | Non    | `false`            |
 | TAG_SHORT_SHA       | boolean | Taguer avec le SHA court du commit                                                                                                                                                                                                                  | Non    | `false`            |
@@ -42,7 +42,7 @@ Build d'images Docker multi-architecture (amd64/arm64) avec Docker Buildx, et pu
 
 | Output          | Description                                                                            |
 | --------------- | -------------------------------------------------------------------------------------- |
-| digest          | Digest de l'image construite (ex: `sha256:abc123...`), vide si `PUSH` est `false`      |
+| digest          | Digest du manifest ou de la manifest list poussé (ex: `sha256:abc123...`), vide si `PUSH` est `false`      |
 | image           | Nom normalisé de l'image (minuscules, compatible registres OCI)                        |
 | artifact-prefix | Préfixe des artefacts tarball produits quand `PUSH` est `false` (ex: `image-my-image`) |
 
@@ -71,7 +71,7 @@ Le job `build` sélectionne automatiquement le ou les runners et la plateforme c
 
 ### Comportement du push
 
-Par défaut, l'image est poussée vers le registre (par digest, puis assemblée en manifest list multi-arch).
+Par défaut, l'image est poussée vers le registre. Un build qui tient en un seul job pousse lui-même ses tags - voir [Builds en un seul job](#builds-en-un-seul-job). Seul un build natif des deux architectures (`USE_QEMU: false` avec `BUILD_AMD64` et `BUILD_ARM64`) exécute deux jobs de build : chacun pousse son image par digest, les digests sont uploadés en artefacts, et un job `merge` crée puis pousse la manifest list.
 
 ### Build sans push (`PUSH: false`)
 
@@ -79,11 +79,34 @@ Par défaut, l'image est poussée vers le registre (par digest, puis assemblée 
 - Les jobs d'un workflow réutilisable s'exécutent sur leurs propres runners : une image chargée dans le daemon Docker du job de build n'est **pas** visible du job de test de l'appelant. L'artefact tarball est ce qui relie les deux.
 - **Nommage de l'artefact** : un artefact par architecture, nommé `<artifact-prefix>-amd64` / `<artifact-prefix>-arm64`, contenant chacun un unique `image.tar`. Utiliser l'output `artifact-prefix` plutôt que de coder le nom en dur - il est dérivé du nom d'image normalisé (ex: `ghcr.io/my-org/my_image` → `image-my-image`).
 - Le tarball embarque l'image sous la référence `<IMAGE_NAME>:<IMAGE_TAG>`, donc après un `docker load -i image.tar`, l'image est directement exécutable sous cette référence.
-- Le job `merge` (création de la manifest list) est **ignoré** quand `PUSH` est `false` - il n'y a rien à fusionner dans un registre. L'output `digest` est donc vide, et les étapes en aval qui le consomment (notamment un job `attest-docker.yml` composé après ce workflow) ne doivent pas être branchées sur un build non poussé.
+- Rien n'est poussé, donc le job `merge` (création de la manifest list) est **ignoré**. L'output `digest` est par conséquent vide, et les étapes en aval qui le consomment (notamment un job `attest-docker.yml` composé après ce workflow) ne doivent pas être branchées sur un build non poussé.
 - Deux workflows de ce dépôt consomment directement l'artefact tarball, permettant de valider entièrement une image non poussée : [`scan-trivy.yml`](./41-scan-trivy.md) via son input `IMAGE_ARTIFACT` (mode tarball de Trivy) et `test-kube-deployment.yml` (non repris dans ce dépôt) via `kind load image-archive`. L'attestation est la seule chose qui ne peut vraiment pas fonctionner sans push, puisque les attestations sont liées à un digest de registre.
 - **Multi-arch** : avec `USE_QEMU: false` (runners natifs), construire les deux architectures produit deux tarballs mono-architecture indépendants - un par runner - ce qui est généralement souhaitable, puisqu'un job de test ne peut de toute façon exécuter qu'une seule architecture à la fois.
 - **Combinaison non supportée** : `PUSH: false` + `USE_QEMU: true` + `BUILD_AMD64` et `BUILD_ARM64` tous les deux à `true`. L'exporteur `docker` ne peut pas écrire une manifest list multi-plateforme dans un tarball, le workflow échoue donc rapidement dans le job `infos` avec une erreur explicite. Utiliser des runners natifs (`USE_QEMU: false`) ou construire une seule architecture à la fois.
 - **Connexion au registre** : ignorée quand `PUSH` est `false`, sauf si l'image cible `ghcr.io` (les credentials résolvent toujours depuis le token du job) ou si `REGISTRY_USERNAME` est fourni. Une image non-GHCR peut donc être construite sans aucun credential, tandis qu'une image de base privée peut toujours être pull en fournissant les secrets malgré tout.
+
+### Builds en un seul job
+
+Un job `merge` sert à poser un même jeu de tags sur des images que deux runners ont construites séparément. Quand `PUSH` est `true` et que le build tient en un seul job, il n'y a rien à fusionner : ce job pousse lui-même les tags et le job `merge` est ignoré - pas de runner supplémentaire, pas d'aller-retour d'artefact, pas de seconde configuration de buildx ni de seconde connexion au registre. Cela couvre :
+
+- une seule architecture (`BUILD_AMD64: false` ou `BUILD_ARM64: false`) ;
+- les deux architectures avec `USE_QEMU: true`, où un seul job construit les deux plateformes.
+
+Seul un build natif des deux architectures (`USE_QEMU: false`, `BUILD_AMD64` et `BUILD_ARM64` tous deux à `true`) passe encore par `merge`. Ce job s'exécute sur `RUNS_ON` et a besoin du plugin buildx mais pas d'un builder, puisque `imagetools` parle directement au registre : les runners hébergés par GitHub ont le plugin, et un runner auto-hébergé qui ne l'a pas se le voit installer au préalable.
+
+Ce que le registre contient diffère selon le cas :
+
+| Build                                      | Poussé sous forme de                       | Annotations posées sur |
+| ------------------------------------------ | ------------------------------------------ | ---------------------- |
+| Natif, deux architectures (`merge`)        | Manifest list au-dessus des deux images    | l'index                |
+| `USE_QEMU: true`, deux architectures       | Manifest list au-dessus des deux images    | l'index                |
+| Une seule architecture                     | **Un manifest d'image simple, sans index** | le manifest            |
+
+Une image mono-architecture n'est donc plus enveloppée dans une manifest list à une seule entrée. Trois conséquences :
+
+- **Les annotations sont sur le manifest.** buildx refuse une annotation d'index pour un export mono-plateforme : il n'y a pas d'index où les poser. Les mêmes valeurs figurent dans les labels de l'image dans les deux cas, et `docker buildx imagetools inspect <image> --raw | jq '.annotations'` les lit dans les deux formes.
+- **L'output `digest` est le digest du manifest.** C'est le digest de ce que le build a poussé, lu depuis le push lui-même plutôt que résolu après coup depuis un tag mutable, et [`attest-docker.yml`](./31-attest-docker.md) l'accepte comme il accepte le digest d'une liste. Une image construite avant et après ce changement a un digest différent pour cette seule raison, pas parce que son contenu a changé.
+- **Une différence de plateforme n'échoue plus au pull.** Tirer une liste qui n'a aucune entrée pour la plateforme de l'hôte échoue avec `no matching manifest`. Un manifest simple est tiré quelle que soit la plateforme de l'hôte, avec un avertissement de plateforme, et n'échoue qu'à l'exécution. Tirer avec `--platform` pour la fixer.
 
 ### Credential GitHub dans le build (`BUILD_SECRET_GITHUB_TOKEN`)
 
@@ -97,10 +120,11 @@ Par défaut, l'image est poussée vers le registre (par digest, puis assemblée 
 Par défaut (`IMAGE_METADATA: true`), ce workflow pose le jeu standard `org.opencontainers.image.*` (`title`, `description`, `url`, `source`, `revision`, `version`, `created`, `licenses`, calculés par [`docker/metadata-action`](https://github.com/docker/metadata-action)). C'est lui qui permet à ce qui ne voit que l'image - une interface de registre, un scanner, un inventaire côté cluster - de relier une étiquette en service au dépôt et au commit dont elle provient.
 
 - **Labels** (config de l'image) : gravés au moment du build, dans le job `build`, car ils font partie de la configuration de chaque image par architecture. Calculés une seule fois dans le job `infos` (plutôt que dupliqués dans chaque leg de la matrice) pour que `org.opencontainers.image.created` reste identique entre les builds amd64 et arm64 d'une même image logique.
-- **Annotations** (manifest list) : ce sont les mêmes valeurs, au niveau `index`, issues du **même** appel à `docker/metadata-action` que les labels, dans le job `infos`. Un second appel prendrait sa propre heure pour `org.opencontainers.image.created`, et l'index contredirait alors sur leur date de build les images qu'il référence. Elles ne peuvent en revanche être *posées* qu'au moment où le job `merge` assemble la manifest list multi-arch, avec `docker buildx imagetools create --annotation`. `imagetools create` n'accepte que les niveaux `index`/`descriptor`, jamais `manifest` - `index` est aussi la cible sémantiquement correcte ici, puisque c'est la seule manifest list qu'un appelant pull réellement par tag.
+- **Annotations** (manifest list) : ce sont les mêmes valeurs, au niveau `index`, issues du **même** appel à `docker/metadata-action` que les labels, dans le job `infos`. Un second appel prendrait sa propre heure pour `org.opencontainers.image.created`, et l'index contredirait alors sur leur date de build les images qu'il référence. Pour un build natif des deux architectures, elles ne peuvent en revanche être *posées* qu'au moment où le job `merge` assemble la manifest list, avec `docker buildx imagetools create --annotation` ; un [build en un seul job](#builds-en-un-seul-job) les passe au build qui pousse. Elles sont posées au niveau `index` partout où il y a un index (`imagetools create` n'accepte que les niveaux `index`/`descriptor`, jamais `manifest`, et l'index est la seule manifest list qu'un appelant pull réellement par tag). Une image mono-architecture n'a pas d'index : ses annotations sont posées sur le **manifest**.
 - `IMAGE_LABELS` / `IMAGE_ANNOTATIONS` ajoutent des clés personnalisées. Elles sont appliquées **après** le jeu standard, et le dernier `--label`/`--annotation` posé pour une clé est celui qui subsiste : une clé standard peut donc être écrasée individuellement, sans désactiver le reste du jeu. Elles s'appliquent aussi quand `IMAGE_METADATA` est `false`.
-- Avec `PUSH: false`, seuls les labels sont posés : il n'y a pas de manifest list à annoter (le job `merge` est ignoré).
+- Avec `PUSH: false`, seuls les labels sont posés : rien n'est poussé, il n'y a donc ni manifest ni manifest list à annoter.
 - `org.opencontainers.image.revision` vaut le `github.sha` du run. Sur un événement `pull_request`, c'est le commit de fusion éphémère de la PR, pas la tête de la branche - ce commit disparaît une fois la PR fermée.
+- `org.opencontainers.image.version` vaut `IMAGE_TAG`, le tag que l'appelant donne à ce build. Il n'est pas lu depuis la ref : `docker/metadata-action` poserait le nom de la branche pour un push et le numéro de la pull request pour une pull request, si bien qu'une release construite depuis un push sur `main` serait taguée `1.2.3` et étiquetée `main`. `IMAGE_LABELS` et `IMAGE_ANNOTATIONS` peuvent toujours l'écraser.
 
 ### Compromis : `org.opencontainers.image.created` et reproductibilité du digest
 
@@ -122,7 +146,7 @@ Les annotations, elles, ne peuvent jamais venir du Dockerfile - ce n'est pas un 
 ### Vérifier labels et annotations sur une image construite
 
 ```bash
-# Annotations (niveau index) de la manifest list poussée
+# Annotations (sur l'index, ou sur le manifest d'une image mono-architecture)
 docker buildx imagetools inspect ghcr.io/my-org/my-image:1.2.3
 
 # Labels de la configuration image (n'importe quelle plateforme, ils sont identiques)
