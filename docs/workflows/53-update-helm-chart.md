@@ -122,7 +122,7 @@ Ajoutez le token comme **secret de dépôt** nommé `GH_PAT` dans ce dépôt :
 - **Injection** : `APP_VERSION` et `PRERELEASE_IDENTIFIER` sont écrits dans `Chart.yaml` avec `yq` + `strenv()`, jamais avec `sed` - ils ne peuvent donc être que stockés, jamais interprétés. Ils sont en plus validés en début de job.
 - La documentation du chart est régénérée avec la version de helm-docs fixée par `HELM_DOCS_VERSION`.
 - Schéma de nommage de la branche (mode `called`) : `<chart-name>-v<NEXT_VERSION>`.
-- Outils requis : `yq`, et Go (installé par le workflow) pour compiler `helm-docs`.
+- Outils requis : `yq`, et une chaîne d'outils Go pour compiler `helm-docs`. Le Go déjà fourni par le runner est utilisé lorsqu'il est en version 1.21 ou supérieure (c'est le cas de tous les runners Ubuntu hébergés par GitHub) ; sinon, la dernière version stable de Go est installée au préalable, ce qui coûte 7 à 10 secondes.
 
 ### Mode `auto`
 

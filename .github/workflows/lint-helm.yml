@@ -103,7 +103,22 @@ jobs:
     # the same -X main.version the upstream release carries: the README's
     # footer names the version and a bare `go install` leaves it empty, so an
     # unstamped build would rewrite every README's last line.
+    #
+    # The Go a hosted runner ships builds helm-docs as well as `stable` does, and
+    # fetching `stable` is 7 to 10 seconds of a job that spends about 16 more
+    # compiling. Go 1.21 and later fetch the toolchain a module asks for, so
+    # any of them can build whatever helm-docs version is requested; an older or
+    # missing Go, as on a RUNS_ON runner, still gets `stable` installed.
+    - name: Check for Go
+      id: go
+      run: |
+        version=$(go env GOVERSION 2>/dev/null || true)
+        if [[ "$version" =~ ^go1\.([0-9]+) ]] && [ "${BASH_REMATCH[1]}" -ge 21 ]; then
+          echo "present=true" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Set up Go
+      if: ${{ steps.go.outputs.present != 'true' }}
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
       with:
         go-version: stable
