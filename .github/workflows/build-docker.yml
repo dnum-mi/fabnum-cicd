@@ -388,7 +388,7 @@ jobs:
 
     - name: Login to GitHub Container Registry
       if: ${{ env.REGISTRY_LOGIN == 'true' }}
-      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+      uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6  # v4.7.0
       with:
         registry: ${{ needs.infos.outputs.registry }}
         username: ${{ startsWith(inputs.IMAGE_NAME, 'ghcr.io') && github.actor || secrets.REGISTRY_USERNAME }}
@@ -516,7 +516,7 @@ jobs:
           type=raw,value=latest,enable=${{ inputs.LATEST_TAG == true }}
 
     - name: Login to GitHub Container Registry
-      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+      uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6  # v4.7.0
       with:
         registry: ${{ needs.infos.outputs.registry }}
         username: ${{ needs.infos.outputs.registry == 'ghcr.io' && github.actor || secrets.REGISTRY_USERNAME }}
