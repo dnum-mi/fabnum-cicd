@@ -5,6 +5,12 @@ on:
     branches:
     - main
 
+# A new push to a pull request supersedes the run in flight: finishing it would
+# only check a commit nobody is going to merge.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 # Every `run:` below is bash. Without this GitHub reads the shell off the runner
 # — PowerShell on Windows — so a caller pointing RUNS_ON at one gets a parse
 # error where a run should be. `bash` is the portable value: GitHub resolves it
@@ -82,6 +88,28 @@ jobs:
     permissions:
       contents: read
 
+  # A job of its own rather than a step of the one below: shellcheck is about 9
+  # seconds that would otherwise sit in front of the tests, and nothing here
+  # needs either to have finished before the other starts.
+  lint-test-scripts:
+    name: Lint test scripts
+    runs-on: ubuntu-26.04
+    if: ${{ needs.path-filter.outputs.workflows == 'true' || needs.path-filter.outputs.tests == 'true' }}
+    needs:
+    - path-filter
+    permissions:
+      contents: read
+    steps:
+    - name: Checks-out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        # No later step talks to the git remote, so the job's token need not
+        # stay in .git/config while the rest of the job runs.
+        persist-credentials: false
+
+    - name: Lint test scripts
+      run: shellcheck ci/tests/*.sh
+
   test-workflows:
     name: Test workflows
     runs-on: ubuntu-26.04
@@ -105,18 +133,17 @@ jobs:
       with:
         args: -color
 
-    - name: Lint test scripts
-      run: shellcheck ci/tests/*.sh
-
     # Executes the shell logic straight out of the workflow YAML against stubbed
-    # credentials and a stubbed `gh`. See ci/tests/lib.sh.
+    # credentials and a stubbed `gh`, one suite per CPU at a time. See
+    # ci/tests/lib.sh and ci/tests/run.sh.
     - name: Run workflow tests
       run: ./ci/tests/run.sh
 
-  # The one check a ruleset requires. lint-yaml, scan-zizmor and test-workflows are path-filtered,
-  # so they cannot be required individually: a required check that never reports
-  # blocks the merge. Every job above is listed, path-filter included, so that a
-  # failure upstream cannot reach the gate as a mere skip.
+  # The one check a ruleset requires. lint-yaml, scan-zizmor, lint-test-scripts and
+  # test-workflows are path-filtered, so they cannot be required individually: a
+  # required check that never reports blocks the merge. Every job above is listed,
+  # path-filter included, so that a failure upstream cannot reach the gate as a
+  # mere skip.
   all-jobs-passed:
     name: Check jobs status
     if: ${{ always() }}
@@ -125,6 +152,7 @@ jobs:
     - lint-commits
     - lint-yaml
     - scan-zizmor
+    - lint-test-scripts
     - test-workflows
     uses: ./.github/workflows/check-jobs.yml
     permissions: {}
