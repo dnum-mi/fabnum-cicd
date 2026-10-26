@@ -50,7 +50,7 @@ Analyse de vulnérabilités avec [Trivy](https://github.com/aquasecurity/trivy) 
 - `IMAGE_ARTIFACT` prend le pas sur `IMAGE` si les deux sont fournis - seul le tarball local est scanné, rien n'est pull.
 - L'artefact doit avoir été produit par le **même run de workflow** ; le téléchargement depuis un autre run n'est pas supporté.
 - `FORMAT` contrôle le format de sortie : `table` (défaut) affiche les résultats dans le résumé du workflow, `sarif` active l'intégration avec l'onglet GitHub Security.
-- Avec `GITHUB_SECURITY_TAB: true` et `FORMAT: sarif`, les résultats sont uploadés vers l'onglet Security.
+- Avec `GITHUB_SECURITY_TAB: true` et `FORMAT: sarif`, les résultats sont uploadés vers l'onglet Security. Le job n'attend pas que GitHub traite l'upload : les alertes apparaissent quelques secondes après la fin du job, et l'avertissement du job couvre un upload en échec, pas une erreur de traitement.
 - Les commentaires de PR pointent vers l'onglet GitHub Security (si `GITHUB_SECURITY_TAB: true`) ou vers la page de résumé du workflow.
 - Le lien vers l'onglet Security dans le commentaire de PR est filtré sur la ref contre laquelle le SARIF a réellement été uploadé : `pr:<numéro>` pour un run `pull_request`, `branch:<nom>` pour un push, et aucun filtre de ref pour tout le reste (un tag). Code scanning n'indexe les alertes que sous cette ref : un appelant qui scanne sur `push` et passe `PR_NUMBER` à la main obtient donc quand même un lien qui aboutit, alors qu'un filtre `pr:` figé tomberait sur un onglet vide.
 - Authentification au registre : utilise le token GitHub pour `ghcr.io`, sinon les credentials fournis.

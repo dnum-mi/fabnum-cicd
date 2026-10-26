@@ -131,6 +131,12 @@ jobs:
       if: ${{ inputs.GITHUB_SECURITY_TAB && inputs.FORMAT == 'sarif' }}
       with:
         sarif_file: ${{ format('gitleaks-results.{0}', inputs.FORMAT) }}
+        # The default waits for GitHub to finish processing the file: about 5
+        # of this step's 8 seconds, and minutes on the odd run where processing
+        # is slow. Nothing below reads the outcome - the step is
+        # continue-on-error, and what gates the job is the scanner's own exit
+        # code - and the alerts show up in the Security tab a few seconds later.
+        wait-for-processing: false
       continue-on-error: true
 
     - name: Warn about error
