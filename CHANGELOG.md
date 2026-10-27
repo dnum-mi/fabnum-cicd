@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.25.0...v0.25.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **lint-commits:** generate the commitlint config as an ES module ([4e1d3a1](https://github.com/dnum-mi/fabnum-cicd/commit/4e1d3a16ef7dd38de91453a36527604597acfb5e))
+* **lint-commits:** load the generated commitlint config in module packages ([f323736](https://github.com/dnum-mi/fabnum-cicd/commit/f3237360cddf0d643be113ad60a2b6630b8cab19))
+
 ## [0.25.0](https://github.com/dnum-mi/fabnum-cicd/compare/v0.24.1...v0.25.0) (2026-10-26)
 
 
