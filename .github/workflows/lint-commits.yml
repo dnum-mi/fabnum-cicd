@@ -81,31 +81,30 @@ jobs:
     # of the JavaScript. Interpolating them here would let a crafted
     # ALLOWED_TYPES escape both the heredoc and the string literal.
     #
-    # A `.cjs` file, passed to commitlint with an explicit --config below. The
-    # file is written into the caller's workspace, so the package.json that
-    # decides how a `.js` there is loaded is the caller's own, not one `bun
-    # install` generated: a repository declaring "type": "module" would load a
-    # `commitlint.config.js` as ESM, and the `module.exports` below fails with
-    # "module is not defined in ES module scope". `.cjs` is CommonJS whatever
-    # the package says, and is also exempt from the MODULE_TYPELESS_PACKAGE_JSON
-    # warning a typeless package.json gives an ES module - printed once per
-    # linted commit, which buries the one line naming the commit that failed.
+    # An ES module, as a `.mjs` file, passed to commitlint with an explicit
+    # --config below. The file is written into the caller's workspace, so the
+    # package.json that decides how a `.js` there is loaded is the caller's own,
+    # not one `bun install` generated: a `commitlint.config.js` would be
+    # CommonJS in one repository and ESM in the next (a root "type": "module"
+    # makes `module.exports` fail with "module is not defined in ES module
+    # scope"). `.mjs` is an ES module whatever the package says, and has no
+    # MODULE_TYPELESS_PACKAGE_JSON warning to print once per linted commit.
     #
     # --config, not commitlint's own lookup: that searches `commitlint.config.js`
-    # before `.cjs`, so a caller's checked-in `.js` would silently win and the
+    # before `.mjs`, so a caller's checked-in `.js` would silently win and the
     # ALLOWED_TYPES/REQUIRE_SCOPE/MAX_SUBJECT_LENGTH inputs would stop having
     # any effect, with nothing in the log saying so. `extends` keeps resolving
     # from the workspace, where the packages were installed.
     - name: Create commitlint config
       if: ${{ inputs.CONFIG_FILE == '' }}
       run: |
-        cat > commitlint.config.cjs << 'EOF'
+        cat > commitlint.config.mjs << 'EOF'
         const allowedTypes = (process.env.COMMITLINT_ALLOWED_TYPES ?? '')
           .split(',').map(t => t.trim()).filter(Boolean);
         const requireScope = process.env.COMMITLINT_REQUIRE_SCOPE === 'true';
         const headerMaxLength = Number(process.env.COMMITLINT_MAX_SUBJECT_LENGTH ?? 100);
 
-        module.exports = {
+        export default {
           extends: ['@commitlint/config-conventional'],
           rules: {
             'type-enum': [2, 'always', allowedTypes],
@@ -162,7 +161,7 @@ jobs:
         COMMIT_RANGE: ${{ steps.get-commits.outputs.commit-range }}
         ALLOWED_TYPES: ${{ inputs.ALLOWED_TYPES }}
         FAIL_ON_ERROR: ${{ inputs.FAIL_ON_ERROR }}
-        # Read by the generated commitlint.config.cjs; ignored when the caller
+        # Read by the generated commitlint.config.mjs; ignored when the caller
         # supplied CONFIG_FILE.
         COMMITLINT_ALLOWED_TYPES: ${{ inputs.ALLOWED_TYPES }}
         COMMITLINT_REQUIRE_SCOPE: ${{ inputs.REQUIRE_SCOPE }}
@@ -174,7 +173,7 @@ jobs:
         if [ -n "$CONFIG_FILE" ] && [ -f "$CONFIG_FILE" ]; then
           CONFIG_FLAG=(--config "$CONFIG_FILE")
         elif [ -z "$CONFIG_FILE" ]; then
-          CONFIG_FLAG=(--config commitlint.config.cjs)
+          CONFIG_FLAG=(--config commitlint.config.mjs)
         fi
 
         echo "## Conventional Commits Check" >> "$GITHUB_STEP_SUMMARY"
