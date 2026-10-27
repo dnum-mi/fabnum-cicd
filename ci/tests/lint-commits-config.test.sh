@@ -6,7 +6,7 @@
 # "type": "module" loads a `commitlint.config.js` as an ES module, where the
 # CommonJS `module.exports` the workflow writes fails with "module is not
 # defined in ES module scope" - and takes every pull request's commit lint down
-# with it. A `.cjs` file is CommonJS whatever the package says, and an explicit
+# with it. A `.mjs` file is an ES module whatever the package says, and an explicit
 # --config keeps commitlint's own lookup (which prefers a checked-in `.js`)
 # from picking some other file over the one carrying the workflow's inputs.
 
@@ -29,7 +29,7 @@ generate_config_in_workspace() {
 
 # What commitlint would read out of the file the step wrote, loaded the way Node
 # loads it for this workspace: a `.js` follows the package.json's "type", a
-# `.cjs` is always CommonJS.
+# `.mjs` is always an ES module.
 load_generated_config() {
   local file
   file=$(find "$WORKSPACE" -maxdepth 1 -name 'commitlint.config.*' -exec basename {} \; | head -1)
@@ -88,8 +88,8 @@ test_the_generated_file_is_not_a_dot_js() {
     printf 'FAIL: the step wrote commitlint.config.js into the caller workspace\n' >&2
     exit 1
   fi
-  if [ ! -e "$WORKSPACE/commitlint.config.cjs" ]; then
-    printf 'FAIL: the step did not write commitlint.config.cjs\n' >&2
+  if [ ! -e "$WORKSPACE/commitlint.config.mjs" ]; then
+    printf 'FAIL: the step did not write commitlint.config.mjs\n' >&2
     exit 1
   fi
 }
@@ -125,7 +125,7 @@ EOF
 test_the_generated_config_is_passed_explicitly() {
   run_lint_step ""
 
-  assert_called "bunx commitlint --config commitlint.config.cjs"
+  assert_called "bunx commitlint --config commitlint.config.mjs"
 }
 
 test_a_caller_config_file_wins() {
@@ -133,7 +133,7 @@ test_a_caller_config_file_wins() {
   run_lint_step "$SANDBOX/custom.config.js"
 
   assert_called "bunx commitlint --config $SANDBOX/custom.config.js"
-  assert_not_called "commitlint.config.cjs"
+  assert_not_called "commitlint.config.mjs"
 }
 
 run_tests
