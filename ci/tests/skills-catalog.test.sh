@@ -32,6 +32,7 @@ catalog_cell() {
 # The backticked tokens of a cell, one per line, sorted. `{}` stands for "no
 # permission" and is not a token.
 cell_tokens() {
+  # shellcheck disable=SC2016 # the backticks are literal Markdown, not a command
   grep -o '`[^`]*`' | tr -d '`' | grep -vx '{}' | sort
 }
 
@@ -47,11 +48,12 @@ test_every_reusable_workflow_is_in_the_catalog() {
 
 test_the_catalog_lists_no_workflow_that_does_not_exist() {
   local name unknown=""
-  for name in $(grep -o '^| `[a-z0-9-]*` |' "$CATALOG" | tr -d '|` '); do
+  # shellcheck disable=SC2016 # the backticks are literal Markdown, not a command
+  while IFS= read -r name; do
     if [ ! -f "$WORKFLOWS_DIR/$name.yml" ]; then
       unknown="${unknown}  ${name}"$'\n'
     fi
-  done
+  done < <(grep -o '^| `[a-z0-9-]*` |' "$CATALOG" | tr -d '|` ')
   fail_if_any "the catalog lists workflows that do not exist:" "$unknown"
 }
 
@@ -157,11 +159,11 @@ test_each_skill_is_named_after_its_directory() {
 # A skill must not send an agent to a workflow that was removed or renamed.
 test_skills_only_call_workflows_that_exist() {
   local ref bad=""
-  for ref in $(grep -rhoE 'fabnum-cicd/\.github/workflows/[a-z0-9-]+\.yml' "$SKILLS_DIR" | sort -u); do
+  while IFS= read -r ref; do
     if [ ! -f "$WORKFLOWS_DIR/$(basename "$ref")" ]; then
       bad="${bad}  ${ref}"$'\n'
     fi
-  done
+  done < <(grep -rhoE 'fabnum-cicd/\.github/workflows/[a-z0-9-]+\.yml' "$SKILLS_DIR" | sort -u)
   fail_if_any "skills call workflows that do not exist:" "$bad"
 }
 
@@ -172,12 +174,12 @@ test_relative_paths_in_the_skills_resolve() {
   local file dir path bad=""
   for file in "$SKILLS_DIR"/*/SKILL.md; do
     dir=$(dirname "$file")
-    for path in $(grep -oE '\.\./[A-Za-z0-9_./<>-]*[A-Za-z0-9>/]' "$file" | sort -u); do
+    while IFS= read -r path; do
       case "$path" in *'<'*) continue ;; esac
       if [ ! -e "$dir/$path" ]; then
         bad="${bad}  $(basename "$dir"): $path"$'\n'
       fi
-    done
+    done < <(grep -oE '\.\./[A-Za-z0-9_./<>-]*[A-Za-z0-9>/]' "$file" | sort -u)
   done
   fail_if_any "skills point at paths that do not exist:" "$bad"
 }
