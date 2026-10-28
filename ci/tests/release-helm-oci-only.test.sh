@@ -4,10 +4,9 @@
 #
 # chart-releaser-action cannot be told not to create a release: cr.sh runs
 # `cr upload` unconditionally, so the only way to publish to the OCI registry
-# without a GitHub Release (and without the tag, and on a repository with
-# immutable releases) is not to run it. That leaves two things to pin: the action
-# is skipped exactly when the input is off, and the step that packages in its
-# place finds the same charts cr.sh would.
+# without a GitHub Release (and without the tag) is not to run it. That leaves
+# two things to pin: the action is skipped exactly when the input is off, and the
+# step that packages in its place finds the same charts cr.sh would.
 #
 # The second half is the token. `cr index --push` pushes through `origin`, and git
 # sends a credential persisted by actions/checkout in preference to the one
