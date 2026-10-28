@@ -75,11 +75,11 @@ Une seule PR de release pour tout le dépôt : config en mode manifest, un packa
 
 ## Synchroniser le miroir CPiN (`sync-cpin`)
 
-Déclenche le pipeline GitLab du projet miroir après une release. Se limiter à ce que dit
-`../../docs/workflows/72-sync-cpin.md` : entrées requises `GITLAB_URL` (en `https://`), `GIT_MIRROR_PROJECT_ID`,
-`REPOSITORY_NAME` ; secret requis `GIT_MIRROR_TOKEN`. Passer l'URL et les identifiants par des **variables** (`vars.`)
-et non des secrets (un secret ne peut pas alimenter `with:`). Le placer **après** les jobs qui modifient le dépôt
-(release, bump de chart), sinon GitLab voit l'ancien état. L'agent ne manipule jamais la valeur du token.
+Déclenche le pipeline GitLab du projet miroir. Se limiter à ce que dit `../../docs/workflows/72-sync-cpin.md` :
+entrées requises `GITLAB_URL` (en `https://`, sinon le job refuse), `GIT_MIRROR_PROJECT_ID` (identifiant numérique ou
+chemin encodé) et `REPOSITORY_NAME` ; `BRANCH_TO_SYNC` ou `SYNC_ALL` pour choisir quoi synchroniser ; secret requis
+`GIT_MIRROR_TOKEN`. `ADDITIONAL_VARIABLES` est un objet JSON de variables de pipeline. L'agent ne manipule jamais la
+valeur du token.
 
 ## Pièges
 

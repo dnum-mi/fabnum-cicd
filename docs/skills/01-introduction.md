@@ -29,7 +29,8 @@ Voir la section [Skills pour agents](../../README.md#skills-pour-agents-claude-c
 - Les skills sont **versionnés avec les workflows** : une modification d'un workflow (entrée, secret, permission)
   s'accompagne de la mise à jour du catalogue.
 - `ci/tests/skills-catalog.test.sh` compare le catalogue au `on.workflow_call` et aux permissions de chaque workflow,
-  vérifie que les liens de documentation existent et que les skills n'appellent que des workflows existants. Il
+  vérifie que les liens du catalogue et les chemins relatifs des `SKILL.md` existent, et que les skills
+  n'appellent que des workflows existants. Il
   tourne dans la CI dès qu'un fichier de `skills/` ou de `.claude-plugin/` change.
 - Les gabarits `references/ci.yml` et `references/cd.yml` ne sont pas exécutés : les relire quand un workflow qu'ils
   appellent change.

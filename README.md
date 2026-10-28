@@ -126,6 +126,12 @@ Cela n'enregistre que la liste des plugins disponibles : aucun skill n'est encor
 claude plugin install fabnum-cicd@fabnum-cicd
 ```
 
+Ou, depuis une session Claude Code, en une seule étape (qui remplace aussi l'étape 1) :
+
+```
+/plugin install fabnum-cicd --marketplace dnum-mi/fabnum-cicd
+```
+
 **3. Vérifier.** Lancez `claude` dans votre projet, puis tapez `/reload-plugins` (inutile si vous venez de démarrer la
 session). Dans un terminal :
 

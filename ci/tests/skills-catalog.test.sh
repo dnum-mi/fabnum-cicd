@@ -42,10 +42,7 @@ test_every_reusable_workflow_is_in_the_catalog() {
       missing="${missing}  ${name}"$'\n'
     fi
   done
-  if [ -n "$missing" ]; then
-    printf 'FAIL: reusable workflows missing from %s:\n%s' "$CATALOG" "$missing" >&2
-    exit 1
-  fi
+  fail_if_any "reusable workflows missing from the catalog:" "$missing"
 }
 
 test_the_catalog_lists_no_workflow_that_does_not_exist() {
@@ -55,59 +52,80 @@ test_the_catalog_lists_no_workflow_that_does_not_exist() {
       unknown="${unknown}  ${name}"$'\n'
     fi
   done
-  if [ -n "$unknown" ]; then
-    printf 'FAIL: the catalog lists workflows that do not exist:\n%s' "$unknown" >&2
+  fail_if_any "the catalog lists workflows that do not exist:" "$unknown"
+}
+
+# Catalog columns: $1 is the empty text before the first `|`, then name, usage...
+COL_REQUIRED_INPUTS=4
+COL_SECRETS=5
+COL_PERMISSIONS=6
+
+fail_if_any() {
+  local title="$1" problems="$2"
+  if [ -n "$problems" ]; then
+    printf 'FAIL: %s\n%s' "$title" "$problems" >&2
     exit 1
   fi
 }
 
-test_required_inputs_match_the_workflows() {
-  local name expected actual bad=""
+# Compares one catalog column with what the workflows declare. `expected_of`
+# prints the expected tokens of a workflow file, one per line.
+check_column() {
+  local column="$1" title="$2" expected_of="$3" name expected actual bad=""
   for name in $(reusable_workflows); do
-    expected=$(yq '.on.workflow_call.inputs // {} | to_entries | .[] | select(.value.required == true) | .key' \
-      "$WORKFLOWS_DIR/$name.yml" | sort)
-    actual=$(catalog_cell "$name" 4 | cell_tokens)
+    expected=$("$expected_of" "$WORKFLOWS_DIR/$name.yml" | sort)
+    actual=$(catalog_cell "$name" "$column" | cell_tokens)
     if [ "$expected" != "$actual" ]; then
-      bad="${bad}  ${name}: workflow requires [$(echo "$expected" | tr '\n' ' ')] but the catalog says [$(echo "$actual" | tr '\n' ' ')]"$'\n'
+      bad="${bad}  ${name}: workflow has [$(echo "$expected" | tr '\n' ';')] but the catalog says [$(echo "$actual" | tr '\n' ';')]"$'\n'
     fi
   done
-  if [ -n "$bad" ]; then
-    printf 'FAIL: required inputs differ from the workflows:\n%s' "$bad" >&2
-    exit 1
-  fi
+  fail_if_any "$title" "$bad"
 }
 
-test_secrets_match_the_workflows() {
-  local name expected actual bad=""
-  for name in $(reusable_workflows); do
-    expected=$(yq '.on.workflow_call.secrets // {} | keys | .[]' "$WORKFLOWS_DIR/$name.yml" | sort)
-    actual=$(catalog_cell "$name" 5 | cell_tokens)
-    if [ "$expected" != "$actual" ]; then
-      bad="${bad}  ${name}: workflow declares [$(echo "$expected" | tr '\n' ' ')] but the catalog says [$(echo "$actual" | tr '\n' ' ')]"$'\n'
-    fi
-  done
-  if [ -n "$bad" ]; then
-    printf 'FAIL: secrets differ from the workflows:\n%s' "$bad" >&2
-    exit 1
-  fi
+expected_required_inputs() {
+  yq '.on.workflow_call.inputs // {} | to_entries | .[] | select(.value.required == true) | .key' "$1"
+}
+
+expected_secrets() {
+  yq '.on.workflow_call.secrets // {} | keys | .[]' "$1"
 }
 
 # GitHub validates the permissions of every job of a called workflow, so the
 # caller must grant the highest level any job asks for, per scope.
+expected_permissions() {
+  yq -o=json -I=0 '[.jobs[].permissions // {} | to_entries[]]' "$1" |
+    jq -r 'group_by(.key)[] | .[0].key + ": " + (if any(.value == "write") then "write" else "read" end)'
+}
+
+test_required_inputs_match_the_workflows() {
+  check_column "$COL_REQUIRED_INPUTS" "required inputs differ from the workflows:" expected_required_inputs
+}
+
+test_secrets_match_the_workflows() {
+  check_column "$COL_SECRETS" "secrets differ from the workflows:" expected_secrets
+}
+
 test_permissions_match_the_union_of_the_jobs() {
-  local name expected actual bad=""
-  for name in $(reusable_workflows); do
-    expected=$(yq -o=json -I=0 '[.jobs[].permissions // {} | to_entries[]]' "$WORKFLOWS_DIR/$name.yml" |
-      jq -r 'group_by(.key)[] | .[0].key + ": " + (if any(.value == "write") then "write" else "read" end)' | sort)
-    actual=$(catalog_cell "$name" 6 | cell_tokens)
-    if [ "$expected" != "$actual" ]; then
-      bad="${bad}  ${name}: jobs ask for [$(echo "$expected" | tr '\n' ';')] but the catalog says [$(echo "$actual" | tr '\n' ';')]"$'\n'
+  check_column "$COL_PERMISSIONS" "permissions differ from the workflows:" expected_permissions
+}
+
+# expected_permissions reads job-level maps only. A workflow-level `permissions:`
+# or a shorthand such as `read-all` would be missed silently, so they are refused
+# here instead - the permission-union suite documents the same per-job rule.
+test_permissions_are_declared_per_job_as_maps() {
+  local file bad=""
+  for file in "$WORKFLOWS_DIR"/*.yml; do
+    if [ "$(yq '.on.workflow_call // "null"' "$file")" = "null" ]; then
+      continue
+    fi
+    if [ "$(yq 'has("permissions")' "$file")" = "true" ]; then
+      bad="${bad}  $(basename "$file"): permissions declared at the workflow level"$'\n'
+    fi
+    if [ "$(yq '[.jobs[] | select(has("permissions")) | .permissions | select(tag != "!!map")] | length' "$file")" != "0" ]; then
+      bad="${bad}  $(basename "$file"): a job declares permissions that are not a map"$'\n'
     fi
   done
-  if [ -n "$bad" ]; then
-    printf 'FAIL: permissions differ from the workflows:\n%s' "$bad" >&2
-    exit 1
-  fi
+  fail_if_any "the catalog cannot read these permissions:" "$bad"
 }
 
 test_every_doc_link_of_the_catalog_resolves() {
@@ -117,10 +135,7 @@ test_every_doc_link_of_the_catalog_resolves() {
       bad="${bad}  ${link}"$'\n'
     fi
   done
-  if [ -n "$bad" ]; then
-    printf 'FAIL: broken documentation links in the catalog:\n%s' "$bad" >&2
-    exit 1
-  fi
+  fail_if_any "broken documentation links in the catalog:" "$bad"
 }
 
 # The marketplace points at ./skills, and an agent finds a skill by its name.
@@ -136,10 +151,7 @@ test_each_skill_is_named_after_its_directory() {
       bad="${bad}  ${dir}: no description"$'\n'
     fi
   done
-  if [ -n "$bad" ]; then
-    printf 'FAIL: skills whose frontmatter does not match:\n%s' "$bad" >&2
-    exit 1
-  fi
+  fail_if_any "skills whose frontmatter does not match:" "$bad"
 }
 
 # A skill must not send an agent to a workflow that was removed or renamed.
@@ -150,10 +162,24 @@ test_skills_only_call_workflows_that_exist() {
       bad="${bad}  ${ref}"$'\n'
     fi
   done
-  if [ -n "$bad" ]; then
-    printf 'FAIL: skills call workflows that do not exist:\n%s' "$bad" >&2
-    exit 1
-  fi
+  fail_if_any "skills call workflows that do not exist:" "$bad"
+}
+
+# The skills point an agent at the documentation with paths relative to their own
+# file, which resolve once the plugin is installed (its root is this repository).
+# A placeholder such as NN-<nom>.md is not a path.
+test_relative_paths_in_the_skills_resolve() {
+  local file dir path bad=""
+  for file in "$SKILLS_DIR"/*/SKILL.md; do
+    dir=$(dirname "$file")
+    for path in $(grep -oE '\.\./[A-Za-z0-9_./<>-]*[A-Za-z0-9>/]' "$file" | sort -u); do
+      case "$path" in *'<'*) continue ;; esac
+      if [ ! -e "$dir/$path" ]; then
+        bad="${bad}  $(basename "$dir"): $path"$'\n'
+      fi
+    done
+  done
+  fail_if_any "skills point at paths that do not exist:" "$bad"
 }
 
 run_tests
