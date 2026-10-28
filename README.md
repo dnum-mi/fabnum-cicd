@@ -115,14 +115,10 @@ claude plugin marketplace add dnum-mi/fabnum-cicd
 claude plugin install fabnum-cicd@fabnum-cicd
 ```
 
-**OpenCode**, avec un clone du dépôt déclaré dans le `opencode.json` :
-
-```bash
-git clone https://github.com/dnum-mi/fabnum-cicd.git ~/fabnum-cicd
-```
+**OpenCode**, sans rien cloner, depuis le `opencode.json` du projet (ou `~/.config/opencode/opencode.json`) :
 
 ```json
-{ "skills": { "paths": ["~/fabnum-cicd/skills"] } }
+{ "skills": { "urls": ["https://raw.githubusercontent.com/dnum-mi/fabnum-cicd/main/skills/"] } }
 ```
 
 `gh` authentifié est recommandé, pas obligatoire : l'agent s'en sert pour vérifier que vos secrets existent (leurs

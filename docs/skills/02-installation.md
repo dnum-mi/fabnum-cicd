@@ -3,11 +3,11 @@
 Les skills suivent le standard [Agent Skills](https://agentskills.io/specification) : ils fonctionnent avec Claude Code
 et OpenCode. Choisissez **une seule** façon d'installer par client : en combiner deux charge les skills deux fois.
 
-| | Claude Code (plugin) | OpenCode (clone + `skills.paths`) | OpenCode (URL) | Copie (tout client) |
+| | Claude Code (plugin) | OpenCode (URL) | OpenCode (clone + `skills.paths`) | Copie (tout client) |
 | --- | :---: | :---: | :---: | :---: |
 | Skills | ✅ | ✅ | ✅ | ✅ |
-| Liens relatifs vers `docs/` et `git-hooks/` | ✅ | ✅ | ❌ (doc en ligne) | ❌ (doc en ligne) |
-| Mise à jour | `plugin update` | `git pull` | via le cache d'OpenCode | à refaire |
+| Liens relatifs vers `docs/` et `git-hooks/` | ✅ | ❌ (doc en ligne) | ✅ | ❌ (doc en ligne) |
+| Mise à jour | `plugin update` | automatique (ou version figée par tag) | `git pull` | à refaire |
 
 ## Claude Code
 
@@ -83,43 +83,12 @@ l'installation à l'ouverture du dossier.
 ## OpenCode
 
 OpenCode ne lit pas les marketplaces de plugins de Claude Code, mais il charge les skills au standard Agent Skills
-depuis le dossier d'un clone ou depuis une URL. Version testée : OpenCode 1.18.35. Prérequis : `git` ; `gh`
+depuis une URL ou depuis le dossier d'un clone. Version testée : OpenCode 1.18.35. Prérequis : `git` ; `gh`
 authentifié est recommandé, pas obligatoire (voir plus haut pour son rôle).
 
-### Façon recommandée : un clone et `skills.paths`
+### Façon recommandée : une URL, sans clone
 
-Le clone garde les liens relatifs des skills vers `docs/` et `git-hooks/`.
-
-**1. Cloner le dépôt** à un endroit stable :
-
-```bash
-git clone https://github.com/dnum-mi/fabnum-cicd.git ~/fabnum-cicd
-```
-
-**2. Déclarer le dossier** dans le `opencode.json` du projet, ou dans `~/.config/opencode/opencode.json` pour tous vos
-projets :
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "skills": {
-    "paths": ["~/fabnum-cicd/skills"]
-  }
-}
-```
-
-**3. Vérifier.** Dans un terminal :
-
-```bash
-opencode debug skill
-```
-
-Les cinq skills `fabnum-cicd-…` doivent apparaître dans la liste, avec leur chemin. Dans OpenCode, l'agent les propose
-via son outil `skill` quand la demande correspond ; vous pouvez aussi le lui demander par son nom.
-
-**4. Mettre à jour** : `git -C ~/fabnum-cicd pull`, puis relancer OpenCode.
-
-### Sans clone : une URL
+Dans le `opencode.json` du projet, ou dans `~/.config/opencode/opencode.json` pour tous vos projets :
 
 ```json
 {
@@ -130,10 +99,44 @@ via son outil `skill` quand la demande correspond ; vous pouvez aussi le lui dem
 }
 ```
 
-OpenCode lit [`skills/index.json`](../../skills/index.json) et ne télécharge que les fichiers qu'il liste. Les skills
-sont alors seuls : les liens relatifs vers `docs/` et `git-hooks/` ne résolvent pas, l'agent se rabat sur la
-[documentation en ligne](https://github.com/dnum-mi/fabnum-cicd/tree/main/docs). OpenCode garde ces fichiers en
-cache.
+OpenCode lit [`skills/index.json`](../../skills/index.json) et ne télécharge que les fichiers qu'il liste, puis les
+garde en cache. Rien à cloner ni à mettre à jour à la main. Les skills sont alors seuls : les liens relatifs vers
+`docs/` et `git-hooks/` ne résolvent pas, l'agent se rabat sur la
+[documentation en ligne](https://github.com/dnum-mi/fabnum-cicd/tree/main/docs).
+
+Pour **figer une version**, remplacez `main` dans l'URL par un tag (`v0.25.1`, ou `v0` pour suivre les versions
+`0.x`) : les skills ne changent plus qu'à votre initiative.
+
+OpenCode 2 remplace `skills.paths` et `skills.urls` par un seul tableau : `"skills": ["https://…/skills/"]`.
+
+**Vérifier** dans un terminal :
+
+```bash
+opencode debug skill
+```
+
+Les cinq skills `fabnum-cicd-…` doivent apparaître dans la liste. Dans OpenCode, l'agent les propose via son outil
+`skill` quand la demande correspond ; vous pouvez aussi le lui demander par son nom.
+
+### Alternative : un clone et `skills.paths`
+
+À préférer si l'agent doit lire `docs/` et `git-hooks/` en local, ou si vous voulez épingler une version précise.
+
+```bash
+git clone --branch v0.25.1 https://github.com/dnum-mi/fabnum-cicd.git ~/fabnum-cicd
+```
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "skills": {
+    "paths": ["~/fabnum-cicd/skills"]
+  }
+}
+```
+
+Mise à jour : `git -C ~/fabnum-cicd fetch --tags && git -C ~/fabnum-cicd checkout <tag>`, puis relancer OpenCode
+(sans `--branch`, le clone suit `main` et un `git pull` suffit).
 
 ### Autorisations
 
