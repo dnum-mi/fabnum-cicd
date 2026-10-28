@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "fabnum-cicd",
+  "description": "Skills pour appliquer les workflows réutilisables et les git hooks de la Fabrique Numérique dans votre projet",
+  "owner": {
+    "name": "dnum-mi",
+    "url": "https://github.com/dnum-mi/fabnum-cicd"
+  },
+  "plugins": [
+    {
+      "name": "fabnum-cicd",
+      "source": "./",
+      "description": "Aide l'agent à assembler pipelines CI/CD, authentification GitHub, releases, charts Helm et git hooks avec fabnum-cicd",
+      "skills": [
+        "./skills"
+      ]
+    }
+  ]
+}

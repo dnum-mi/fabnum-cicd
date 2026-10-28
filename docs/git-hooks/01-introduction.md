@@ -41,10 +41,15 @@ chmod +x .git/hooks/*
 
 ### 4. Configuration Git globale (optionnel)
 
-Pour utiliser ces hooks pour tous vos projets :
+Pour utiliser ces hooks pour tous vos projets, Git cherche des fichiers exécutables nommés comme leur type
+(`commit-msg`, `pre-commit`, `pre-push`) directement dans le dossier `core.hooksPath`. Les dossiers de `git-hooks/`
+ne conviennent donc pas tels quels : créez un dossier à part, y faire pointer les hooks voulus, puis le déclarer.
 
 ```bash
-git config --global core.hooksPath /path/to/fabnum-cicd/git-hooks
+mkdir -p ~/.git-hooks
+ln -s /path/to/fabnum-cicd/git-hooks/commit-msg/conventional-commit ~/.git-hooks/commit-msg
+ln -s /path/to/fabnum-cicd/git-hooks/pre-push/signed-commit ~/.git-hooks/pre-push
+git config --global core.hooksPath ~/.git-hooks
 ```
 
 ## Hooks disponibles

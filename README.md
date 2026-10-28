@@ -88,6 +88,43 @@ Certains workflows nécessitent des secrets à configurer dans les **Settings > 
 | `SONAR_PROJECT_KEY` | scan-sonarqube                 | Clé du projet SonarQube                                     |
 | `GIT_MIRROR_TOKEN`  | sync-cpin                      | Token GitLab pour la synchronisation CPiN                   |
 
+## Skills pour agents (Claude Code, OpenCode)
+
+Des *skills* permettent à votre agent de code (Claude Code, OpenCode) d'appliquer ces workflows et ces git hooks **dans votre projet** :
+il écrit le `ci.yml` / `cd.yml` avec les bons appels, les bonnes permissions et sans les pièges connus. Ils ne
+contiennent aucun code exécutable et ne touchent jamais à la valeur d'un secret.
+
+| Skill | Pour demander à l'agent de… | Docs |
+| ----- | --------------------------- | ---- |
+| [fabnum-cicd-pipeline](./skills/fabnum-cicd-pipeline/SKILL.md) | mettre en place ou relire la CI/CD : lint, tests, build, scans, porte `check-jobs` | [docs](./docs/workflows/01-introduction.md) |
+| [fabnum-cicd-auth](./skills/fabnum-cicd-auth/SKILL.md) | choisir et configurer `GITHUB_TOKEN`, GitHub App ou PAT | [docs](./docs/workflows/05-authentication.md) |
+| [fabnum-cicd-release](./skills/fabnum-cicd-release/SKILL.md) | automatiser les releases, la pré-release, la publication npm / PyPI | [docs](./docs/workflows/50-release-app.md) |
+| [fabnum-cicd-helm](./skills/fabnum-cicd-helm/SKILL.md) | lint, versionner, publier et signer un chart Helm | [docs](./docs/workflows/51-release-helm.md) |
+| [fabnum-cicd-git-hooks](./skills/fabnum-cicd-git-hooks/SKILL.md) | installer les git hooks locaux | [docs](./docs/git-hooks/01-introduction.md) |
+
+### Installer les skills
+
+Les skills suivent le standard [Agent Skills](https://agentskills.io/specification) et fonctionnent avec Claude Code
+et OpenCode. Le guide pas à pas, pensé pour un premier usage, est dans
+[docs/skills/02-installation.md](./docs/skills/02-installation.md). En bref :
+
+**Claude Code** (2.1.275 ou plus récent), en mode plugin :
+
+```bash
+claude plugin marketplace add dnum-mi/fabnum-cicd
+claude plugin install fabnum-cicd@fabnum-cicd
+```
+
+**OpenCode** (1.18 ou plus récent), en mode plugin, dans le `opencode.json` du projet (ou `~/.config/opencode/opencode.json`) :
+
+```json
+{ "plugin": ["fabnum-cicd@git+https://github.com/dnum-mi/fabnum-cicd.git"] }
+```
+
+`gh` authentifié est recommandé, pas obligatoire : l'agent s'en sert pour vérifier que vos secrets existent (leurs
+**noms**, jamais leurs valeurs). Détails, mise à jour, partage à l'équipe et vérification : voir le
+[guide d'installation](./docs/skills/02-installation.md).
+
 ## Git Hooks
 
 Validation locale du code avant commit et push. Consultez l'[introduction](./docs/git-hooks/01-introduction.md) pour les instructions d'installation.

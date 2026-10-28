@@ -1,0 +1,7 @@
+{
+  "name": "fabnum-cicd",
+  "description": "Agent skills for the fabnum-cicd reusable workflows and git hooks (OpenCode plugin entry point)",
+  "private": true,
+  "type": "module",
+  "main": ".opencode/plugins/fabnum-cicd.js"
+}

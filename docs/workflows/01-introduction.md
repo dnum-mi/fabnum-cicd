@@ -57,6 +57,7 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 ### Guides
 
 - [**Release d'un monorepo**](./90-monorepo-release.md) - Pipeline complet publiant plusieurs applications et un chart Helm unique depuis un même dépôt
+- [**Skills pour agents**](../skills/01-introduction.md) - Faire appliquer ces workflows et les git hooks par votre agent de code (Claude Code, OpenCode)
 
 ## Utilisation rapide
 
@@ -537,6 +538,20 @@ jobs:
       # Ajouter PUBLISH_OCI: true pour publier aussi sur un registre OCI.
       CHARTS_DIR: ./charts
 ```
+
+## Bonnes pratiques
+
+- **Version** : appeler les workflows en `@v0` (tag flottant : le dépôt est en `0.x`, une version mineure peut changer
+  un comportement). Pour figer : `@v0.25` ou le SHA du commit. Jamais `@main`. Renovate ne propose rien sur un `@v0` ;
+  il met à jour un pin précis comme n'importe quelle dépendance GitHub Actions.
+- **Secrets** : les passer un par un (`secrets:`), jamais `secrets: inherit`.
+- **Permissions** : les déclarer **par job** et accorder l'**union** de celles du workflow appelé, même pour un job qui
+  ne s'exécute pas. Un scope manquant fait échouer l'analyse du workflow, pas un job.
+- **Actions tierces** que vous ajoutez vous-même : épinglées par SHA complet, avec la version en commentaire.
+- **Nom d'image** : GHCR exige des minuscules, calculer `ghcr.io/${GITHUB_REPOSITORY,,}` une fois et le propager.
+- **Booléens** issus de `env` ou d'`outputs` : ce sont des chaînes, comparer avec `== 'true'`.
+- **Concurrence** : `cancel-in-progress: true` en CI, `false` en CD.
+- **Porte unique** : terminer la CI par [`check-jobs`](./80-check-jobs.md) qui agrège **tous** les jobs.
 
 ## Configuration
 
