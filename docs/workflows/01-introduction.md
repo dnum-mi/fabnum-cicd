@@ -104,6 +104,37 @@ jobs:
       FORMAT: sarif
 ```
 
+## Épinglage de version
+
+Le suffixe `@…` d'un `uses:` détermine quelle version des workflows s'exécute. Trois niveaux existent, du plus mobile au plus figé :
+
+| Référence | Ce qu'elle suit | Exemple |
+| --- | --- | --- |
+| Tag majeur mobile | chaque release de la série `v0` (recréé à chaque publication) | `@v0` |
+| Tag mineur mobile | chaque release de la série `v0.42` | `@v0.42` |
+| Version exacte | la release `v0.42.1` uniquement | `@v0.42.1` |
+
+### Tag mobile (`@v0`) : le défaut recommandé pour un consommateur interne
+
+C'est la forme utilisée dans tous les exemples de cette documentation. Ses propriétés découlent directement de sa mobilité :
+
+- **Les correctifs arrivent sans intervention** : un bug fixé ou un durcissement de sécurité (une permission réduite, une action mise à jour) s'applique au prochain run, sans PR de bump dans chaque dépôt consommateur.
+- **C'est le canal de distribution de ce dépôt** : les workflows sont testés ensemble, release par release ; le tag `v0` pointe toujours sur un état publié et cohérent, jamais sur un `main` en cours de modification.
+- **Une release défaillante se propage partout, immédiatement** : c'est le revers. Un régressif dans une release touche tous les consommateurs au run suivant, sans fenêtre pour l'observer ailleurs d'abord.
+
+Ce compromis est assumé ici : ce dépôt est interne à l'organisation, ses releases passent par des PR relues, et la surface d'un consommateur qui prendrait une régression est la même que celle de tous les autres - le signal remonte vite. Pour un dépôt tiers, inconnu ou critique, le calcul serait différent.
+
+### Version exacte (`@v0.42.1`) : le contrôle au prix des bumps
+
+Épingler une version précise fige le comportement : rien ne change sans une PR dédiée dans le dépôt consommateur. C'est la seule option qui permette de tester une nouvelle version sur un seul dépôt avant de la généraliser, ou de geler un pipeline pendant une investigation. En contrepartie, les correctifs n'arrivent plus seuls - chaque bump devient une PR à faire, relire et merger, dans chaque dépôt.
+
+### Coupler l'épinglage à un bot de mise à jour
+
+Le compromis usuel est **version exacte + renovate** (ou dependabot) : le pin donne le contrôle, le bot retire le coût. Renovate détecte nativement les `uses:` de workflows réutilisables via son manager `github-actions` - un `@v0.42.1` dans un workflow consommateur génère une PR de bump à chaque release de ce dépôt, relue comme n'importe quelle autre. Dependabot fait de même avec son écosystème `github-actions`. Deux points d'attention pour ce dépôt :
+
+- **Configurez le bot pour ne pas épingler le tag mobile** : renovate propose par défaut (`pinDigests`) de figer un `@v0` en un pin de commit SHA - la PR passe pour une mise à jour anodine, mais elle change la stratégie de consommation, pas seulement la version. Une règle `matchDepNames` sur `dnum-mi/fabnum-cicd` avec `enabled: false` (comme dans le `renovate.json` de ce dépôt pour ses auto-références) neutralise ce cas ; un pin exact, lui, reçoit naturellement une PR de bump à chaque release.
+- **Les bumps arrivent groupés par release** : chaque release de ce dépôt ouvre une PR par workflow consommateur épinglé. Avec une cadence de release quotidienne, prévoyez de regrouper (`automerge` sur les bumps mineurs et correctifs, revue pour les majeurs).
+
 ## Workflows par cas d'usage
 
 ### Pipeline CI complet pour une application
