@@ -182,7 +182,7 @@ Sur la branche de pré-release, release-please part de la release nommée d'apr�
 Le workflow vérifie donc, avant release-please, que **l'un des deux** est dans l'historique de la branche :
 
 - le tag de la version du manifeste de pré-release ;
-- le commit `last-release-sha` de `PRERELEASE_CONFIG_FILE`, que [`sync-prerelease-branch.yml`](./57-sync-prerelease-branch.md#ancre-de-release-please-après-un-rebase) pose après chaque rebase.
+- le commit `last-release-sha` de `PRERELEASE_CONFIG_FILE`, que [`sync-prerelease-branch.yml`](./57-sync-prerelease-branch.md#ancre-de-release-après-un-rebase) pose après chaque rebase.
 
 Sinon le run échoue en nommant le tag et le fichier de config. Il y a deux sorties : vérifier que le job `sync-prerelease-branch` de l'appelant reçoit les mêmes `PRERELEASE_CONFIG_FILE` et `PRERELEASE_MANIFEST_FILE` que ce workflow et qu'il a tourné depuis le rebase, ou fixer `last-release-sha` à la main sur le commit de release rejoué. Ne fusionnez jamais la PR de release qu'aurait ouverte un run non asserté, et ne déplacez pas le tag : les registres et miroirs construisent des versions à partir des tags.
 
