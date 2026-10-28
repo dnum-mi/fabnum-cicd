@@ -165,4 +165,31 @@ test_chart_releaser_is_not_asked_to_skip_upload() {
   fi
 }
 
+# Immutable releases lock a release's assets the moment it is published, so the
+# packages have to be attached before then. chart-releaser does that from v1.9.0
+# on - draft, upload, publish - and the classic channel is documented as
+# compatible on that basis. An older one publishes first and uploads after,
+# which leaves a release that can be neither completed nor recreated.
+test_pins_a_chart_releaser_that_attaches_packages_before_publishing() {
+  local version
+  version=$(yq '
+    .jobs.release.steps[]
+    | select(.id == "chart-releaser")
+    | .with.version
+  ' "$WORKFLOWS_DIR/release-helm.yml")
+
+  # A pinned release, so the comparison below means something: an empty value
+  # falls back to whatever the action defaults to.
+  if ! [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf 'FAIL: chart-releaser must be pinned as vX.Y.Z; got %q\n' "$version" >&2
+    return 1
+  fi
+
+  if [ "$(printf '%s\n' v1.9.0 "$version" | sort -V | head -n 1)" != "v1.9.0" ]; then
+    printf 'FAIL: chart-releaser %s publishes a release before attaching its packages, which immutable releases reject; v1.9.0 or later is needed\n' \
+      "$version" >&2
+    return 1
+  fi
+}
+
 run_tests

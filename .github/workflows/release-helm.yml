@@ -19,8 +19,9 @@ on:
           On by default: this workflow serves a dedicated chart repository,
           where the git tags belong to the charts and chart-releaser's classic
           output is the channel that repository shape exists for. Turn it off
-          (and PUBLISH_OCI on) on a private repository or one with immutable
-          releases - see docs/workflows/51-release-helm.md.
+          (and PUBLISH_OCI on) on a private repository - see
+          docs/workflows/51-release-helm.md. Compatible with immutable releases,
+          where SKIP_EXISTING should be on.
         type: boolean
         required: false
         default: true
@@ -340,9 +341,15 @@ jobs:
     # Only when a GitHub Release is wanted. chart-releaser-action cannot be told
     # not to create one: cr.sh runs `cr upload` unconditionally (its skip_upload
     # input only skips the index update), so with CREATE_GITHUB_RELEASE false
-    # the action would still publish a release and a tag per chart, and fail on
-    # a repository with immutable releases. The OCI channel packages the charts
-    # itself, in the step below.
+    # the action would still publish a release and a tag per chart. The OCI
+    # channel packages the charts itself, in the step below.
+    #
+    # `version` stays at v1.9.0 or later, which release-helm-channels.test.sh
+    # holds it to: the first chart-releaser to create each release as a draft,
+    # attach the packages and only then publish it. Earlier ones published first
+    # and uploaded after, which a repository with immutable releases rejects -
+    # leaving a release that can be neither completed nor recreated, since its
+    # tag name can never be used again.
     - name: Run chart-releaser
       id: chart-releaser
       if: ${{ inputs.CREATE_GITHUB_RELEASE }}
