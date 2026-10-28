@@ -88,9 +88,9 @@ Certains workflows nécessitent des secrets à configurer dans les **Settings > 
 | `SONAR_PROJECT_KEY` | scan-sonarqube                 | Clé du projet SonarQube                                     |
 | `GIT_MIRROR_TOKEN`  | sync-cpin                      | Token GitLab pour la synchronisation CPiN                   |
 
-## Skills pour agents (Claude Code)
+## Skills pour agents (Claude Code, OpenCode)
 
-Des *skills* permettent à votre agent de code d'appliquer ces workflows et ces git hooks **dans votre projet** :
+Des *skills* permettent à votre agent de code (Claude Code, OpenCode) d'appliquer ces workflows et ces git hooks **dans votre projet** :
 il écrit le `ci.yml` / `cd.yml` avec les bons appels, les bonnes permissions et sans les pièges connus. Ils ne
 lancent rien eux-mêmes et ne touchent jamais à la valeur d'un secret.
 
@@ -102,89 +102,32 @@ lancent rien eux-mêmes et ne touchent jamais à la valeur d'un secret.
 | [fabnum-cicd-helm](./skills/fabnum-cicd-helm/SKILL.md) | lint, versionner, publier et signer un chart Helm | [docs](./docs/workflows/51-release-helm.md) |
 | [fabnum-cicd-git-hooks](./skills/fabnum-cicd-git-hooks/SKILL.md) | installer les git hooks locaux | [docs](./docs/git-hooks/01-introduction.md) |
 
-### Installer les skills (pas à pas)
+### Installer les skills
 
-**Avant de commencer**, il faut :
+Les skills suivent le standard [Agent Skills](https://agentskills.io/specification) et fonctionnent avec Claude Code
+et OpenCode. Le guide pas à pas, pensé pour un premier usage, est dans
+[docs/skills/02-installation.md](./docs/skills/02-installation.md). En bref :
 
-- [Claude Code](https://code.claude.com/docs/en/overview) **2.1.275 ou plus récent** : `claude --version` affiche la version ;
-- `git` et un accès à github.com (le dépôt est public) ;
-- recommandé, mais pas obligatoire : la [CLI GitHub `gh`](https://cli.github.com/), connectée avec `gh auth login`.
-  L'agent s'en sert pour vérifier que vos secrets existent (leurs **noms**, jamais leurs valeurs) et lire les logs
-  d'un run en échec. Sans elle, il vous indique quoi vérifier dans l'interface GitHub.
-
-**1. Ajouter le catalogue.** Dans un terminal :
+**Claude Code** (2.1.275 ou plus récent), en mode plugin :
 
 ```bash
 claude plugin marketplace add dnum-mi/fabnum-cicd
-```
-
-Cela n'enregistre que la liste des plugins disponibles : aucun skill n'est encore actif.
-
-**2. Installer le plugin.**
-
-```bash
 claude plugin install fabnum-cicd@fabnum-cicd
 ```
 
-Ou, depuis une session Claude Code, en une seule étape (qui remplace aussi l'étape 1) :
-
-```
-/plugin install fabnum-cicd --marketplace dnum-mi/fabnum-cicd
-```
-
-**3. Vérifier.** Lancez `claude` dans votre projet, puis tapez `/reload-plugins` (inutile si vous venez de démarrer la
-session). Dans un terminal :
+**OpenCode**, avec un clone du dépôt déclaré dans le `opencode.json` :
 
 ```bash
-claude plugin list
+git clone https://github.com/dnum-mi/fabnum-cicd.git ~/fabnum-cicd
 ```
-
-La ligne `fabnum-cicd@fabnum-cicd` doit apparaître avec le statut `enabled`. Dans Claude Code, la commande `/skills`
-liste les cinq skills `fabnum-cicd-…`.
-
-**4. Les essayer.** Dans votre projet, demandez par exemple :
-
-- « Mets en place la CI de ce projet avec les workflows fabnum-cicd. »
-- « Ma PR de release ne déclenche pas la CI, pourquoi ? »
-- « Relis mon `.github/workflows/ci.yml` selon les recommandations fabnum-cicd. »
-- « Installe les git hooks de fabnum-cicd. »
-
-L'agent charge le skill adapté tout seul. Vous pouvez aussi le nommer : « utilise le skill fabnum-cicd-auth ».
-Relisez toujours ce qu'il écrit avant de committer : c'est vous qui créez les secrets dans GitHub.
-
-**Mettre à jour** (les skills suivent la branche `main`) :
-
-```bash
-claude plugin marketplace update fabnum-cicd
-claude plugin update fabnum-cicd@fabnum-cicd
-```
-
-**Désinstaller** : `claude plugin uninstall fabnum-cicd@fabnum-cicd`.
-
-**Pour toute l'équipe**, versionnez dans le `.claude/settings.json` de votre projet : Claude Code proposera
-l'installation à l'ouverture du dossier.
 
 ```json
-{
-  "extraKnownMarketplaces": {
-    "fabnum-cicd": { "source": { "source": "github", "repo": "dnum-mi/fabnum-cicd" } }
-  },
-  "enabledPlugins": { "fabnum-cicd@fabnum-cicd": true }
-}
+{ "skills": { "paths": ["~/fabnum-cicd/skills"] } }
 ```
 
-**Sans plugin** (autre agent compatible avec le standard [Agent Skills](https://agentskills.io/specification)) :
-copier les skills dans le dossier de votre agent.
-
-```bash
-git clone --depth 1 https://github.com/dnum-mi/fabnum-cicd.git
-cp -r fabnum-cicd/skills/* ~/.agents/skills/
-```
-
-Les liens des skills vers `docs/` ne résolvent alors plus : l'agent s'appuie sur le catalogue du skill
-`fabnum-cicd-pipeline` et sur la [documentation en ligne](./docs/workflows/01-introduction.md).
-
-Détails et maintenance : [docs/skills](./docs/skills/01-introduction.md).
+`gh` authentifié est recommandé, pas obligatoire : l'agent s'en sert pour vérifier que vos secrets existent (leurs
+**noms**, jamais leurs valeurs). Détails, mise à jour, partage à l'équipe et vérification : voir le
+[guide d'installation](./docs/skills/02-installation.md).
 
 ## Git Hooks
 

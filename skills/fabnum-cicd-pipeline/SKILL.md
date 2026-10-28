@@ -10,6 +10,9 @@ Aider l'utilisateur à brancher, **dans son propre dépôt**, les workflows réu
 [`dnum-mi/fabnum-cicd`](https://github.com/dnum-mi/fabnum-cicd) : un `ci.yml` (pull request) et un `cd.yml`
 (release, livraison). Ce skill ne lance rien : il écrit ou relit du YAML, GitHub l'exécute.
 
+> Les liens relatifs vers `docs/` supposent le dépôt complet. Sans lui (installation par URL ou copie des seuls
+> skills), les mêmes pages sont en ligne : <https://github.com/dnum-mi/fabnum-cicd/tree/main/docs>.
+
 Les détails exacts (entrées, valeurs par défaut) sont dans la doc livrée avec le plugin, à lire avant d'écrire un
 appel : `../../docs/workflows/NN-<nom>.md`. Le catalogue complet est dans
 [`references/workflows.md`](references/workflows.md).

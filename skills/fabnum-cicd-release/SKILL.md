@@ -11,6 +11,9 @@ Les charts Helm ont leur propre skill : `fabnum-cicd-helm`. Doc détaillée, à 
 `../../docs/workflows/50-release-app.md`, `55-release-npm.md`, `57-sync-prerelease-branch.md`,
 `58-release-pypi.md`, `72-sync-cpin.md`, `90-monorepo-release.md`.
 
+> Les liens relatifs vers `docs/` supposent le dépôt complet. Sans lui (installation par URL ou copie des seuls
+> skills), les mêmes pages sont en ligne : <https://github.com/dnum-mi/fabnum-cicd/tree/main/docs>.
+
 ## Le principe
 
 1. Les commits suivent **Conventional Commits** (`feat:`, `fix:`, `feat!:`…). `release-please` en déduit la version

@@ -1,6 +1,6 @@
 # Skills pour agents
 
-Les skills sont des fiches d'instructions que votre agent de code (Claude Code) charge quand la tâche s'y prête. Ils
+Les skills sont des fiches d'instructions que votre agent de code (Claude Code, OpenCode) charge quand la tâche s'y prête. Ils
 l'aident à appliquer, **dans votre projet**, les recommandations et la mise en œuvre de ce dépôt : écrire un `ci.yml`
 avec les bons workflows, configurer les releases, choisir l'authentification, installer les git hooks.
 
@@ -22,7 +22,7 @@ Le catalogue complet des workflows (entrées requises, secrets, permissions à a
 
 ## Installation
 
-Voir la section [Skills pour agents](../../README.md#skills-pour-agents-claude-code) du README.
+Voir le [guide d'installation](./02-installation.md) (Claude Code, OpenCode, copie).
 
 ## Maintenir les skills
 
@@ -34,5 +34,8 @@ Voir la section [Skills pour agents](../../README.md#skills-pour-agents-claude-c
   tourne dans la CI dès qu'un fichier de `skills/` ou de `.claude-plugin/` change.
 - Les gabarits `references/ci.yml` et `references/cd.yml` ne sont pas exécutés : les relire quand un workflow qu'ils
   appellent change.
+- `skills/index.json` liste les fichiers de chaque skill : OpenCode, en installation par URL, ne télécharge que
+  ceux-là. Le test le compare au contenu de `skills/`; après l'ajout d'un skill ou d'un fichier, le régénérer.
 - Un nouveau skill est un dossier `skills/<nom>/SKILL.md` dont le `name` est le nom du dossier ; il est repris
-  automatiquement par la marketplace (`.claude-plugin/marketplace.json`).
+  automatiquement par la marketplace (`.claude-plugin/marketplace.json`) et par `skills.paths` d'OpenCode, mais
+  doit être ajouté à `skills/index.json`.

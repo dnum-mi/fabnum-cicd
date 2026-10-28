@@ -10,6 +10,9 @@ Aider l'utilisateur à installer, dans son propre projet, les hooks locaux de `d
 avant le push ce que la CI refuserait. Doc : `../../docs/git-hooks/01-introduction.md` à `04-pre-push.md`.
 Les hooks eux-mêmes sont livrés avec le plugin dans `../../git-hooks/` (sinon, dans le dépôt `fabnum-cicd`).
 
+> Les liens relatifs vers `docs/` supposent le dépôt complet. Sans lui (installation par URL ou copie des seuls
+> skills), les mêmes pages sont en ligne : <https://github.com/dnum-mi/fabnum-cicd/tree/main/docs>.
+
 ## Choisir les hooks
 
 | Hook | Type | Vérifie | Prérequis à installer |

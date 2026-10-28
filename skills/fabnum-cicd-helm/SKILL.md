@@ -10,6 +10,9 @@ Aider l'utilisateur à brancher le cycle de vie d'un chart Helm : contrôle, ver
 détaillée, à lire avant d'écrire un appel : `../../docs/workflows/11-lint-helm.md`, `12`, `20`, `51` à `54`, `56`.
 Les contraintes d'une plateforme de déploiement précise (règles d'admission, quotas) ne sont pas traitées ici.
 
+> Les liens relatifs vers `docs/` supposent le dépôt complet. Sans lui (installation par URL ou copie des seuls
+> skills), les mêmes pages sont en ligne : <https://github.com/dnum-mi/fabnum-cicd/tree/main/docs>.
+
 ## Où vit le chart ? (première question)
 
 | Situation | Chaîne de workflows |

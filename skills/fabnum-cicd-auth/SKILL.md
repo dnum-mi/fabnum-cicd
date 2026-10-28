@@ -9,6 +9,9 @@ allowed-tools: Bash Read Write
 Aider l'utilisateur à choisir et câbler le credential GitHub de ses workflows. Source de vérité, à lire pour tout
 détail : `../../docs/workflows/05-authentication.md`.
 
+> Les liens relatifs vers `docs/` supposent le dépôt complet. Sans lui (installation par URL ou copie des seuls
+> skills), les mêmes pages sont en ligne : <https://github.com/dnum-mi/fabnum-cicd/tree/main/docs>.
+
 ## Règles pour l'agent
 
 - **Ne jamais demander, lire, écrire ni afficher la valeur** d'un secret, d'une clé `.pem` ou d'un token. L'humain les

@@ -184,4 +184,18 @@ test_relative_paths_in_the_skills_resolve() {
   fail_if_any "skills point at paths that do not exist:" "$bad"
 }
 
+# OpenCode installs skills from a URL by reading this index, and fetches only the
+# files it lists: a file added to a skill but not listed is silently missing for
+# those users.
+test_the_url_index_lists_every_file_of_every_skill() {
+  local expected actual
+  expected=$(cd "$SKILLS_DIR" && find . -mindepth 2 -type f | sed 's|^\./||' | LC_ALL=C sort)
+  actual=$(jq -r '.skills[] | .name as $n | .files[] | "\($n)/\(.)"' "$SKILLS_DIR/index.json" | LC_ALL=C sort)
+  if [ "$expected" != "$actual" ]; then
+    printf 'FAIL: skills/index.json does not list the files of the skills\n--- on disk ---\n%s\n--- in the index ---\n%s\n' \
+      "$expected" "$actual" >&2
+    exit 1
+  fi
+}
+
 run_tests
