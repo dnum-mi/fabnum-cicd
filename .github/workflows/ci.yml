@@ -59,6 +59,11 @@ jobs:
             - '.github/zizmor.yml'
           tests:
             - 'ci/tests/**'
+            # The skills restate what the workflows declare, and
+            # 'skills-catalog.test.sh' checks them against it: editing either
+            # side has to re-run the suites.
+            - 'skills/**'
+            - '.claude-plugin/**'
 
   lint-commits:
     uses: ./.github/workflows/lint-commits.yml
