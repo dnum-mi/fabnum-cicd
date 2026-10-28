@@ -3,11 +3,11 @@
 Les skills suivent le standard [Agent Skills](https://agentskills.io/specification) : ils fonctionnent avec Claude Code
 et OpenCode. Choisissez **une seule** façon d'installer par client : en combiner deux charge les skills deux fois.
 
-| | Claude Code (plugin) | OpenCode (plugin) | OpenCode (URL) | OpenCode (clone) | Copie (tout client) |
-| --- | :---: | :---: | :---: | :---: | :---: |
-| Skills | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Liens relatifs vers `docs/` et `git-hooks/` | ✅ | ✅ | ❌ (doc en ligne) | ✅ | ❌ (doc en ligne) |
-| Mise à jour | `plugin update` | vider le cache | automatique | `git pull` | à refaire |
+| | Claude Code (plugin) | OpenCode (plugin) | OpenCode (clone) | Copie (tout client) |
+| --- | :---: | :---: | :---: | :---: |
+| Skills | ✅ | ✅ | ✅ | ✅ |
+| Liens relatifs vers `docs/` et `git-hooks/` | ✅ | ✅ | ✅ | ❌ (doc en ligne) |
+| Mise à jour | `plugin update` | vider le cache | `git pull` | à refaire |
 
 ## Claude Code
 
@@ -83,7 +83,7 @@ l'installation à l'ouverture du dossier.
 ## OpenCode
 
 OpenCode ne lit pas les marketplaces de plugins de Claude Code, mais il charge les skills au standard Agent Skills
-depuis un plugin, une URL ou le dossier d'un clone. Version testée : OpenCode 1.18.35. Prérequis : `git` ; `gh`
+depuis un plugin ou le dossier d'un clone. Version testée : OpenCode 1.18.35. Prérequis : `git` ; `gh`
 authentifié est recommandé, pas obligatoire (voir plus haut pour son rôle).
 
 ### Façon recommandée : le plugin
@@ -115,22 +115,6 @@ opencode debug skill
 
 Les cinq skills `fabnum-cicd-…` doivent apparaître dans la liste. Dans OpenCode, l'agent les propose via son outil
 `skill` quand la demande correspond ; vous pouvez aussi le lui demander par son nom.
-
-### Sans plugin : une URL
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "skills": {
-    "urls": ["https://raw.githubusercontent.com/dnum-mi/fabnum-cicd/main/skills/"]
-  }
-}
-```
-
-OpenCode lit [`skills/index.json`](../../skills/index.json) et ne télécharge que les fichiers qu'il liste. Les skills
-sont alors seuls : les liens relatifs vers `docs/` et `git-hooks/` ne résolvent pas, l'agent se rabat sur la
-[documentation en ligne](https://github.com/dnum-mi/fabnum-cicd/tree/main/docs). Remplacer `main` par un tag fige la
-version. OpenCode 2 remplace `skills.paths` et `skills.urls` par un seul tableau : `"skills": ["https://…/skills/"]`.
 
 ### Sans plugin : un clone et `skills.paths`
 
@@ -172,8 +156,8 @@ git clone --depth 1 https://github.com/dnum-mi/fabnum-cicd.git
 cp -r fabnum-cicd/skills/fabnum-cicd-* ~/.agents/skills/
 ```
 
-Les liens vers `docs/` ne résolvent alors plus : l'agent s'appuie sur le catalogue du skill `fabnum-cicd-pipeline` et
-sur la [documentation en ligne](../workflows/01-introduction.md).
+Les liens vers `docs/` ne résolvent alors plus : l'agent se rabat sur la
+[documentation en ligne](https://github.com/dnum-mi/fabnum-cicd/tree/main/docs).
 
 ## Ce que les skills ne font pas
 
