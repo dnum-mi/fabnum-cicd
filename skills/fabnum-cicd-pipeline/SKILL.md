@@ -14,7 +14,9 @@ Help the user wire, **in their own repository**, the reusable workflows of
 Relative links assume the full repository (plugin install); otherwise use
 <https://github.com/dnum-mi/fabnum-cicd/tree/main>.
 
-- Overview, complete CI/CD examples: [`docs/workflows/01-introduction.md`](../../docs/workflows/01-introduction.md).
+- Overview, complete CI/CD examples and good practices:
+  [`docs/workflows/01-introduction.md`](../../docs/workflows/01-introduction.md). It has the sections "Pipeline CI
+  complet", "Pipeline CD avec release et déploiement" and "Pipeline pour charts Helm": start from the one that matches.
 - One page per workflow: `docs/workflows/NN-<name>.md` (list in the overview).
 - Exact inputs, secrets, defaults: the `on.workflow_call` block of `.github/workflows/<name>.yml`.
 - A working caller: this repository's own `.github/workflows/ci.yml` and `cd.yml`.
@@ -31,6 +33,8 @@ Relative links assume the full repository (plugin install); otherwise use
 5. Check with `actionlint` if available, then open a test PR.
 
 ## Rules
+
+The full list is the "Bonnes pratiques" section of the overview; the ones to never break:
 
 - `@v0` (or a precise pin / SHA). **Never `@main`**.
 - **Never `secrets: inherit`**: pass each secret by name.
