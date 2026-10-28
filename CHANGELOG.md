@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.25.3](https://github.com/dnum-mi/fabnum-cicd/compare/v0.25.2...v0.25.3) (2026-10-28)
+
+
+### Bug Fixes
+
+* **sync-prerelease-branch:** keep a single anchor commit on the prerelease branch ([652c7b0](https://github.com/dnum-mi/fabnum-cicd/commit/652c7b00475ccbd202a46f7cb0276fd72a64420d))
+
+
+### Dependencies
+
+* **deps:** update astral-sh/setup-uv to v10.3.3 ([4bf884c](https://github.com/dnum-mi/fabnum-cicd/commit/4bf884c06dacbedaddab62e89fc3ee53280ade36))
+
 ## [0.25.2](https://github.com/dnum-mi/fabnum-cicd/compare/v0.25.1...v0.25.2) (2026-10-28)
 
 
