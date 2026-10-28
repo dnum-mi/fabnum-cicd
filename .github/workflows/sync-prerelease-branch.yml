@@ -558,6 +558,56 @@ jobs:
           rm -f "$edited"
         }
 
+        # The anchor commit of an earlier rebase is replayed with the rest of
+        # the series, and its key now names a commit that is gone. Adding the
+        # next anchor on top of it would leave one stale commit behind per
+        # rebase, forever: the release branch moves on every push. So the
+        # earlier anchor commits of $1 are taken out of the series first, and
+        # the new one is the only one.
+        #
+        # Only the commits after the release commit are replayed, so that
+        # commit keeps the SHA the new key is about to name: from $2 when it
+        # sits in the prerelease branch's own series, from the release branch
+        # when a promotion copied it there. A commit that cannot be replayed
+        # without the old anchor (a later edit of the same lines of the config)
+        # puts everything back, and the new anchor goes on top as before.
+        fold_earlier_anchors() {
+          local version="$1" replayed="$2" subject base original sha message dropped=0
+          local -a kept=()
+          subject="chore($PRERELEASE_BRANCH): anchor release-please on $version"
+
+          if git merge-base --is-ancestor "$replayed" "origin/$RELEASE_BRANCH"; then
+            base="origin/$RELEASE_BRANCH"
+          else
+            base="$replayed"
+          fi
+
+          # Exactly the commits this workflow writes: that subject, and nothing
+          # but the prerelease config in them.
+          while IFS=$'\t' read -r sha message; do
+            if [ "$message" = "$subject" ] && [ "$(git diff-tree --no-commit-id --name-only -r "$sha")" = "$PRERELEASE_CONFIG_FILE" ]; then
+              dropped=$((dropped + 1))
+            else
+              kept+=("$sha")
+            fi
+          done < <(git log --reverse --format='%H%x09%s' "$base..HEAD")
+
+          if [ "$dropped" -eq 0 ]; then
+            return 0
+          fi
+
+          original=$(git rev-parse HEAD)
+          git reset --quiet --hard "$base"
+          if [ "${#kept[@]}" -gt 0 ] && ! git cherry-pick --allow-empty --keep-redundant-commits "${kept[@]}" >/dev/null 2>&1; then
+            git cherry-pick --abort >/dev/null 2>&1 || true
+            git reset --quiet --hard "$original"
+            echo "::warning::Could not take the $dropped earlier anchor commit(s) of $version out of '$PRERELEASE_BRANCH': a later commit changes the same lines of $PRERELEASE_CONFIG_FILE. The new anchor commit is added on top of them."
+            return 0
+          fi
+
+          echo "Folded $dropped earlier anchor commit(s) of $version into the new one."
+        }
+
         # The rebase replays the prerelease branch's commits under new SHAs,
         # the release commits among them. release-please finds the last
         # prerelease by its tag - the one named after the version in the
@@ -575,7 +625,9 @@ jobs:
         # commit on the branch because release-please reads that config from
         # GitHub, not from a workspace. Once the next prerelease is tagged
         # release-please reaches that tag before this commit and the key is
-        # inert; the next rebase that orphans a tag refreshes it.
+        # inert; the next rebase that orphans a tag refreshes it. The branch
+        # carries one anchor commit at a time: a refresh takes the previous
+        # one out of the series instead of stacking another on top of it.
         #
         # Single-package manifests only: the key is one commit for the whole
         # repository, which cannot anchor several packages at once.
@@ -666,6 +718,7 @@ jobs:
             return 0
           fi
 
+          fold_earlier_anchors "$version" "$replayed"
           set_last_release_sha "$replayed"
 
           git add -- "$PRERELEASE_CONFIG_FILE"

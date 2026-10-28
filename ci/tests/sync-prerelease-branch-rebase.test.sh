@@ -357,6 +357,180 @@ test_a_later_rebase_refreshes_the_anchor() {
   git cat-file -e "$replayed^{commit}"
 }
 
+# The anchor commits of the release branch..prerelease branch range.
+anchor_commits() {
+  git log --format='%H%x09%s' "origin/main..HEAD" | awk -F '\t' '$2 ~ /^chore\(develop\): anchor release-please on / { print $1 }'
+}
+
+# The scratch clone the tests push from, moved onto the remote's current
+# prerelease branch: a sync force-pushes it, so the local one has diverged.
+seed_on_develop() {
+  git -C "$SANDBOX/seed" fetch -q origin
+  git -C "$SANDBOX/seed" checkout -q -B develop origin/develop
+}
+
+# A commit landing on the release branch, as a hotfix does.
+land_on_main() {
+  git -C "$SANDBOX/seed" checkout -q main
+  (
+    set -e
+    cd "$SANDBOX/seed"
+    commit "fix: hotfix $1" "hotfix-$1.txt=again"
+    git push -q origin main
+  )
+}
+
+# A commit landing on the prerelease branch, the way a merged feature does.
+land_on_develop() {
+  seed_on_develop
+  (
+    set -e
+    cd "$SANDBOX/seed"
+    commit "feat: $1" "$1.txt=work"
+    git push -q origin develop
+  )
+}
+
+# What the stacking left behind on a prerelease branch: an anchor commit whose
+# key names a SHA that is no longer on the branch.
+land_stale_anchor() {
+  seed_on_develop
+  (
+    set -e
+    cd "$SANDBOX/seed"
+    jq --arg sha "$1" '.["last-release-sha"] = $sha' release-please-config-rc.json >config.tmp
+    mv config.tmp release-please-config-rc.json
+    git add release-please-config-rc.json
+    git commit -q -m "chore(develop): anchor release-please on 1.1.0-rc.1"
+    git push -q origin develop
+  )
+}
+
+test_a_later_rebase_moves_the_anchor_instead_of_stacking_another_commit() {
+  use_real_git
+  build_history
+  sync_env
+
+  run_block "$BLOCK"
+  assert_status 0
+  assert_equal "1" "$(anchor_commits | wc -l | tr -d ' ')" "anchor commits after the first sync"
+
+  # The release branch moves again: the rebase replays the series, the release
+  # commit and the first anchor commit among it, under new SHAs. The key of
+  # that anchor now names a commit that is gone.
+  land_on_main second
+  run_block "$BLOCK"
+
+  assert_status 0
+  assert_equal "1" "$(anchor_commits | wc -l | tr -d ' ')" "anchor commits after the second sync"
+  assert_equal "chore(develop): anchor release-please on 1.1.0-rc.1" "$(git log -1 --format=%s)" "the anchor is the tip"
+  assert_output_contains "Folded 1 earlier anchor commit(s) of 1.1.0-rc.1 into the new one."
+  local replayed
+  replayed=$(git log --format=%H --grep='^chore(develop): release 1.1.0-rc.1$' -1 HEAD)
+  assert_equal "$replayed" "$(jq -r '.["last-release-sha"]' release-please-config-rc.json)" "last-release-sha"
+  assert_equal "$(git rev-parse HEAD)" "$(remote_develop)" "the remote carries the single anchor"
+}
+
+test_a_run_per_release_branch_push_leaves_one_anchor_commit() {
+  use_real_git
+  build_history
+  sync_env
+
+  run_block "$BLOCK"
+  assert_status 0
+  local push
+  for push in second third fourth; do
+    land_on_main "$push"
+    run_block "$BLOCK"
+    assert_status 0
+  done
+
+  assert_equal "1" "$(anchor_commits | wc -l | tr -d ' ')" "anchor commits after four syncs"
+  local replayed
+  replayed=$(git log --format=%H --grep='^chore(develop): release 1.1.0-rc.1$' -1 HEAD)
+  assert_equal "$replayed" "$(jq -r '.["last-release-sha"]' release-please-config-rc.json)" "last-release-sha"
+}
+
+test_the_work_landed_after_the_anchor_is_kept_and_the_anchor_moves_to_the_tip() {
+  use_real_git
+  build_history
+  sync_env
+
+  run_block "$BLOCK"
+  assert_status 0
+
+  # A feature lands on the prerelease branch on top of the anchor commit, then
+  # the release branch moves.
+  land_on_develop later-feature
+  land_on_main second
+  run_block "$BLOCK"
+
+  assert_status 0
+  assert_equal "1" "$(anchor_commits | wc -l | tr -d ' ')" "anchor commits"
+  assert_equal "chore(develop): anchor release-please on 1.1.0-rc.1" "$(git log -1 --format=%s)" "the anchor is the tip"
+  assert_equal "feat: later-feature" "$(git log -2 --format=%s | tail -1)" "the feature stays right below it"
+  git cat-file -e "HEAD:later-feature.txt"
+  local replayed
+  replayed=$(git log --format=%H --grep='^chore(develop): release 1.1.0-rc.1$' -1 HEAD)
+  assert_equal "$replayed" "$(jq -r '.["last-release-sha"]' release-please-config-rc.json)" "last-release-sha"
+}
+
+test_anchor_commits_that_already_piled_up_collapse_into_one() {
+  use_real_git
+  build_history
+  sync_env
+
+  run_block "$BLOCK"
+  assert_status 0
+
+  land_stale_anchor 1111111111111111111111111111111111111111
+  land_stale_anchor 2222222222222222222222222222222222222222
+  land_on_main second
+  run_block "$BLOCK"
+
+  assert_status 0
+  assert_equal "1" "$(anchor_commits | wc -l | tr -d ' ')" "anchor commits"
+  local replayed
+  replayed=$(git log --format=%H --grep='^chore(develop): release 1.1.0-rc.1$' -1 HEAD)
+  assert_equal "$replayed" "$(jq -r '.["last-release-sha"]' release-please-config-rc.json)" "last-release-sha"
+}
+
+test_a_commit_that_does_not_fit_without_the_old_anchor_keeps_the_branch_syncing() {
+  use_real_git
+  build_history
+  sync_env
+
+  run_block "$BLOCK"
+  assert_status 0
+
+  # Someone edits the config line right below the anchor's key: the old anchor
+  # commit cannot be taken out of the series without a conflict.
+  seed_on_develop
+  (
+    set -e
+    cd "$SANDBOX/seed"
+    jq '.packages["."]["extra-files"] += ["other.txt"]' release-please-config-rc.json >config.tmp
+    mv config.tmp release-please-config-rc.json
+    git add release-please-config-rc.json
+    git commit -q -m "chore: track another file"
+    git push -q origin develop
+  )
+  land_on_main second
+  run_block "$BLOCK"
+
+  # The sync must not fail over this, and the key must still be right.
+  assert_status 0
+  assert_output_contains "::warning::Could not take the 1 earlier anchor commit(s) of 1.1.0-rc.1 out of 'develop'"
+  local replayed
+  replayed=$(git log --format=%H --grep='^chore(develop): release 1.1.0-rc.1$' -1 HEAD)
+  assert_equal "$replayed" "$(jq -r '.["last-release-sha"]' release-please-config-rc.json)" "last-release-sha"
+  assert_equal "$(git rev-parse HEAD)" "$(remote_develop)" "the rebased branch is pushed"
+  [ ! -d .git/rebase-merge ] && [ ! -d .git/rebase-apply ] || {
+    echo "FAIL: a rebase was left behind" >&2
+    exit 1
+  }
+}
+
 test_anchors_on_the_promoted_copy_of_the_release_commit_after_a_rebase_merge_promotion() {
   use_real_git
   WITH_HOTFIX=false WITH_PROMOTION=true build_history
@@ -380,6 +554,57 @@ test_anchors_on_the_promoted_copy_of_the_release_commit_after_a_rebase_merge_pro
   assert_equal "$promoted" "$(jq -r '.["last-release-sha"]' release-please-config-rc.json)" "last-release-sha"
   assert_equal "1" "$(git rev-list --count origin/main..HEAD)" "the anchor is the only commit of its own"
   assert_equal "chore(develop): anchor release-please on 1.1.0-rc.1" "$(git log -1 --format=%s)" "anchor commit subject"
+}
+
+test_stale_anchors_after_a_promotion_fold_onto_the_release_branch() {
+  use_real_git
+  WITH_HOTFIX=false WITH_PROMOTION=true build_history
+  sync_env
+
+  run_block "$BLOCK"
+  assert_status 0
+
+  # The release commit lives on the release branch, so the base of the fold is
+  # that branch and every prerelease-only commit is replayed on top of it.
+  land_stale_anchor 1111111111111111111111111111111111111111
+  land_stale_anchor 2222222222222222222222222222222222222222
+  land_on_main second
+  run_block "$BLOCK"
+
+  assert_status 0
+  assert_output_contains "Folded 3 earlier anchor commit(s) of 1.1.0-rc.1 into the new one."
+  assert_equal "1" "$(anchor_commits | wc -l | tr -d ' ')" "anchor commits"
+  assert_equal "1" "$(git rev-list --count origin/main..HEAD)" "the anchor is the only commit of its own"
+  local promoted
+  promoted=$(git log --format=%H --grep='^chore(develop): release 1.1.0-rc.1$' -1 origin/main)
+  assert_equal "$promoted" "$(jq -r '.["last-release-sha"]' release-please-config-rc.json)" "last-release-sha"
+  git merge-base --is-ancestor origin/main HEAD
+  assert_equal "$(git rev-parse HEAD)" "$(remote_develop)" "the remote carries the single anchor"
+}
+
+test_work_landed_between_stale_anchors_survives_a_fold_after_a_promotion() {
+  use_real_git
+  WITH_HOTFIX=false WITH_PROMOTION=true build_history
+  sync_env
+
+  run_block "$BLOCK"
+  assert_status 0
+
+  land_stale_anchor 1111111111111111111111111111111111111111
+  land_on_develop later-feature
+  land_stale_anchor 2222222222222222222222222222222222222222
+  land_on_main second
+  run_block "$BLOCK"
+
+  assert_status 0
+  assert_equal "1" "$(anchor_commits | wc -l | tr -d ' ')" "anchor commits"
+  assert_equal "2" "$(git rev-list --count origin/main..HEAD)" "the feature and the anchor are the only commits of their own"
+  assert_equal "chore(develop): anchor release-please on 1.1.0-rc.1" "$(git log -1 --format=%s)" "the anchor is the tip"
+  assert_equal "feat: later-feature" "$(git log -2 --format=%s | tail -1)" "the feature stays right below it"
+  git cat-file -e "HEAD:later-feature.txt"
+  local promoted
+  promoted=$(git log --format=%H --grep='^chore(develop): release 1.1.0-rc.1$' -1 origin/main)
+  assert_equal "$promoted" "$(jq -r '.["last-release-sha"]' release-please-config-rc.json)" "last-release-sha"
 }
 
 test_warns_when_the_release_commit_is_nowhere_to_be_found() {
@@ -570,7 +795,7 @@ test_adds_the_anchor_key_without_reformatting_the_prerelease_config() {
     "$(jq -r '.["last-release-sha"]' release-please-config-rc.json)" "last-release-sha"
 }
 
-test_replaces_the_anchor_key_in_place_on_a_later_rebase() {
+test_adds_the_refreshed_anchor_without_reformatting_the_prerelease_config() {
   use_real_git
   RC_CONFIG="$FORMATTED_CONFIG"
   build_history
@@ -579,15 +804,44 @@ test_replaces_the_anchor_key_in_place_on_a_later_rebase() {
   run_block "$BLOCK"
   assert_status 0
 
-  git -C "$SANDBOX/seed" checkout -q main
+  land_on_main second
+  run_block "$BLOCK"
+
+  # The earlier anchor commit is folded away, so the refreshed one adds the key
+  # again: one line, and the rest of the file as it was.
+  assert_status 0
+  assert_equal "1	0	release-please-config-rc.json" "$(git show --numstat --format= HEAD)" "lines the refreshed anchor commit touches"
+  assert_equal "$(git log --format=%H --grep='^chore(develop): release 1.1.0-rc.1$' -1 HEAD)" \
+    "$(jq -r '.["last-release-sha"]' release-please-config-rc.json)" "refreshed last-release-sha"
+}
+
+test_replaces_the_anchor_key_in_place_when_the_earlier_anchor_commit_has_to_stay() {
+  use_real_git
+  RC_CONFIG="$FORMATTED_CONFIG"
+  build_history
+  sync_env
+
+  run_block "$BLOCK"
+  assert_status 0
+
+  # A commit that adds a property right below the key: without the anchor
+  # commit it no longer applies, so the earlier anchor commit stays and the
+  # next one edits the key where it is.
+  seed_on_develop
   (
-    cd "$SANDBOX/seed" || exit 1
-    commit "fix: another hotfix" hotfix2.txt=again
-    git push -q origin main
+    set -e
+    cd "$SANDBOX/seed"
+    awk '{ print } /"last-release-sha"/ { print "  \"separate-pull-requests\": false," }' release-please-config-rc.json >config.tmp
+    mv config.tmp release-please-config-rc.json
+    git add release-please-config-rc.json
+    git commit -q -m "chore: split the pull requests"
+    git push -q origin develop
   )
+  land_on_main second
   run_block "$BLOCK"
 
   assert_status 0
+  assert_output_contains "::warning::Could not take the 1 earlier anchor commit(s) of 1.1.0-rc.1 out of 'develop'"
   assert_equal "1	1	release-please-config-rc.json" "$(git show --numstat --format= HEAD)" "lines the refreshed anchor commit touches"
   assert_equal "$(git log --format=%H --grep='^chore(develop): release 1.1.0-rc.1$' -1 HEAD)" \
     "$(jq -r '.["last-release-sha"]' release-please-config-rc.json)" "refreshed last-release-sha"
