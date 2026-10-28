@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.25.2](https://github.com/dnum-mi/fabnum-cicd/compare/v0.25.1...v0.25.2) (2026-10-28)
+
+
+### Dependencies
+
+* **deps:** update chart-releaser to v1.9.0 ([edd408a](https://github.com/dnum-mi/fabnum-cicd/commit/edd408a8921cd97f474f287912711c982e6e4acf))
+* **deps:** update helm/chart-releaser-action to v1.8.0 ([ab5ff44](https://github.com/dnum-mi/fabnum-cicd/commit/ab5ff44ac32ce2f232d593aef557a2dd4de98d69))
+* **deps:** update sonarsource/sonarqube-scan-action to v8.4.0 ([f57fb1b](https://github.com/dnum-mi/fabnum-cicd/commit/f57fb1b8d149b127cec52bd8df395cd5aead9899))
+
 ## [0.25.1](https://github.com/dnum-mi/fabnum-cicd/compare/v0.25.0...v0.25.1) (2026-10-27)
 
 
