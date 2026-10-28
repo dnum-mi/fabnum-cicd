@@ -1,6 +1,6 @@
-# Gabarit CI (pull request) pour un dépôt applicatif avec une image Docker.
-# Remplacer les <…>, retirer les jobs sans objet, et garder `all-jobs-passed` à jour.
-# Entrées, secrets et permissions exacts : workflows.md et docs/workflows/NN-<nom>.md.
+# CI template (pull request) for an application repository with a Docker image.
+# Replace the <…>, remove the jobs that do not apply, and keep `all-jobs-passed` up to date.
+# Exact inputs, secrets and permissions: workflows.md and docs/workflows/NN-<name>.md.
 name: CI
 
 on:
@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Calcule une fois le nom d'image en minuscules et le tag de la PR.
+  # Compute the lowercase image name and the PR tag once.
   expose-vars:
     runs-on: ubuntu-latest
     permissions: {}
@@ -74,7 +74,7 @@ jobs:
       IMAGE: ${{ needs.expose-vars.outputs.image }}:${{ needs.expose-vars.outputs.tag }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
 
-  # Le seul check à exiger dans le ruleset. Lister TOUS les jobs ci-dessus.
+  # The only check to require in the ruleset. List ALL the jobs above.
   all-jobs-passed:
     name: Check jobs status
     if: ${{ always() }}

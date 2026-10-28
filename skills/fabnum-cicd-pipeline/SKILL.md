@@ -4,111 +4,111 @@ description: Use when writing, extending or reviewing a GitHub Actions ci.yml/cd
 allowed-tools: Bash Read Write
 ---
 
-# Assembler une pipeline avec fabnum-cicd
+# Assemble a pipeline with fabnum-cicd
 
-Aider l'utilisateur à brancher, **dans son propre dépôt**, les workflows réutilisables de
-[`dnum-mi/fabnum-cicd`](https://github.com/dnum-mi/fabnum-cicd) : un `ci.yml` (pull request) et un `cd.yml`
-(release, livraison). Ce skill ne lance rien : il écrit ou relit du YAML, GitHub l'exécute.
+Help the user wire, **in their own repository**, the reusable workflows of
+[`dnum-mi/fabnum-cicd`](https://github.com/dnum-mi/fabnum-cicd): a `ci.yml` (pull request) and a `cd.yml`
+(release, delivery). This skill runs nothing: it writes or reviews YAML, GitHub executes it.
 
-> Les liens relatifs vers `docs/` supposent le dépôt complet. Sans lui (installation par URL ou copie des seuls
-> skills), les mêmes pages sont en ligne : <https://github.com/dnum-mi/fabnum-cicd/tree/main/docs>.
+> Relative links to `docs/` assume the full repository. Without it (URL install, or only the skills copied), the same
+> pages are online: <https://github.com/dnum-mi/fabnum-cicd/tree/main/docs>.
 
-Les détails exacts (entrées, valeurs par défaut) sont dans la doc livrée avec le plugin, à lire avant d'écrire un
-appel : `../../docs/workflows/NN-<nom>.md`. Le catalogue complet est dans
+The exact details (inputs, defaults) are in the docs shipped with the plugin (in French), to read before writing a
+call: `../../docs/workflows/NN-<name>.md`. The full catalogue is in
 [`references/workflows.md`](references/workflows.md).
 
-## Avant d'écrire : poser ces questions
+## Before writing: ask these questions
 
-| Question | Conséquence |
+| Question | Consequence |
 |----------|-------------|
-| Quel langage / quels artefacts (image Docker, paquet Python, paquet npm, chart Helm) ? | choisit les workflows de lint, test et build (catalogue) |
-| Une seule image ou plusieurs (monorepo) ? | plusieurs : une paire `build-docker` / `attest-docker` par composant, jamais de matrice pour `attest-docker` ; voir le skill `fabnum-cicd-release` pour le monorepo |
-| Branches `develop` (rc) et `main` (stable) ? | pré-release : voir le skill `fabnum-cicd-release` |
-| Le dépôt exige-t-il une PR pour tout push (ruleset) ? | oui : GitHub App obligatoire pour tout job qui pousse ; voir le skill `fabnum-cicd-auth` |
-| `gh` est-il installé et authentifié ? | oui : l'agent peut vérifier les **noms** des secrets (`gh secret list`) ; non : l'humain les vérifie dans l'UI |
+| Which language / artifacts (Docker image, Python package, npm package, Helm chart)? | selects the lint, test and build workflows (catalogue) |
+| One image or several (monorepo)? | several: one `build-docker` / `attest-docker` pair per component, never a matrix for `attest-docker`; see skill `fabnum-cicd-release` for monorepos |
+| `develop` (rc) and `main` (stable) branches? | pre-release: see skill `fabnum-cicd-release` |
+| Does the repository require a PR for every push (ruleset)? | yes: GitHub App mandatory for any job that pushes; see skill `fabnum-cicd-auth` |
+| Is `gh` installed and authenticated? | yes: the agent can check secret **names** (`gh secret list`); no: the human checks them in the UI |
 
-## Démarrer
+## Start
 
-1. Partir de [`references/ci.yml`](references/ci.yml) (pull request) et, pour les releases,
-   [`references/cd.yml`](references/cd.yml). Retirer les jobs sans objet, adapter les `<…>`.
-2. Pour chaque workflow retenu, **ouvrir sa doc** et le catalogue : entrées requises, secrets, permissions.
-3. **Tenir `all-jobs-passed` à jour** : tout job ajouté ou retiré se répercute dans son `needs` (voir plus bas).
-4. Créer les secrets nécessaires (skill `fabnum-cicd-auth`) ; l'agent n'en lit ni n'en écrit jamais la valeur.
-5. Vérifier avec `actionlint` si disponible, puis ouvrir une PR de test.
+1. Start from [`references/ci.yml`](references/ci.yml) (pull request) and, for releases,
+   [`references/cd.yml`](references/cd.yml). Remove the jobs that do not apply, adapt the `<…>`.
+2. For each chosen workflow, **open its doc** and the catalogue: required inputs, secrets, permissions.
+3. **Keep `all-jobs-passed` up to date**: every job added or removed is reflected in its `needs` (see below).
+4. Create the needed secrets (skill `fabnum-cicd-auth`); the agent never reads or writes their value.
+5. Check with `actionlint` if available, then open a test PR.
 
-## Règles
+## Rules
 
-- **Version** : `@v0` (tag flottant : le dépôt est en `0.x`, un bump mineur peut changer un comportement). Pour figer :
-  `@v0.25` (ou le SHA du commit). **Jamais `@main`**. Côté Renovate, un `@v0` n'a rien à mettre à jour ; un pin
-  précis est remonté par Renovate comme n'importe quelle dépendance GitHub Actions.
-- **Permissions** : déclarées **par job**, jamais au niveau workflow. L'appelant accorde l'**union** des permissions
-  du workflow appelé, même pour un job qui ne tourne pas (colonne « Permissions » du catalogue). Un scope manquant
-  fait échouer le parsing, pas un job.
-- **Jamais `secrets: inherit`** : passer chaque secret nommément.
-- **Credentials** : `GITHUB_TOKEN` suffit pour lint, test, build, scan. Dès qu'une PR automatisée doit déclencher la
-  CI, ou pour l'automerge ou un dispatch inter-dépôts : GitHub App (skill `fabnum-cicd-auth`).
-- **Actions tierces** que l'utilisateur ajoute lui-même : épinglées par SHA complet avec commentaire de version.
-- **Image en minuscules** : `ghcr.io/${GITHUB_REPOSITORY,,}` calculé une fois puis propagé.
-- **Booléens** issus d'`env` ou d'outputs : ce sont des chaînes, comparer avec `== 'true'`.
-- **Concurrence** : `cancel-in-progress: true` en CI, `false` en CD.
-- **Runner** : `RUNS_ON` est une chaîne JSON (`'["ubuntu-24.04"]'`, `'["self-hosted", "linux"]'`).
+- **Version**: `@v0` (floating tag: the repository is in `0.x`, a minor bump can change a behaviour). To pin:
+  `@v0.25` (or the commit SHA). **Never `@main`**. On the Renovate side, a `@v0` has nothing to update; a precise pin
+  is raised by Renovate like any GitHub Actions dependency.
+- **Permissions**: declared **per job**, never at workflow level. The caller grants the **union** of the permissions
+  of the called workflow, even for a job that does not run (catalogue "Permissions" column). A missing scope fails
+  parsing, not a job.
+- **Never `secrets: inherit`**: pass each secret by name.
+- **Credentials**: `GITHUB_TOKEN` is enough for lint, test, build, scan. As soon as an automated PR must trigger CI,
+  or for automerge or cross-repository dispatch: GitHub App (skill `fabnum-cicd-auth`).
+- **Third-party actions** the user adds themselves: pinned by full SHA with a version comment.
+- **Lowercase image**: `ghcr.io/${GITHUB_REPOSITORY,,}` computed once then propagated.
+- **Booleans** coming from `env` or outputs: they are strings, compare with `== 'true'`.
+- **Concurrency**: `cancel-in-progress: true` in CI, `false` in CD.
+- **Runner**: `RUNS_ON` is a JSON string (`'["ubuntu-24.04"]'`, `'["self-hosted", "linux"]'`).
 
-## La porte unique `check-jobs`
+## The single `check-jobs` gate
 
-Les jobs filtrés par chemin ou en matrice ne peuvent pas être exigés un par un par un ruleset : un check requis qui
-ne remonte jamais bloque la PR. Ajouter un job final qui les agrège (doc `80-check-jobs.md`) :
+Path-filtered or matrix jobs cannot be required one by one by a ruleset: a required check that never reports blocks
+the PR. Add a final job that aggregates them (doc `80-check-jobs.md`):
 
 ```yaml
   all-jobs-passed:
     name: Check jobs status
     if: ${{ always() }}
-    needs: [lint-commits, lint-yaml, build]   # TOUS les jobs, filtre de chemins compris
+    needs: [lint-commits, lint-yaml, build]   # ALL jobs, path-filter included
     uses: dnum-mi/fabnum-cicd/.github/workflows/check-jobs.yml@v0
     permissions: {}
     with:
       NEEDS: ${{ toJson(needs) }}
 ```
 
-- Lister **tous** les jobs dans `needs`, pas seulement les derniers : un job ignoré compte pour un succès, y compris
-  quand il est ignoré parce que son prérequis a échoué.
-- Le check remonte sous le nom **`<job appelant> / Required jobs`**. Remplacer un gate maison par celui-ci renomme le
-  check : fusionner d'abord, laisser tourner une PR, puis mettre à jour le ruleset (sinon toutes les PR sont bloquées).
+- List **all** jobs in `needs`, not only the last ones: a skipped job counts as a success, including when it is
+  skipped because its prerequisite failed.
+- The check reports as **`<calling job> / Required jobs`**. Replacing a homemade gate with this one renames the
+  check: merge first, let a PR run, then update the ruleset (otherwise every PR is blocked).
 
-## Pièges fréquents
+## Frequent pitfalls
 
-1. Matrice vide (`fromJSON('[]')`) = erreur : garder avec `if: … != '[]'`.
-2. `build-docker` construit le **dernier** stage du Dockerfile par défaut : fixer `IMAGE_TARGET` si ce dernier stage
-   n'est pas celui à livrer (par exemple un stage de test).
-3. `scan-trivy` : `CATEGORY` distinct par scan en matrice, `TIMEOUT` pour les grosses images ; `FAIL_ON_ERROR` vaut
-   `false` par défaut (le scan informe sans bloquer) ; `SEVERITY` restreint le périmètre qui bloque.
-   L'image doit exister avant d'être scannée.
-4. `attest-docker` s'appelle **après** `build-docker` avec ses sorties `digest` et `image` (le `digest` est vide si
-   `PUSH: false`, donc rien à attester) ; ne pas le mettre en
-   matrice (les sorties d'un job matricé s'effondrent en une seule valeur).
-5. `scan-sonarqube` : `SONAR_URL` est une **entrée** requise ; `SONAR_TOKEN` et `SONAR_PROJECT_KEY` sont des secrets
-   requis. Une URL ne se passe pas via un secret dans `with:`: utiliser une variable (`vars.`).
-6. `scan-gitleaks` analyse tout l'historique git : le premier run sur un dépôt ancien peut remonter d'anciens secrets.
-7. `lint-helm` exige `CT_CONF_PATH` (configuration `chart-testing`).
-8. `clean-images` supprime tout tag qu'on lui donne : ne lui passer que des PR fermées.
-9. Cache de build : `CACHE: true` active le cache GitHub Actions ; `CACHE_MODE: min` n'exporte que l'image finale
-   (utile pour des couches lourdes).
+1. Empty matrix (`fromJSON('[]')`) = error: guard with `if: … != '[]'`.
+2. `build-docker` builds the **last** stage of the Dockerfile by default: set `IMAGE_TARGET` if that last stage is not
+   the one to ship (for example a test stage).
+3. `scan-trivy`: a distinct `CATEGORY` per scan in a matrix, `TIMEOUT` for big images; `FAIL_ON_ERROR` defaults to
+   `false` (the scan informs without blocking); `SEVERITY` restricts what blocks. The image must exist before it is
+   scanned.
+4. `attest-docker` is called **after** `build-docker` with its `digest` and `image` outputs (`digest` is empty if
+   `PUSH: false`, so there is nothing to attest); do not put it in a matrix (the outputs of a matrix job collapse into
+   a single value).
+5. `scan-sonarqube`: `SONAR_URL` is a required **input**; `SONAR_TOKEN` and `SONAR_PROJECT_KEY` are required secrets.
+   A URL is not passed through a secret in `with:`: use a variable (`vars.`).
+6. `scan-gitleaks` analyses the whole git history: the first run on an old repository may surface old secrets.
+7. `lint-helm` requires `CT_CONF_PATH` (`chart-testing` configuration).
+8. `clean-images` deletes any tag it is given: only pass it closed PRs.
+9. Build cache: `CACHE: true` enables the GitHub Actions cache; `CACHE_MODE: min` only exports the final image
+   (useful for heavy layers).
 
-## Relire une pipeline existante
+## Review an existing pipeline
 
-Parcourir dans l'ordre et signaler chaque écart avec le fichier et la ligne :
+Go through these in order and flag each deviation with the file and line:
 
-1. `@main` / `@master` / `@latest` sur une action ou un workflow réutilisable.
-2. `secrets: inherit`, ou un secret passé à un workflow qui ne le déclare pas.
-3. Permissions déclarées au niveau workflow, ou qui ne couvrent pas l'union du workflow appelé.
-4. `${{ … }}` interpolé directement dans un bloc `run:` (passer par `env:`).
-5. Actions tierces non épinglées par SHA.
-6. `all-jobs-passed` absent, ou `needs` incomplet.
-7. Une paire `APP_CLIENT_ID` / `APP_PRIVATE_KEY` incomplète, ou un `GH_PAT` classique là où une App est possible.
-8. `scan-zizmor` absent : il détecte les injections, les permissions excessives et les identifiants persistés.
+1. `@main` / `@master` / `@latest` on an action or a reusable workflow.
+2. `secrets: inherit`, or a secret passed to a workflow that does not declare it.
+3. Permissions declared at workflow level, or that do not cover the union of the called workflow.
+4. `${{ … }}` interpolated directly in a `run:` block (go through `env:`).
+5. Third-party actions not pinned by SHA.
+6. `all-jobs-passed` missing, or an incomplete `needs`.
+7. An incomplete `APP_CLIENT_ID` / `APP_PRIVATE_KEY` pair, or a classic `GH_PAT` where an App is possible.
+8. `scan-zizmor` missing: it detects injections, excessive permissions and persisted credentials.
 
-## Aller plus loin
+## Going further
 
-- Catalogue, entrées requises et permissions : [`references/workflows.md`](references/workflows.md).
-- Exemples complets (CI, CD, Helm) : `../../docs/workflows/01-introduction.md`.
-- Authentification : skill `fabnum-cicd-auth`. Release et charts : skills `fabnum-cicd-release` et `fabnum-cicd-helm`.
-- Hooks locaux (lint avant commit) : skill `fabnum-cicd-git-hooks`.
+- Catalogue, required inputs and permissions: [`references/workflows.md`](references/workflows.md).
+- Complete examples (CI, CD, Helm): `../../docs/workflows/01-introduction.md`.
+- Authentication: skill `fabnum-cicd-auth`. Release and charts: skills `fabnum-cicd-release` and `fabnum-cicd-helm`.
+- Local hooks (lint before commit): skill `fabnum-cicd-git-hooks`.

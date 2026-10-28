@@ -4,65 +4,65 @@ description: Use when installing or configuring the local git hooks of fabnum-ci
 allowed-tools: Bash Read Write
 ---
 
-# Git hooks fabnum-cicd
+# fabnum-cicd git hooks
 
-Aider l'utilisateur à installer, dans son propre projet, les hooks locaux de `dnum-mi/fabnum-cicd` : ils attrapent
-avant le push ce que la CI refuserait. Doc : `../../docs/git-hooks/01-introduction.md` à `04-pre-push.md`.
-Les hooks eux-mêmes sont livrés avec le plugin dans `../../git-hooks/` (sinon, dans le dépôt `fabnum-cicd`).
+Help the user install, in their own project, the local hooks of `dnum-mi/fabnum-cicd`: they catch before the push what
+CI would refuse. Docs (in French): `../../docs/git-hooks/01-introduction.md` to `04-pre-push.md`.
+The hooks themselves ship with the plugin in `../../git-hooks/` (otherwise, in the `fabnum-cicd` repository).
 
-> Les liens relatifs vers `docs/` supposent le dépôt complet. Sans lui (installation par URL ou copie des seuls
-> skills), les mêmes pages sont en ligne : <https://github.com/dnum-mi/fabnum-cicd/tree/main/docs>.
+> Relative links to `docs/` assume the full repository. Without it (URL install, or only the skills copied), the same
+> pages are online: <https://github.com/dnum-mi/fabnum-cicd/tree/main/docs>.
 
-## Choisir les hooks
+## Choose the hooks
 
-| Hook | Type | Vérifie | Prérequis à installer |
-|------|------|---------|-----------------------|
-| `conventional-commit` | `commit-msg` | message au format `<type>(<scope>)!: <sujet>` ; types `feat fix docs style refactor perf test chore revert ci` | aucun |
-| `eslint-lint` | `pre-commit` | lint JS/TS/JSON/MD/YAML | ESLint (+ `@antfu/eslint-config` recommandé) |
-| `yaml-lint` | `pre-commit` | lint YAML | `yamllint` |
-| `helm-lint` | `pre-commit` | lint des charts | `chart-testing` (`ct`), `yamllint`, `helm` |
-| `signed-commit` | `pre-push` | tous les commits à pousser sont signés GPG | GPG configuré avec Git |
+| Hook | Type | Checks | Prerequisite to install |
+|------|------|--------|-------------------------|
+| `conventional-commit` | `commit-msg` | message in the format `<type>(<scope>)!: <subject>`; types `feat fix docs style refactor perf test chore revert ci` | none |
+| `eslint-lint` | `pre-commit` | JS/TS/JSON/MD/YAML lint | ESLint (+ `@antfu/eslint-config` recommended) |
+| `yaml-lint` | `pre-commit` | YAML lint | `yamllint` |
+| `helm-lint` | `pre-commit` | chart lint | `chart-testing` (`ct`), `yamllint`, `helm` |
+| `signed-commit` | `pre-push` | every commit to push is GPG-signed | GPG configured with Git |
 
-Demander à l'utilisateur lesquels il veut, en proposant d'office `conventional-commit` : sans lui, `release-please`
-ne calcule pas de version (skill `fabnum-cicd-release`) et le job `lint-commits` de la CI échouera.
+Ask the user which ones they want, proposing `conventional-commit` by default: without it, `release-please` computes
+no version (skill `fabnum-cicd-release`) and the CI `lint-commits` job will fail.
 
-## Installer (dans le dépôt de l'utilisateur)
+## Install (in the user's repository)
 
-1. **Copier** chaque hook vers `.git/hooks/<type>` et le rendre exécutable (les fichiers sources ne le sont pas, sauf
-   `conventional-commit`) :
+1. **Copy** each hook to `.git/hooks/<type>` and make it executable (the source files are not, except
+   `conventional-commit`):
 
 ```bash
-cp <chemin-du-plugin>/git-hooks/commit-msg/conventional-commit .git/hooks/commit-msg
-cp <chemin-du-plugin>/git-hooks/pre-push/signed-commit         .git/hooks/pre-push
+cp <plugin-path>/git-hooks/commit-msg/conventional-commit .git/hooks/commit-msg
+cp <plugin-path>/git-hooks/pre-push/signed-commit         .git/hooks/pre-push
 chmod +x .git/hooks/commit-msg .git/hooks/pre-push
 ```
 
-2. **Remplacer les `<config_path>`** dans les hooks `pre-commit` (`eslint-lint`, `yaml-lint`, `helm-lint`) par le
-   chemin de la configuration du projet. Sans ça, le hook échoue. Des configurations d'exemple sont dans
-   `../../git-hooks/configs/` (`eslint.config.js`, `yamllint.yaml`, `chart-testing.yaml`) : les copier dans le projet
-   et les adapter.
-3. **Un seul fichier `pre-commit`** existe dans `.git/hooks/` : copier deux hooks `pre-commit` l'un sur l'autre écrase
-   le premier. Pour en cumuler plusieurs, écrire un `.git/hooks/pre-commit` qui appelle chacun d'eux et s'arrête au
-   premier échec (`set -e`).
-4. Alternative pour tous les projets d'un poste : `git config --global core.hooksPath <chemin>/git-hooks` (les hooks
-   doivent alors être nommés comme leur type : `commit-msg`, `pre-commit`, `pre-push`).
+2. **Replace the `<config_path>`** in the `pre-commit` hooks (`eslint-lint`, `yaml-lint`, `helm-lint`) with the path of
+   the project's configuration. Without it, the hook fails. Example configurations are in
+   `../../git-hooks/configs/` (`eslint.config.js`, `yamllint.yaml`, `chart-testing.yaml`): copy them into the project
+   and adapt them.
+3. **Only one `pre-commit` file** exists in `.git/hooks/`: copying two `pre-commit` hooks over each other overwrites
+   the first. To combine several, write a `.git/hooks/pre-commit` that calls each of them and stops at the first
+   failure (`set -e`).
+4. Alternative for every project on a machine: `git config --global core.hooksPath <path>/git-hooks` (the hooks must
+   then be named like their type: `commit-msg`, `pre-commit`, `pre-push`).
 
-Un clone neuf n'a pas ces hooks (`.git/hooks` n'est pas versionné) : l'indiquer dans le README du projet ou fournir un
-script d'installation versionné.
+A fresh clone does not have these hooks (`.git/hooks` is not versioned): say so in the project's README or provide a
+versioned install script.
 
-## Vérifier
+## Verify
 
 ```bash
-git commit --allow-empty -m "mauvais message"      # doit être refusé par commit-msg
-git commit --allow-empty -m "chore: test des hooks" # doit passer
+git commit --allow-empty -m "bad message"        # must be refused by commit-msg
+git commit --allow-empty -m "chore: test hooks"  # must pass
 ```
 
-`--no-verify` contourne les hooks (`git commit --no-verify`, `git push --no-verify`) : le signaler, sans le conseiller.
+`--no-verify` bypasses the hooks (`git commit --no-verify`, `git push --no-verify`): mention it, without recommending it.
 
-## Pièges
+## Pitfalls
 
-1. **`signed-commit` exige une clé GPG déjà configurée** (`user.signingkey`, `commit.gpgsign true`) ; sinon tous les
-   push sont refusés. Guide pas à pas : `../../docs/git-hooks/04-pre-push.md`.
-2. Les hooks locaux sont une aide, pas une garantie : la CI (`lint-commits`, `lint-yaml`, `lint-helm`) reste la porte
-   qui compte (skill `fabnum-cicd-pipeline`).
-3. `eslint-lint` lint tout le projet, pas seulement les fichiers indexés : prévoir `ignores` dans la configuration.
+1. **`signed-commit` requires an already configured GPG key** (`user.signingkey`, `commit.gpgsign true`); otherwise
+   every push is refused. Step-by-step guide: `../../docs/git-hooks/04-pre-push.md`.
+2. Local hooks are a help, not a guarantee: CI (`lint-commits`, `lint-yaml`, `lint-helm`) remains the gate that
+   matters (skill `fabnum-cicd-pipeline`).
+3. `eslint-lint` lints the whole project, not only the staged files: plan for `ignores` in the configuration.

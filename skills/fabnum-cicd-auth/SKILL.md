@@ -4,54 +4,54 @@ description: Use when a fabnum-cicd workflow needs a GitHub credential beyond GI
 allowed-tools: Bash Read Write
 ---
 
-# Authentification des workflows fabnum-cicd
+# Authentication for fabnum-cicd workflows
 
-Aider l'utilisateur à choisir et câbler le credential GitHub de ses workflows. Source de vérité, à lire pour tout
-détail : `../../docs/workflows/05-authentication.md`.
+Help the user choose and wire the GitHub credential of their workflows. Source of truth, to read for any detail:
+`../../docs/workflows/05-authentication.md` (in French).
 
-> Les liens relatifs vers `docs/` supposent le dépôt complet. Sans lui (installation par URL ou copie des seuls
-> skills), les mêmes pages sont en ligne : <https://github.com/dnum-mi/fabnum-cicd/tree/main/docs>.
+> Relative links to `docs/` assume the full repository. Without it (URL install, or only the skills copied), the same
+> pages are online: <https://github.com/dnum-mi/fabnum-cicd/tree/main/docs>.
 
-## Règles pour l'agent
+## Rules for the agent
 
-- **Ne jamais demander, lire, écrire ni afficher la valeur** d'un secret, d'une clé `.pem` ou d'un token. L'humain les
-  crée et les saisit lui-même dans GitHub. L'agent écrit le YAML qui les **référence** et indique quels **noms** poser.
-- Avec `gh` authentifié, vérifier les **noms** uniquement : `gh secret list` et `gh variable list` (ajouter
-  `-R <org>/<dépôt>` pour un autre dépôt). Sans `gh`, donner le chemin dans l'interface et demander confirmation.
-- Ne jamais écrire `secrets: inherit` : passer chaque secret nommément.
+- **Never ask for, read, write or print the value** of a secret, a `.pem` key or a token. The human creates and enters
+  them in GitHub. The agent writes the YAML that **references** them and says which **names** to create.
+- With an authenticated `gh`, check **names** only: `gh secret list` and `gh variable list` (add
+  `-R <org>/<repo>` for another repository). Without `gh`, give the path in the UI and ask for confirmation.
+- Never write `secrets: inherit`: pass each secret by name.
 
-## Quel mode choisir
+## Which mode to choose
 
-Partir du haut, s'arrêter à la première ligne qui correspond.
+Start at the top and stop at the first row that matches.
 
-| Le projet… | Mode | Secrets à créer |
-|------------|------|-----------------|
-| build, test, scan, push vers GHCR uniquement | `GITHUB_TOKEN` (automatique) | aucun |
-| veut que la **PR de release** ou de chart déclenche la CI | GitHub App (ou `GH_PAT`) | `APP_CLIENT_ID`, `APP_PRIVATE_KEY` |
-| veut l'**automerge** (`AUTOMERGE_*`) | GitHub App (ou `GH_PAT`) | idem |
-| déclenche un workflow dans **un autre dépôt** (`dispatch-helm-chart`) | GitHub App (ou `GH_PAT`) | idem |
-| a un **ruleset** qui refuse le push de `GITHUB_TOKEN` (`sync-prerelease-branch`) | GitHub App **uniquement** | idem |
-| a déjà un `GH_PAT` qui marche | `GH_PAT` | `GH_PAT` |
+| The project… | Mode | Secrets to create |
+|--------------|------|-------------------|
+| builds, tests, scans, pushes to GHCR only | `GITHUB_TOKEN` (automatic) | none |
+| wants the **release PR** or chart PR to trigger CI | GitHub App (or `GH_PAT`) | `APP_CLIENT_ID`, `APP_PRIVATE_KEY` |
+| wants **automerge** (`AUTOMERGE_*`) | GitHub App (or `GH_PAT`) | same |
+| triggers a workflow in **another repository** (`dispatch-helm-chart`) | GitHub App (or `GH_PAT`) | same |
+| has a **ruleset** that refuses the `GITHUB_TOKEN` push (`sync-prerelease-branch`) | GitHub App **only** | same |
+| already has a working `GH_PAT` | `GH_PAT` | `GH_PAT` |
 
-Ordre de résolution quand plusieurs sont fournis : **token App → `GH_PAT` → `GITHUB_TOKEN`**. L'App l'emporte, ce qui
-permet de vérifier une migration avant de supprimer le PAT. Recommander l'App : elle est limitée par job, expire au
-bout d'une heure et n'est pas liée à une personne.
+Resolution order when several are provided: **App token → `GH_PAT` → `GITHUB_TOKEN`**. The App wins, which lets you
+check a migration before deleting the PAT. Recommend the App: it is scoped per job, expires after an hour and is not
+tied to a person.
 
-Pourquoi l'App : une PR ouverte avec `GITHUB_TOKEN` **ne déclenche pas** les workflows `pull_request`. Les PR de
-release sont alors fusionnables sans qu'aucun check n'ait tourné.
+Why the App: a PR opened with `GITHUB_TOKEN` **does not trigger** `pull_request` workflows. Release PRs are then
+mergeable without any check having run.
 
-## Créer l'App (une fois, par l'humain)
+## Create the App (once, by the human)
 
-1. *Settings → Developer settings → GitHub Apps → New GitHub App*. Webhook **décoché**. Installable *Only on this account*.
-2. Permissions : Metadata (lecture), Contents, Pull requests et Issues (lecture/écriture). Ajouter *Actions*
-   (lecture/écriture) pour `dispatch-helm-chart`, *Workflows* pour `sync-prerelease-branch`.
-3. *Generate a private key* : un `.pem` est téléchargé, **une seule fois**.
-4. *Install App → Only select repositories* : uniquement les dépôts concernés (pour `dispatch-helm-chart`, **aussi le
-   dépôt du chart**).
-5. Dans chaque dépôt, *Settings → Secrets and variables → Actions* : `APP_CLIENT_ID` (le **Client ID** `Iv23li…`, pas
-   l'App ID numérique) et `APP_PRIVATE_KEY` (le `.pem` complet, lignes `BEGIN`/`END` comprises).
+1. *Settings → Developer settings → GitHub Apps → New GitHub App*. Webhook **unchecked**. Installable *Only on this account*.
+2. Permissions: Metadata (read), Contents, Pull requests and Issues (read/write). Add *Actions* (read/write) for
+   `dispatch-helm-chart`, *Workflows* for `sync-prerelease-branch`.
+3. *Generate a private key*: a `.pem` is downloaded, **only once**.
+4. *Install App → Only select repositories*: only the repositories concerned (for `dispatch-helm-chart`, **also the
+   chart repository**).
+5. In each repository, *Settings → Secrets and variables → Actions*: `APP_CLIENT_ID` (the **Client ID** `Iv23li…`, not
+   the numeric App ID) and `APP_PRIVATE_KEY` (the whole `.pem`, `BEGIN`/`END` lines included).
 
-## Câbler dans le workflow appelant
+## Wire it in the caller workflow
 
 ```yaml
   release:
@@ -65,29 +65,29 @@ release sont alors fusionnables sans qu'aucun check n'ait tourné.
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 ```
 
-Avec un PAT fine-grained à la place : `GH_PAT: ${{ secrets.GH_PAT }}` (jamais un token classique là où une App est
-possible). `sync-prerelease-branch` n'accepte pas de PAT, seulement la paire App.
+With a fine-grained PAT instead: `GH_PAT: ${{ secrets.GH_PAT }}` (never a classic token where an App is possible).
+`sync-prerelease-branch` does not accept a PAT, only the App pair.
 
-Vérifier : la PR de release est ouverte par `<app>[bot]` (pas `github-actions[bot]`), elle **a des checks**, et l'étape
-« Generate GitHub App token » a tourné dans les logs. La première release peut faire remonter des checks cassés depuis
-longtemps : c'est attendu.
+Check: the release PR is opened by `<app>[bot]` (not `github-actions[bot]`), it **has checks**, and the "Generate
+GitHub App token" step ran in the logs. The first release may surface checks that have been broken for a long time:
+that is expected.
 
-## Pièges
+## Pitfalls
 
-1. **Les deux secrets App, ou aucun.** En fournir un seul fait échouer le job (`APP_CLIENT_ID and APP_PRIVATE_KEY must
-   be supplied together`) au lieu de retomber sur un mode moins privilégié.
-2. **`Client ID` ≠ `App ID`.** Seul le Client ID fonctionne.
-3. **Le bloc `permissions:` d'un job ne gouverne que `GITHUB_TOKEN`.** Une erreur `Resource not accessible by
-   integration` avec un token App se corrige dans les réglages d'**installation** de l'App, pas dans le YAML.
-4. **L'automerge dépend des entrées `AUTOMERGE_*`**, pas des credentials. `AUTOMERGE_METHOD: auto` exige *Allow
-   auto-merge* dans *Settings → General* ; `admin` contourne la protection de branche et les checks requis.
-5. **Les workflows réutilisables n'héritent pas des secrets** : les passer explicitement dans `secrets:`.
-6. **`dispatch-helm-chart`** : l'App doit être installée sur le dépôt du chart ; `CHART_REPO` s'écrit `owner/repo`.
-7. Un token d'installation expire après une heure : ne jamais en passer un entre jobs.
-8. **`build-docker` avec `BUILD_SECRET_GITHUB_TOKEN`** : la valeur est lisible par tout ce que le Dockerfile exécute ;
-   n'utiliser qu'un token en lecture seule (`contents: read`).
+1. **Both App secrets, or neither.** Providing only one fails the job (`APP_CLIENT_ID and APP_PRIVATE_KEY must be
+   supplied together`) instead of falling back to a less privileged mode.
+2. **`Client ID` ≠ `App ID`.** Only the Client ID works.
+3. **A job's `permissions:` block only governs `GITHUB_TOKEN`.** A `Resource not accessible by integration` error with
+   an App token is fixed in the App's **installation** settings, not in the YAML.
+4. **Automerge depends on the `AUTOMERGE_*` inputs**, not on the credentials. `AUTOMERGE_METHOD: auto` requires
+   *Allow auto-merge* in *Settings → General*; `admin` bypasses branch protection and required checks.
+5. **Reusable workflows do not inherit secrets**: pass them explicitly in `secrets:`.
+6. **`dispatch-helm-chart`**: the App must be installed on the chart repository; `CHART_REPO` is written `owner/repo`.
+7. An installation token expires after an hour: never pass one between jobs.
+8. **`build-docker` with `BUILD_SECRET_GITHUB_TOKEN`**: the value is readable by anything the Dockerfile runs; only use
+   a read-only token (`contents: read`).
 
-## Aller plus loin
+## Going further
 
-- Dépannage complet, deux Apps, migration depuis un PAT : `../../docs/workflows/05-authentication.md`.
-- Utiliser ces credentials dans une pipeline : skill `fabnum-cicd-pipeline`.
+- Full troubleshooting, two Apps, migration from a PAT: `../../docs/workflows/05-authentication.md`.
+- Using these credentials in a pipeline: skill `fabnum-cicd-pipeline`.

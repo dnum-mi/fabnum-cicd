@@ -26,6 +26,8 @@ Voir le [guide d'installation](./02-installation.md) (Claude Code, OpenCode, cop
 
 ## Maintenir les skills
 
+- Les `SKILL.md` et leurs références sont rédigés **en anglais** (langue des agents et des descriptions de skills) ;
+  la documentation de `docs/` reste en français. Ils renvoient vers ces pages françaises pour le détail.
 - Les skills sont **versionnés avec les workflows** : une modification d'un workflow (entrée, secret, permission)
   s'accompagne de la mise à jour du catalogue.
 - `ci/tests/skills-catalog.test.sh` compare le catalogue au `on.workflow_call` et aux permissions de chaque workflow,
