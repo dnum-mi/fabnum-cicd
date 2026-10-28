@@ -177,6 +177,6 @@ sur la [documentation en ligne](../workflows/01-introduction.md).
 
 ## Ce que les skills ne font pas
 
-- Ils n'exécutent rien : l'agent écrit des fichiers, GitHub exécute les workflows.
+- Ils ne contiennent aucun code exécutable : l'agent écrit des fichiers et peut lancer quelques commandes (`cp`, `gh secret list`, `actionlint`…) que votre client vous demande d'approuver ; GitHub exécute les workflows.
 - Ils ne lisent ni n'écrivent la valeur d'un secret : c'est vous qui les créez dans GitHub.
 - Relisez toujours ce que l'agent propose avant de committer.

@@ -57,7 +57,7 @@ Les workflows GitHub Actions réutilisables permettent de standardiser et centra
 ### Guides
 
 - [**Release d'un monorepo**](./90-monorepo-release.md) - Pipeline complet publiant plusieurs applications et un chart Helm unique depuis un même dépôt
-- [**Skills pour agents**](../skills/01-introduction.md) - Faire appliquer ces workflows et les git hooks par votre agent de code (Claude Code)
+- [**Skills pour agents**](../skills/01-introduction.md) - Faire appliquer ces workflows et les git hooks par votre agent de code (Claude Code, OpenCode)
 
 ## Utilisation rapide
 

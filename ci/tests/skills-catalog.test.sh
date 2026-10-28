@@ -15,6 +15,19 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 SKILLS_DIR="$REPO_ROOT/skills"
 CATALOG="$SKILLS_DIR/fabnum-cicd-pipeline/references/workflows.md"
 
+# Catalog columns: $1 is the empty text before the first `|`, then name, usage...
+COL_REQUIRED_INPUTS=4
+COL_SECRETS=5
+COL_PERMISSIONS=6
+
+fail_if_any() {
+  local title="$1" problems="$2"
+  if [ -n "$problems" ]; then
+    printf 'FAIL: %s\n%s' "$title" "$problems" >&2
+    exit 1
+  fi
+}
+
 reusable_workflows() {
   local f
   for f in "$WORKFLOWS_DIR"/*.yml; do
@@ -57,21 +70,9 @@ test_the_catalog_lists_no_workflow_that_does_not_exist() {
   fail_if_any "the catalog lists workflows that do not exist:" "$unknown"
 }
 
-# Catalog columns: $1 is the empty text before the first `|`, then name, usage...
-COL_REQUIRED_INPUTS=4
-COL_SECRETS=5
-COL_PERMISSIONS=6
-
-fail_if_any() {
-  local title="$1" problems="$2"
-  if [ -n "$problems" ]; then
-    printf 'FAIL: %s\n%s' "$title" "$problems" >&2
-    exit 1
-  fi
-}
-
-# Compares one catalog column with what the workflows declare. `expected_of`
-# prints the expected tokens of a workflow file, one per line.
+# Compares one catalog column with what the workflows declare. `expected_of` is
+# the name of a function that prints the expected tokens of a workflow file, one
+# per line (the expected_* functions below).
 check_column() {
   local column="$1" title="$2" expected_of="$3" name expected actual bad=""
   for name in $(reusable_workflows); do
@@ -92,6 +93,16 @@ expected_secrets() {
   yq '.on.workflow_call.secrets // {} | keys | .[]' "$1"
 }
 
+expected_required_secrets() {
+  yq '.on.workflow_call.secrets // {} | to_entries | .[] | select(.value.required == true) | .key' "$1"
+}
+
+# The secrets a catalog cell marks "(required)", one per line, sorted.
+catalog_required_secrets() {
+  # shellcheck disable=SC2016 # the backticks are literal Markdown, not a command
+  grep -o '`[^`]*` (required)' | sed 's/` (required)$//; s/^`//' | sort
+}
+
 # GitHub validates the permissions of every job of a called workflow, so the
 # caller must grant the highest level any job asks for, per scope.
 expected_permissions() {
@@ -105,6 +116,18 @@ test_required_inputs_match_the_workflows() {
 
 test_secrets_match_the_workflows() {
   check_column "$COL_SECRETS" "secrets differ from the workflows:" expected_secrets
+}
+
+test_required_secrets_are_marked_in_the_catalog() {
+  local name expected actual bad=""
+  for name in $(reusable_workflows); do
+    expected=$(expected_required_secrets "$WORKFLOWS_DIR/$name.yml" | sort)
+    actual=$(catalog_cell "$name" "$COL_SECRETS" | catalog_required_secrets)
+    if [ "$expected" != "$actual" ]; then
+      bad="${bad}  ${name}: workflow requires [$(echo "$expected" | tr '\n' ';')] but the catalog marks [$(echo "$actual" | tr '\n' ';')]"$'\n'
+    fi
+  done
+  fail_if_any "required secrets differ from the workflows:" "$bad"
 }
 
 test_permissions_match_the_union_of_the_jobs() {
@@ -196,6 +219,24 @@ test_the_url_index_lists_every_file_of_every_skill() {
       "$expected" "$actual" >&2
     exit 1
   fi
+}
+
+# The OpenCode plugin registers the skills with a path relative to its own file:
+# moving either one would leave OpenCode without skills and without an error.
+test_the_opencode_plugin_points_at_the_skills() {
+  local main plugin_dir bad=""
+  main=$(jq -r '.main' "$REPO_ROOT/package.json")
+  if [ ! -f "$REPO_ROOT/$main" ]; then
+    bad="  package.json main '$main' does not exist"$'\n'
+  else
+    plugin_dir=$(dirname "$REPO_ROOT/$main")
+    if ! grep -qF '"../../skills"' "$REPO_ROOT/$main"; then
+      bad="${bad}  $main no longer resolves the skills with \"../../skills\""$'\n'
+    elif [ ! -f "$plugin_dir/../../skills/index.json" ]; then
+      bad="${bad}  \"../../skills\" from $main is not the skills directory"$'\n'
+    fi
+  fi
+  fail_if_any "the OpenCode plugin does not reach the skills:" "$bad"
 }
 
 run_tests

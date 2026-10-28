@@ -92,7 +92,7 @@ Certains workflows nécessitent des secrets à configurer dans les **Settings > 
 
 Des *skills* permettent à votre agent de code (Claude Code, OpenCode) d'appliquer ces workflows et ces git hooks **dans votre projet** :
 il écrit le `ci.yml` / `cd.yml` avec les bons appels, les bonnes permissions et sans les pièges connus. Ils ne
-lancent rien eux-mêmes et ne touchent jamais à la valeur d'un secret.
+contiennent aucun code exécutable et ne touchent jamais à la valeur d'un secret.
 
 | Skill | Pour demander à l'agent de… | Docs |
 | ----- | --------------------------- | ---- |

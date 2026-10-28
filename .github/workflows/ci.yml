@@ -64,6 +64,8 @@ jobs:
             # side has to re-run the suites.
             - 'skills/**'
             - '.claude-plugin/**'
+            - '.opencode/**'
+            - 'package.json'
 
   lint-commits:
     uses: ./.github/workflows/lint-commits.yml

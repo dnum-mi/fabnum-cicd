@@ -8,7 +8,9 @@ allowed-tools: Bash Read Write
 
 Help the user install, in their own project, the local hooks of `dnum-mi/fabnum-cicd`: they catch before the push what
 CI would refuse. Docs (in French): `../../docs/git-hooks/01-introduction.md` to `04-pre-push.md`.
-The hooks themselves ship with the plugin in `../../git-hooks/` (otherwise, in the `fabnum-cicd` repository).
+The hooks themselves ship with the plugin in `../../git-hooks/` (otherwise, in the `fabnum-cicd` repository). To find
+`<plugin-path>`, run `find ~/.claude/plugins ~/.cache/opencode/packages -path '*git-hooks/commit-msg/conventional-commit'`
+(Claude Code and OpenCode caches), or use the user's own clone of the repository.
 
 > Relative links to `docs/` assume the full repository. Without it (URL install, or only the skills copied), the same
 > pages are online: <https://github.com/dnum-mi/fabnum-cicd/tree/main/docs>.
@@ -44,8 +46,10 @@ chmod +x .git/hooks/commit-msg .git/hooks/pre-push
 3. **Only one `pre-commit` file** exists in `.git/hooks/`: copying two `pre-commit` hooks over each other overwrites
    the first. To combine several, write a `.git/hooks/pre-commit` that calls each of them and stops at the first
    failure (`set -e`).
-4. Alternative for every project on a machine: `git config --global core.hooksPath <path>/git-hooks` (the hooks must
-   then be named like their type: `commit-msg`, `pre-commit`, `pre-push`).
+4. Alternative for every project on a machine: Git looks for executables named like their type (`commit-msg`,
+   `pre-commit`, `pre-push`) directly in `core.hooksPath`, and `git-hooks/` holds directories, so it cannot be used as
+   is. Create a directory (e.g. `~/.git-hooks`), symlink the chosen hooks into it under those names, then run
+   `git config --global core.hooksPath ~/.git-hooks`. Same layout in `../../docs/git-hooks/01-introduction.md`.
 
 A fresh clone does not have these hooks (`.git/hooks` is not versioned): say so in the project's README or provide a
 versioned install script.

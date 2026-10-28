@@ -39,6 +39,6 @@ each workflow: if a workflow changes, the test fails until the table is updated.
 | `sync-cpin` | Trigger the sync to GitLab CPiN (see doc 72) | `GITLAB_URL`, `GIT_MIRROR_PROJECT_ID`, `REPOSITORY_NAME` | `GIT_MIRROR_TOKEN` (required) | `{}` | [72](../../../docs/workflows/72-sync-cpin.md) |
 | `sync-prerelease-branch` | Rebase the pre-release branch onto the release branch (last job) | — | `APP_CLIENT_ID`, `APP_PRIVATE_KEY` | `contents: write` | [57](../../../docs/workflows/57-sync-prerelease-branch.md) |
 | `test-docker` | Run a command in an image (registry or tarball) | `COMMAND` | `REGISTRY_USERNAME`, `REGISTRY_PASSWORD` | `contents: read`, `packages: read` | [24](../../../docs/workflows/24-test-docker.md) |
-| `test-helm` | `ct install` dans un cluster Kind | `CT_CONF_PATH` | — | `contents: read` | [20](../../../docs/workflows/20-test-helm.md) |
+| `test-helm` | `ct install` in a Kind cluster | `CT_CONF_PATH` | — | `contents: read` | [20](../../../docs/workflows/20-test-helm.md) |
 | `test-python` | Python tests (uv), coverage as an artifact | — | — | `contents: read` | [22](../../../docs/workflows/22-test-python.md) |
 | `update-helm-chart` | Update `Chart.yaml` (`RUN_MODE: local` or `called`); output `commit-sha` | `RUN_MODE` | `APP_CLIENT_ID`, `APP_PRIVATE_KEY`, `GH_PAT` | `contents: write`, `pull-requests: write` | [53](../../../docs/workflows/53-update-helm-chart.md) |

@@ -4,8 +4,9 @@ Les skills sont des fiches d'instructions que votre agent de code (Claude Code, 
 l'aident à appliquer, **dans votre projet**, les recommandations et la mise en œuvre de ce dépôt : écrire un `ci.yml`
 avec les bons workflows, configurer les releases, choisir l'authentification, installer les git hooks.
 
-Ils n'exécutent rien eux-mêmes et ne manipulent jamais la valeur d'un secret : l'agent écrit des fichiers, GitHub
-exécute les workflows, et c'est vous qui créez les secrets.
+Ils ne contiennent aucun code exécutable : l'agent écrit des fichiers et peut lancer quelques commandes (`cp`,
+`gh secret list`, `actionlint`…), que votre client vous demande d'approuver. GitHub exécute les workflows. Ils ne
+manipulent jamais la valeur d'un secret : c'est vous qui créez les secrets.
 
 ## Skills disponibles
 
@@ -32,12 +33,12 @@ Voir le [guide d'installation](./02-installation.md) (Claude Code, OpenCode, cop
   s'accompagne de la mise à jour du catalogue.
 - `ci/tests/skills-catalog.test.sh` compare le catalogue au `on.workflow_call` et aux permissions de chaque workflow,
   vérifie que les liens du catalogue et les chemins relatifs des `SKILL.md` existent, et que les skills
-  n'appellent que des workflows existants. Il
-  tourne dans la CI dès qu'un fichier de `skills/` ou de `.claude-plugin/` change.
+  n'appellent que des workflows existants. Il tourne dans la CI dès qu'un fichier de `skills/`, de `.claude-plugin/` ou
+  de `.opencode/` change.
 - Les gabarits `references/ci.yml` et `references/cd.yml` ne sont pas exécutés : les relire quand un workflow qu'ils
   appellent change.
 - `skills/index.json` liste les fichiers de chaque skill : OpenCode, en installation par URL, ne télécharge que
-  ceux-là. Le test le compare au contenu de `skills/`; après l'ajout d'un skill ou d'un fichier, le régénérer.
+  ceux-là. Le test le compare au contenu de `skills/` ; après l'ajout d'un skill ou d'un fichier, le régénérer.
 - Un nouveau skill est un dossier `skills/<nom>/SKILL.md` dont le `name` est le nom du dossier ; il est repris
   automatiquement par la marketplace (`.claude-plugin/marketplace.json`) et par `skills.paths` d'OpenCode, mais
   doit être ajouté à `skills/index.json`.
