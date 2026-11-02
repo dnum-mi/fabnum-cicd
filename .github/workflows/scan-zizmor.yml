@@ -8,7 +8,7 @@ on:
         required: false
         type: string
         # renovate: datasource=pypi depName=zizmor
-        default: 1.31.1
+        default: 1.32.0
       CONFIG_FILE:
         description: >-
           Path to a zizmor configuration file. Defaults to the one zizmor finds
