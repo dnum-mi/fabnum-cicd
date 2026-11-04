@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.25.4](https://github.com/dnum-mi/fabnum-cicd/compare/v0.25.3...v0.25.4) (2026-11-04)
+
+
+### Dependencies
+
+* **deps:** update chart-releaser to v1.10.1 ([0385fa1](https://github.com/dnum-mi/fabnum-cicd/commit/0385fa144b4d96f7d6dcf37b6c12a2878fd17c0f))
+* **deps:** update github/codeql-action to v4.39.2 ([b0f28af](https://github.com/dnum-mi/fabnum-cicd/commit/b0f28af38f014c8f2d8a69e74634db958d1de062))
+* **deps:** update github/codeql-action to v4.39.3 ([fbe186e](https://github.com/dnum-mi/fabnum-cicd/commit/fbe186ef97100457fba34dacce6337742c60a699))
+* **deps:** update helm/chart-releaser-action to v1.9.0 ([2ba5fd4](https://github.com/dnum-mi/fabnum-cicd/commit/2ba5fd4acadefb71ebda6663a22bb3ebe8d2de7c))
+* **deps:** update helm/kind-action to v1.15.2 ([b6e466e](https://github.com/dnum-mi/fabnum-cicd/commit/b6e466e9e4347511bb740c27203bf6aea01b92c7))
+* **deps:** update sonarsource/sonarqube-scan-action to v8.4.1 ([f8d3fb7](https://github.com/dnum-mi/fabnum-cicd/commit/f8d3fb77be5ebcbb0ea1dd120711bfad6a66e947))
+* **deps:** update zizmor to v1.32.0 ([26a615b](https://github.com/dnum-mi/fabnum-cicd/commit/26a615b1c9e8f3b612a0557a07ab7ecce4bcd01b))
+
 ## [0.25.3](https://github.com/dnum-mi/fabnum-cicd/compare/v0.25.2...v0.25.3) (2026-10-28)
 
 
