@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.25.4](https://github.com/dnum-mi/fabnum-cicd/compare/v0.25.3...v0.25.4) (2026-11-17)
+
+
+### Dependencies
+
+* **deps:** update actions/setup-go to v7.1.0 ([e9a9060](https://github.com/dnum-mi/fabnum-cicd/commit/e9a9060e0b4e7bc7513be22a49530d3919de35e0))
+* **deps:** update azure/setup-helm to v5.1.0 ([770c3df](https://github.com/dnum-mi/fabnum-cicd/commit/770c3df40a71f7c3f583cdbf603e47a32e3aa4d3))
+* **deps:** update chart-releaser to v1.10.1 ([0385fa1](https://github.com/dnum-mi/fabnum-cicd/commit/0385fa144b4d96f7d6dcf37b6c12a2878fd17c0f))
+* **deps:** update docker/login-action to v4.8.0 ([0f3d5c0](https://github.com/dnum-mi/fabnum-cicd/commit/0f3d5c0b190f6801b55ef527d78dedaca4a0bf02))
+* **deps:** update github/codeql-action to v4.39.2 ([b0f28af](https://github.com/dnum-mi/fabnum-cicd/commit/b0f28af38f014c8f2d8a69e74634db958d1de062))
+* **deps:** update github/codeql-action to v4.39.3 ([fbe186e](https://github.com/dnum-mi/fabnum-cicd/commit/fbe186ef97100457fba34dacce6337742c60a699))
+* **deps:** update helm/chart-releaser-action to v1.9.0 ([2ba5fd4](https://github.com/dnum-mi/fabnum-cicd/commit/2ba5fd4acadefb71ebda6663a22bb3ebe8d2de7c))
+* **deps:** update helm/kind-action to v1.15.2 ([b6e466e](https://github.com/dnum-mi/fabnum-cicd/commit/b6e466e9e4347511bb740c27203bf6aea01b92c7))
+* **deps:** update peter-evans/create-pull-request to v8.1.3 ([2611467](https://github.com/dnum-mi/fabnum-cicd/commit/2611467dbff397d09785a0e704649c8205567228))
+* **deps:** update sigstore/cosign-installer to v4.1.3 ([7af97d8](https://github.com/dnum-mi/fabnum-cicd/commit/7af97d8539c691ea68f9f6847cb56c988805d764))
+* **deps:** update sonarsource/sonarqube-scan-action to v8.4.1 ([f8d3fb7](https://github.com/dnum-mi/fabnum-cicd/commit/f8d3fb77be5ebcbb0ea1dd120711bfad6a66e947))
+* **deps:** update sonarsource/sonarqube-scan-action to v8.5.0 ([4a7157f](https://github.com/dnum-mi/fabnum-cicd/commit/4a7157f6077a15b611ef56037970e255436489fb))
+* **deps:** update zizmor to v1.32.0 ([26a615b](https://github.com/dnum-mi/fabnum-cicd/commit/26a615b1c9e8f3b612a0557a07ab7ecce4bcd01b))
+
 ## [0.25.3](https://github.com/dnum-mi/fabnum-cicd/compare/v0.25.2...v0.25.3) (2026-10-28)
 
 
