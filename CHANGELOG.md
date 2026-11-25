@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.25.5](https://github.com/dnum-mi/fabnum-cicd/compare/v0.25.4...v0.25.5) (2026-11-25)
+
+
+### Dependencies
+
+* **deps:** update actions/create-github-app-token to v3.4.0 ([fac082e](https://github.com/dnum-mi/fabnum-cicd/commit/fac082eb174cc76cbf2a01cf1f7f8d6a6eaf05c7))
+* **deps:** update astral-sh/setup-uv to v10.4.0 ([0251e94](https://github.com/dnum-mi/fabnum-cicd/commit/0251e947f060b1862525c0128c0b176993ac5ce9))
+* **deps:** update github/codeql-action to v4.39.4 ([bd88064](https://github.com/dnum-mi/fabnum-cicd/commit/bd88064f8cf00fd9be41238693ad503bbfa54dc3))
+* **deps:** update github/codeql-action to v4.39.5 ([fc93865](https://github.com/dnum-mi/fabnum-cicd/commit/fc93865f98d90f6c1057c20892b942f57ffc1a39))
+* **deps:** update sigstore/cosign-installer to v4.1.4 ([5279bc3](https://github.com/dnum-mi/fabnum-cicd/commit/5279bc3315edf8eb1bc535ee08d9a37e798b30da))
+* **deps:** update sonarsource/sonarqube-scan-action to v8.5.1 ([f0945cf](https://github.com/dnum-mi/fabnum-cicd/commit/f0945cfe9962e23cbdffe26e860aa318354cae51))
+* **deps:** update zizmor to v1.33.1 ([c9dde53](https://github.com/dnum-mi/fabnum-cicd/commit/c9dde53c3ed7f7513fd63768795d8173ecec51c8))
+
 ## [0.25.4](https://github.com/dnum-mi/fabnum-cicd/compare/v0.25.3...v0.25.4) (2026-11-17)
 
 
